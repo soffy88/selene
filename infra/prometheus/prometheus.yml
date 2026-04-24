@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'data-service'
+    static_configs: [{targets: ['data-service:8001']}]
+  - job_name: 'signal-service'
+    static_configs: [{targets: ['signal-service:8002']}]
+  - job_name: 'portfolio-service'
+    static_configs: [{targets: ['portfolio-service:8003']}]
+  - job_name: 'risk-service'
+    static_configs: [{targets: ['risk-service:8004']}]
+  - job_name: 'execution-service'
+    static_configs: [{targets: ['execution-service:8005']}]
+  - job_name: 'gateway'
+    static_configs: [{targets: ['gateway:5000']}]
+  - job_name: 'redis'
+    static_configs: [{targets: ['redis-exporter:9121']}]
+  - job_name: 'timescaledb'
+    static_configs: [{targets: ['postgres-exporter:9187']}]

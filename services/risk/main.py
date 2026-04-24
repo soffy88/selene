@@ -1,0 +1,438 @@
+"""
+services/risk/main.py  —  CryptoWatch v4 Risk Service（强制约束型）
+
+修复：
+  ✅ 完整主循环（原来缺失）
+  ✅ 强制 Gate：VaR 超限 / Drawdown RED → 直接拒单，不是建议
+  ✅ 相关性检查：防止同方向暴露叠加
+  ✅ 每日亏损熔断（max_daily_loss）
+  ✅ 仓位压缩（drawdown_scalar 随 drawdown 级别自动收缩）
+  ✅ 每5秒发布风控状态到 Redis 供 gateway + execution 读取
+"""
+
+import asyncio
+import json
+import logging
+import os
+import time
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+
+from fastapi import FastAPI
+
+from shared.db.connections import get_redis, get_pg, redis_health
+from services.risk.persistence.circuit_breaker import PersistentCircuitBreaker
+from shared.events.streams import (
+    STREAM_RISK_CHECK, STREAM_RISK_APPROVED, STREAM_SYSTEM_ALERTS,
+    encode, decode,
+)
+from services.risk.portfolio.var_engine import (
+    calc_historical_var, DrawdownController, DRAWDOWN_LEVELS,
+)
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+
+CG_RISK = "risk-service"
+
+# ── 风控参数（从 .env 读）────────────────────────────
+MAX_PORTFOLIO_DRAWDOWN = float(os.getenv("MAX_PORTFOLIO_DRAWDOWN", "0.15"))
+TARGET_VOLATILITY      = float(os.getenv("TARGET_VOLATILITY",      "0.20"))
+MAX_SINGLE_POS_PCT     = float(os.getenv("MAX_SINGLE_POSITION",    "0.10"))
+MAX_LEVERAGE           = float(os.getenv("MAX_LEVERAGE",           "3.0"))
+MAX_DAILY_LOSS_PCT     = float(os.getenv("MAX_DAILY_LOSS_PCT",     "0.05"))   # 5% 日亏损熔断
+MAX_CORR_EXPOSURE      = float(os.getenv("MAX_CORR_EXPOSURE",      "0.30"))   # 同向暴露上限30%
+MIN_WIN_PROBABILITY    = float(os.getenv("MIN_WIN_PROBABILITY",    "0.55"))
+
+# 已知高相关资产组（防止 all-in 同一风险）
+CORR_GROUPS = [
+    {"BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT"},   # 主流 L1
+    {"DOGEUSDT", "SHIBUSDT", "PEPEUSDT", "BONKUSDT"}, # Meme
+    {"LDOUSDT", "RPLUSDT", "SSVUSDT"},                # 质押衍生品
+]
+
+_dd_controller   = DrawdownController()
+_daily_pnl:  float = 0.0
+_daily_reset_date: str = datetime.now(timezone.utc).date().isoformat()
+_circuit_broken: bool = False   # 内存状态（向后兼容）
+_circuit_reason: str  = ""
+_open_positions: dict = {}   # symbol → {side, notional}
+_equity_history: list = []   # 用于 VaR 计算
+_cb: PersistentCircuitBreaker = None   # 持久化熔断器（lifespan 初始化）
+
+
+class RiskGate:
+    """
+    强制约束型风控。
+    approve() 返回 (approved: bool, reason: str, max_qty: float | None)
+    """
+
+    async def check_circuit_breaker(self) -> tuple[bool, str]:
+        """熔断检查：优先读持久化状态，回退到内存状态"""
+        global _circuit_broken, _circuit_reason
+        # 优先读持久化熔断器
+        if _cb is not None:
+            is_open = await _cb.is_open()
+            if is_open:
+                state = await _cb.get_state()
+                return False, f"circuit_broken: {state.get('circuit_reason', '未知原因')}"
+        # 回退到内存状态（兼容）
+        if _circuit_broken:
+            return False, f"circuit_broken: {_circuit_reason}"
+        return True, ""
+
+    def check_drawdown_level(self) -> tuple[bool, str, float]:
+        """
+        Drawdown Gate：
+          GREEN  → 允许，仓位系数 1.0
+          YELLOW → 允许，仓位系数 0.5
+          ORANGE → 允许，仓位系数 0.25
+          RED    → 拒绝所有新仓
+        """
+        level = _dd_controller.level
+        scalar = level.max_position_pct
+        if not level.new_trades_allowed:
+            return False, f"drawdown_halt level={level.name} dd={_dd_controller.current_dd:.1%}", 0.0
+        return True, "", scalar
+
+    def check_var(self, allocated_usd: float, equity: float) -> tuple[bool, str]:
+        """VaR Gate：新仓位加入后组合 VaR 不超过 equity 的 X%"""
+        if len(_equity_history) < 30:
+            return True, ""   # 数据不足，跳过
+
+        returns = [
+            (_equity_history[i] - _equity_history[i-1]) / _equity_history[i-1]
+            for i in range(1, len(_equity_history))
+            if _equity_history[i-1] > 0
+        ]
+        var_result = calc_historical_var([r * equity for r in returns])
+        if not var_result:
+            return True, ""
+
+        var_pct = var_result.var_95 / equity if equity > 0 else 0
+        # 新仓位大约会增加 allocated_usd/equity 的风险敞口
+        new_var_est = var_pct + (allocated_usd / equity) * 0.15
+        if new_var_est > 0.05:   # VaR 不超过 5% 净值
+            return False, f"VaR limit: est {new_var_est:.1%} > 5%"
+        return True, ""
+
+    def check_single_position(
+        self, symbol: str, allocated_usd: float, equity: float
+    ) -> tuple[bool, str, float]:
+        """单仓位上限"""
+        pos_pct = allocated_usd / equity if equity > 0 else 1.0
+        if pos_pct > MAX_SINGLE_POS_PCT:
+            max_allowed = equity * MAX_SINGLE_POS_PCT
+            return True, f"position capped to {MAX_SINGLE_POS_PCT:.0%}", max_allowed
+        return True, "", allocated_usd
+
+    def check_corr_exposure(self, symbol: str, side: str) -> tuple[bool, str]:
+        """
+        相关性暴露检查：
+        同一 corr group 内，同方向已有仓位 notional 之和超过 MAX_CORR_EXPOSURE × equity → 拒绝
+        """
+        # 找到该 symbol 所属的相关组
+        group = None
+        for g in CORR_GROUPS:
+            if symbol in g:
+                group = g
+                break
+        if not group:
+            return True, ""
+
+        # 计算该组同方向暴露
+        same_dir_notional = sum(
+            pos["notional"]
+            for sym, pos in _open_positions.items()
+            if sym in group and pos.get("side") == side
+        )
+        equity = _get_equity()
+        if equity <= 0:
+            return True, ""
+
+        exposure_pct = same_dir_notional / equity
+        if exposure_pct > MAX_CORR_EXPOSURE:
+            return False, (
+                f"corr_exposure limit: {symbol} group already "
+                f"{exposure_pct:.1%} > {MAX_CORR_EXPOSURE:.1%}"
+            )
+        return True, ""
+
+    def check_win_probability(self, win_prob: float) -> tuple[bool, str]:
+        if win_prob < MIN_WIN_PROBABILITY:
+            return False, f"win_prob {win_prob:.0%} < threshold {MIN_WIN_PROBABILITY:.0%}"
+        return True, ""
+
+    def check_leverage(self, allocated_usd: float, equity: float) -> tuple[bool, str]:
+        total_exposure = sum(p["notional"] for p in _open_positions.values() if "notional" in p)
+        new_leverage   = (total_exposure + allocated_usd) / equity if equity > 0 else 999
+        if new_leverage > MAX_LEVERAGE:
+            return False, f"leverage {new_leverage:.2f}x > max {MAX_LEVERAGE}x"
+        return True, ""
+
+    async def approve(self, order_data: dict) -> tuple[bool, str, float | None]:
+        """
+        完整风控检查流水线。
+        返回 (approved, reason, max_quantity)
+        """
+        symbol      = order_data.get("symbol", "")
+        side        = order_data.get("side", "BUY")
+        allocated   = float(order_data.get("allocated_usd", 0))
+        win_prob    = float(order_data.get("win_probability", 0))
+        quantity    = float(order_data.get("quantity", 0))
+
+        equity = _get_equity()
+
+        # ── Gate 1: 熔断（持久化）──
+        ok, reason = await self.check_circuit_breaker()
+        if not ok:
+            return False, reason, None
+
+        # ── Gate 2: Drawdown 强制压缩 ──
+        ok, reason, scalar = self.check_drawdown_level()
+        if not ok:
+            return False, reason, None
+        max_qty = quantity * scalar if scalar < 1.0 else None
+
+        # ── Gate 3: 胜率 ──
+        ok, reason = self.check_win_probability(win_prob)
+        if not ok:
+            return False, reason, None
+
+        # ── Gate 4: 单仓上限 ──
+        ok, reason, capped_alloc = self.check_single_position(symbol, allocated, equity)
+        if capped_alloc < allocated and capped_alloc > 0:
+            # 按比例缩减数量
+            ratio   = capped_alloc / allocated if allocated > 0 else 1.0
+            max_qty = quantity * ratio * scalar
+
+        # ── Gate 5: 杠杆 ──
+        ok, reason = self.check_leverage(allocated, equity)
+        if not ok:
+            return False, reason, None
+
+        # ── Gate 6: 相关性暴露 ──
+        ok, reason = self.check_corr_exposure(symbol, side)
+        if not ok:
+            return False, reason, None
+
+        # ── Gate 7: VaR ──
+        ok, reason = self.check_var(allocated, equity)
+        if not ok:
+            return False, reason, None
+
+        # 全部通过
+        return True, "approved", max_qty
+
+
+_gate = RiskGate()
+
+
+def _get_equity() -> float:
+    """从内存中读取最近净值（由 portfolio state 更新）"""
+    return _open_positions.get("__equity__", {}).get("value", 10000.0)
+
+
+# ── 主消费循环 ────────────────────────────────────────
+
+async def consume_loop():
+    r = await get_redis()
+
+    try:
+        await r.xgroup_create(STREAM_RISK_CHECK, CG_RISK, id="0", mkstream=True)
+    except Exception as e:
+        if "BUSYGROUP" not in str(e):
+            raise
+
+    logger.info("Risk service ready (HARD GATE MODE)")
+
+    while True:
+        results = await r.xreadgroup(
+            CG_RISK, "risk-worker", {STREAM_RISK_CHECK: ">"},
+            count=10, block=1000,
+        )
+        for _, messages in (results or []):
+            for msg_id, fields in messages:
+                try:
+                    data = decode(fields)
+                    order_id = data.get("order_id", "")
+                    approved, reason, max_qty = await _gate.approve(data)
+
+                    response = {
+                        "order_id":    order_id,
+                        "approved":    approved,
+                        "reason":      reason,
+                        "max_quantity": max_qty,
+                        "checked_at":  datetime.utcnow().isoformat(),
+                    }
+
+                    await r.xadd(
+                        STREAM_RISK_APPROVED, encode(response),
+                        maxlen=10000, approximate=True,
+                    )
+
+                    if not approved:
+                        logger.warning(f"RISK REJECTED order={order_id[:8]} reason={reason}")
+                        # 发 system.alerts 通知
+                        await r.xadd(STREAM_SYSTEM_ALERTS, encode({
+                            "type":    "risk_alert",
+                            "reason":  f"Order rejected: {reason}",
+                            "order_id": order_id,
+                        }), maxlen=10000, approximate=True)
+                    else:
+                        logger.info(f"RISK APPROVED order={order_id[:8]} max_qty={max_qty}")
+
+                    await r.xack(STREAM_RISK_CHECK, CG_RISK, msg_id)
+
+                except Exception as e:
+                    logger.error(f"risk_check: {e}", exc_info=True)
+
+
+async def portfolio_state_listener():
+    """监听 portfolio state 更新净值、drawdown、持仓"""
+    r = await get_redis()
+    global _daily_pnl, _daily_reset_date, _circuit_broken, _circuit_reason
+
+    while True:
+        await asyncio.sleep(5)
+        try:
+            raw = await r.get("cw4:portfolio:state")
+            if not raw:
+                continue
+            state = json.loads(raw)
+            equity       = float(state.get("total_equity", 0))
+            daily_pnl    = float(state.get("daily_pnl",    0))
+            positions    = state.get("open_positions",      [])
+
+            if equity > 0:
+                _equity_history.append(equity)
+                if len(_equity_history) > 500:
+                    _equity_history.pop(0)
+                _dd_controller.update(equity)
+                _open_positions["__equity__"] = {"value": equity}
+
+            # 更新持仓注册表（用于相关性检查）
+            _open_positions.clear()
+            _open_positions["__equity__"] = {"value": equity}
+            for pos in positions:
+                _open_positions[pos["symbol"]] = {
+                    "side":     pos.get("side", "LONG"),
+                    "notional": float(pos.get("notional", 0)),
+                }
+
+            # 每日亏损熔断（按 UTC 日期切换，非 86400s 漂移）
+            today = datetime.now(timezone.utc).date().isoformat()
+            if today != _daily_reset_date:
+                _daily_pnl        = 0.0
+                _daily_reset_date = today
+                logger.info(f"Daily PnL reset at UTC {today}")
+            _daily_pnl = daily_pnl
+
+            if equity > 0 and abs(daily_pnl) / equity > MAX_DAILY_LOSS_PCT and daily_pnl < 0:
+                trip_reason = f"daily_loss {daily_pnl/equity:.1%} > {MAX_DAILY_LOSS_PCT:.1%}"
+                # 持久化熔断（重启不丢失）
+                if _cb is not None:
+                    cb_open = await _cb.is_open()
+                    if not cb_open:
+                        await _cb.trip(
+                            reason=trip_reason,
+                            daily_loss=abs(daily_pnl)/equity,
+                        )
+                else:
+                    global _circuit_broken, _circuit_reason
+                    _circuit_broken = True
+                    _circuit_reason = trip_reason
+                logger.critical(f"💣 CIRCUIT BREAKER: {trip_reason}")
+                await r.xadd(STREAM_SYSTEM_ALERTS, encode({
+                    "type":      "circuit_breaker",
+                    "reason":    trip_reason,
+                    "daily_pnl": daily_pnl,
+                }), maxlen=10000, approximate=True)
+
+            # 发布风控状态（execution-service 强制 Gate 读这里）
+            dd_status = _dd_controller.get_status()
+            await r.set("cw4:risk:status", json.dumps({
+                **dd_status,
+                "new_trades_allowed": (not _circuit_broken) and dd_status["new_trades"],
+                "circuit_broken":     _circuit_broken,
+                "circuit_reason":     _circuit_reason,
+                "daily_pnl":          _daily_pnl,
+                "max_daily_loss_pct": MAX_DAILY_LOSS_PCT,
+                "var_history_len":    len(_equity_history),
+                "updated_at":         datetime.utcnow().isoformat(),
+            }))
+
+        except Exception as e:
+            logger.error(f"portfolio_state_listener: {e}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _cb
+    r  = await get_redis()
+    pg = await get_pg()
+
+    # 初始化持久化熔断器
+    _cb = PersistentCircuitBreaker(r, pg)
+    # Redis 重启后从 PG 恢复状态
+    restored = await _cb.restore_from_pg()
+    if restored:
+        logger.warning("熔断器状态已从 PostgreSQL 恢复 → OPEN")
+
+    tasks = [
+        asyncio.create_task(consume_loop()),
+        asyncio.create_task(portfolio_state_listener()),
+    ]
+    yield
+    for t in tasks:
+        t.cancel()
+
+
+app = FastAPI(title="CryptoWatch v4 Risk Service", lifespan=lifespan)
+
+
+@app.get("/health")
+async def health():
+    return {
+        "status":  "ok",
+        "service": "risk",
+        "redis":   await redis_health(),
+        "circuit_broken":   _circuit_broken,
+        "drawdown_level":   _dd_controller.level.name,
+        "new_trades":       _dd_controller.level.new_trades_allowed and not _circuit_broken,
+        "daily_pnl":        _daily_pnl,
+        "ts":               datetime.utcnow().isoformat(),
+    }
+
+
+@app.post("/circuit-breaker/reset")
+async def reset_circuit():
+    global _circuit_broken, _circuit_reason
+    _circuit_broken = False
+    _circuit_reason = ""
+    _dd_controller.manual_reset()
+    # 持久化解除
+    if _cb is not None:
+        await _cb.reset(reason="手动解除（API）")
+    logger.warning("Circuit breaker MANUALLY RESET")
+    return {"status": "reset", "ts": datetime.utcnow().isoformat()}
+
+
+@app.get("/status")
+async def status():
+    return {
+        **_dd_controller.get_status(),
+        "circuit_broken":  _circuit_broken,
+        "circuit_reason":  _circuit_reason,
+        "daily_pnl":       _daily_pnl,
+        "open_position_count": len(_open_positions) - 1,
+        "equity_history_len":  len(_equity_history),
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("SERVICE_PORT", 8004)))

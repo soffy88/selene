@@ -1,0 +1,14 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml .
+RUN pip install --no-cache-dir -e ".[dev]" 2>/dev/null || pip install --no-cache-dir \
+    fastapi uvicorn[standard] aiohttp pydantic pydantic-settings \
+    asyncpg sqlalchemy redis numpy scipy python-telegram-bot structlog hmmlearn
+
+COPY . .
+
+EXPOSE 8001 8002 8003 8004 8005 8006 5000
