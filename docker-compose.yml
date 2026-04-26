@@ -1,12 +1,12 @@
 # CryptoWatch v4 — Docker Compose
-# Single-machine multi-container deployment (ADR-106)
-# Production: swap docker-compose with Kubernetes manifests later
+# Wave 7.1a: 平台化改造 — 共享 platform-postgres / helios-redis / helios-net
+# 移除: timescaledb / redis / grafana / prometheus (改用 platform 共享服务)
 
 version: '3.9'
 
 x-service-defaults: &defaults
   restart: unless-stopped
-  networks: [cw4]
+  networks: [helios-net]
   logging:
     driver: json-file
     options: {max-size: "50m", max-file: "5"}
@@ -17,49 +17,8 @@ x-python-defaults: &python
     context: .
     dockerfile: infra/Dockerfile.service
   env_file: .env
-  depends_on:
-    timescaledb: {condition: service_healthy}
-    redis:       {condition: service_healthy}
 
 services:
-
-  # ── Infrastructure ──────────────────────────────────────────────────────────
-  timescaledb:
-    <<: *defaults
-    image: timescale/timescaledb:latest-pg16
-    environment:
-      POSTGRES_USER: cw4
-      POSTGRES_PASSWORD: changeme
-      POSTGRES_DB: cw4
-    volumes:
-      - timescale_data:/var/lib/postgresql/data
-      - ./infra/timescaledb/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-    ports: ['5433:5432']
-    deploy:
-      resources:
-        limits: {cpus: '2', memory: 4G}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cw4"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    <<: *defaults
-    image: redis:7-alpine
-    command: redis-server /usr/local/etc/redis/redis.conf
-    volumes:
-      - redis_data:/data
-      - ./infra/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
-    ports: ['6380:6379']
-    deploy:
-      resources:
-        limits: {cpus: '0.5', memory: 1G}
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "changeme", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
 
   # ── Application Services ────────────────────────────────────────────────────
   data-service:
@@ -221,8 +180,7 @@ services:
       resources:
         limits: {cpus: '0.3', memory: 128M}
 
-
-  # ── Monitoring Service（第24个服务）─────────────────────────────────────────
+  # ── Monitoring Service ──────────────────────────────────────────────────────
   monitoring-service:
     <<: *python
     command: python -m services.monitoring.main
@@ -235,7 +193,6 @@ services:
       CONSECUTIVE_DAYS_REQUIRED: ${CONSECUTIVE_DAYS_REQUIRED:-3}
     ports: ['8021:8021']
     depends_on:
-      redis:          {condition: service_healthy}
       signal-service: {condition: service_healthy}
       risk-service:   {condition: service_healthy}
     deploy:
@@ -280,43 +237,9 @@ services:
       resources:
         limits: {cpus: '0.1', memory: 64M}
 
-  # ── Observability ───────────────────────────────────────────────────────────
-  prometheus:
-    <<: *defaults
-    image: prom/prometheus:latest
-    volumes:
-      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    ports: ['9090:9090']
-    command: >
-      --config.file=/etc/prometheus/prometheus.yml
-      --storage.tsdb.retention.time=30d
-      --web.enable-lifecycle
-    deploy:
-      resources:
-        limits: {cpus: '0.5', memory: 512M}
-
-  grafana:
-    <<: *defaults
-    image: grafana/grafana:latest
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: changeme
-      GF_USERS_ALLOW_SIGN_UP: "false"
-    volumes:
-      - grafana_data:/var/lib/grafana
-    ports: ['3002:3000']
-    depends_on: [prometheus]
-    deploy:
-      resources:
-        limits: {cpus: '0.5', memory: 256M}
-
 networks:
-  cw4:
-    driver: bridge
+  helios-net:
+    external: true
 
 volumes:
-  timescale_data:
-  redis_data:
-  prometheus_data:
-  grafana_data:
   onchain_history:    # SQLite 历史胜率数据持久化
