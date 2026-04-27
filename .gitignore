@@ -48,6 +48,10 @@ data/
 postgres-data/
 redis-data/
 
+# Keep service Dockerfiles and requirements tracked (data/ above matches services/data/)
+!services/**/Dockerfile
+!services/**/requirements.txt
+
 # Test artifacts
 test-results/
 coverage/

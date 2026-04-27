@@ -1,6 +1,7 @@
 # CryptoWatch v4 — Docker Compose
-# Wave 7.1a: 平台化改造 — 共享 platform-postgres / helios-redis / helios-net
-# 移除: timescaledb / redis / grafana / prometheus (改用 platform 共享服务)
+# Wave 7.1b: 平台化 + 独立 Dockerfile per service
+# 基础设施: platform-postgres(selene DB) / helios-redis(DB 3) / helios-net (外部)
+# 启动: helios-secrets up selene
 
 version: '3.9'
 
@@ -11,22 +12,47 @@ x-service-defaults: &defaults
     driver: json-file
     options: {max-size: "50m", max-file: "5"}
 
-x-python-defaults: &python
-  <<: *defaults
-  build:
-    context: .
-    dockerfile: infra/Dockerfile.service
-  env_file: .env
+# -- 公共环境变量 (所有 python service 共用) ----------------------
+x-common-env: &common_env
+  TIMESCALE_URL:        ${TIMESCALE_URL}
+  REDIS_URL:            ${REDIS_URL}
+  LOG_LEVEL:            ${LOG_LEVEL:-INFO}
+  ENVIRONMENT:          ${ENVIRONMENT:-production}
+  DEBUG:                ${DEBUG:-false}
+  EXEC_MODE:            ${EXEC_MODE:-NOTIFY_ONLY}
+  MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-OKX}
 
 services:
 
-  # ── Application Services ────────────────────────────────────────────────────
+  # ── Data ─────────────────────────────────────────────────────────────────
   data-service:
-    <<: *python
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/data/Dockerfile
     command: python -m services.data.main
     environment:
+      <<: *common_env
       SERVICE_NAME: data-service
       SERVICE_PORT: "8001"
+      MARKET_DATA_API_KEY:       ${MARKET_DATA_API_KEY:-}
+      MARKET_DATA_API_SECRET:    ${MARKET_DATA_API_SECRET:-}
+      MARKET_DATA_USE_PROXY:     ${MARKET_DATA_USE_PROXY:-false}
+      HTTP_PROXY:                ${HTTP_PROXY:-}
+      HTTPS_PROXY:               ${HTTPS_PROXY:-}
+      OKX_PUBLIC_API_BASE:       ${OKX_PUBLIC_API_BASE:-https://www.okx.com}
+      OKX_KLINES_PATH:           ${OKX_KLINES_PATH:-/api/v5/market/history-candles}
+      OKX_FUNDING_HISTORY_PATH:  ${OKX_FUNDING_HISTORY_PATH:-/api/v5/public/funding-rate-history}
+      OKX_MARK_PRICE_PATH:       ${OKX_MARK_PRICE_PATH:-/api/v5/public/mark-price}
+      OKX_OPEN_INTEREST_PATH:    ${OKX_OPEN_INTEREST_PATH:-/api/v5/public/open-interest}
+      OKX_LONG_SHORT_RATIO_PATH: ${OKX_LONG_SHORT_RATIO_PATH:-/api/v5/public/long-short-ratio}
+      KCEX_API_BASE:             ${KCEX_API_BASE:-https://api.kcex.com}
+      KCEX_FUTURES_BASE:         ${KCEX_FUTURES_BASE:-https://api.kcex.com}
+      KCEX_KLINES_PATH:          ${KCEX_KLINES_PATH:-/fapi/v1/klines}
+      KCEX_FUNDING_HISTORY_PATH: ${KCEX_FUNDING_HISTORY_PATH:-/fapi/v1/fundingRate}
+      KCEX_OI_HISTORY_PATH:      ${KCEX_OI_HISTORY_PATH:-/futures/data/openInterestHist}
+      KCEX_PREMIUM_INDEX_PATH:   ${KCEX_PREMIUM_INDEX_PATH:-/fapi/v1/premiumIndex}
+      KCEX_LONG_SHORT_RATIO_PATH: ${KCEX_LONG_SHORT_RATIO_PATH:-/futures/data/globalLongShortAccountRatio}
     ports: ['8001:8001']
     deploy:
       resources:
@@ -36,12 +62,21 @@ services:
       interval: 30s
       start_period: 15s
 
+  # ── Signal ───────────────────────────────────────────────────────────────
   signal-service:
-    <<: *python
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/signal/Dockerfile
     command: python -m services.signal.main
     environment:
+      <<: *common_env
       SERVICE_NAME: signal-service
       SERVICE_PORT: "8002"
+      MIN_WIN_PROBABILITY:   ${MIN_WIN_PROBABILITY:-0.52}
+      MIN_DATA_QUALITY:      ${MIN_DATA_QUALITY:-0.7}
+      PUSH_THRESHOLD_STRONG: ${PUSH_THRESHOLD_STRONG:-0.62}
+      PUSH_THRESHOLD_WATCH:  ${PUSH_THRESHOLD_WATCH:-0.56}
     depends_on:
       data-service: {condition: service_healthy}
     ports: ['8002:8002']
@@ -53,12 +88,22 @@ services:
       interval: 30s
       start_period: 20s
 
+  # ── Portfolio ─────────────────────────────────────────────────────────────
   portfolio-service:
-    <<: *python
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/portfolio/Dockerfile
     command: python -m services.portfolio.main
     environment:
+      <<: *common_env
       SERVICE_NAME: portfolio-service
       SERVICE_PORT: "8003"
+      KELLY_FRACTION:         ${KELLY_FRACTION:-0.25}
+      TARGET_VOLATILITY:      ${TARGET_VOLATILITY:-0.15}
+      MAX_LEVERAGE:           ${MAX_LEVERAGE:-3.0}
+      MAX_PORTFOLIO_DRAWDOWN: ${MAX_PORTFOLIO_DRAWDOWN:-0.15}
+      MAX_SINGLE_POSITION:    ${MAX_SINGLE_POSITION:-0.2}
     depends_on:
       signal-service: {condition: service_healthy}
     ports: ['8003:8003']
@@ -69,12 +114,23 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
       interval: 30s
 
+  # ── Risk ──────────────────────────────────────────────────────────────────
   risk-service:
-    <<: *python
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/risk/Dockerfile
     command: python -m services.risk.main
     environment:
+      <<: *common_env
       SERVICE_NAME: risk-service
       SERVICE_PORT: "8004"
+      MAX_LEVERAGE:             ${MAX_LEVERAGE:-3.0}
+      MAX_PORTFOLIO_DRAWDOWN:   ${MAX_PORTFOLIO_DRAWDOWN:-0.15}
+      MAX_SINGLE_POSITION:      ${MAX_SINGLE_POSITION:-0.2}
+      FUNDING_ARB_ENABLED:      ${FUNDING_ARB_ENABLED:-false}
+      FUNDING_MIN_RATE:         ${FUNDING_MIN_RATE:-0.0003}
+      FUNDING_MAX_POSITION_USD: ${FUNDING_MAX_POSITION_USD:-10000}
     depends_on:
       portfolio-service: {condition: service_healthy}
     ports: ['8004:8004']
@@ -85,12 +141,23 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
       interval: 30s
 
+  # ── Execution ─────────────────────────────────────────────────────────────
   execution-service:
-    <<: *python
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/execution/Dockerfile
     command: python -m services.execution.main
     environment:
-      SERVICE_NAME: execution-service
-      SERVICE_PORT: "8005"
+      <<: *common_env
+      SERVICE_NAME:       execution-service
+      SERVICE_PORT:       "8005"
+      PRIMARY_EXCHANGE:   ${PRIMARY_EXCHANGE:-okx}
+      OKX_API_KEY:        ${OKX_API_KEY}
+      OKX_API_SECRET:     ${OKX_API_SECRET}
+      OKX_PASSPHRASE:     ${OKX_PASSPHRASE}
+      BINANCE_API_KEY:    ${BINANCE_API_KEY:-}
+      BINANCE_API_SECRET: ${BINANCE_API_SECRET:-}
     depends_on:
       risk-service: {condition: service_healthy}
     ports: ['8005:8005']
@@ -101,34 +168,48 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
       interval: 30s
 
+  # ── Notification ──────────────────────────────────────────────────────────
   notification-service:
-    <<: *python
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
     command: python -m services.notification.main
     environment:
-      SERVICE_NAME: notification-service
-      SERVICE_PORT: "8006"
+      <<: *common_env
+      SERVICE_NAME:         notification-service
+      SERVICE_PORT:         "8006"
+      TELEGRAM_BOT_TOKEN:   ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID:     ${TELEGRAM_CHAT_ID:-}
+      WX_WEBHOOK:           ${WX_WEBHOOK:-}
+      FEISHU_WEBHOOK:       ${FEISHU_WEBHOOK:-}
+      DINGTALK_WEBHOOK_URL: ${DINGTALK_WEBHOOK_URL:-}
     ports: ['8006:8006']
     deploy:
       resources:
         limits: {cpus: '0.2', memory: 128M}
 
-  # ── Onchain Sentinel (v4.1) ─────────────────────────────────────────────────
+  # ── Onchain Sentinel ──────────────────────────────────────────────────────
   onchain-sentinel:
-    <<: *python
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/onchain/Dockerfile
     command: python -m services.onchain.main
     environment:
-      SERVICE_NAME: onchain-sentinel
-      SERVICE_PORT: "8020"
-      WX_WEBHOOK:      ${WX_WEBHOOK:-}
-      FEISHU_WEBHOOK:  ${FEISHU_WEBHOOK:-}
-      INFURA_KEY:      ${INFURA_KEY:-}
-      HELIUS_KEY:      ${HELIUS_KEY:-}
+      <<: *common_env
+      SERVICE_NAME:          onchain-sentinel
+      SERVICE_PORT:          "8020"
+      INFURA_KEY:            ${INFURA_KEY:-}
+      HELIUS_KEY:            ${HELIUS_KEY:-}
+      WX_WEBHOOK:            ${WX_WEBHOOK:-}
+      FEISHU_WEBHOOK:        ${FEISHU_WEBHOOK:-}
       PUSH_THRESHOLD_STRONG: ${PUSH_THRESHOLD_STRONG:-0.62}
       PUSH_THRESHOLD_WATCH:  ${PUSH_THRESHOLD_WATCH:-0.56}
-    ports: ['8020:8020']
     depends_on:
       signal-service:       {condition: service_healthy}
       notification-service: {condition: service_started}
+    ports: ['8020:8020']
     volumes:
       - onchain_history:/root/.chain_sentinel
     deploy:
@@ -141,12 +222,17 @@ services:
       retries: 3
       start_period: 15s
 
+  # ── Onchain Workers ───────────────────────────────────────────────────────
   onchain-btc-worker:
-    <<: *python
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/onchain/btc/Dockerfile
     command: python -m services.onchain.btc.worker
     environment:
-      SERVICE_NAME:  onchain-btc-worker
-      THRESHOLD_BTC: ${THRESHOLD_BTC:-100}
+      <<: *common_env
+      SERVICE_NAME:    onchain-btc-worker
+      THRESHOLD_BTC:   ${THRESHOLD_BTC:-100}
       THRESHOLD_MINER: ${THRESHOLD_MINER:-500}
     depends_on:
       onchain-sentinel: {condition: service_healthy}
@@ -155,9 +241,13 @@ services:
         limits: {cpus: '0.3', memory: 128M}
 
   onchain-eth-worker:
-    <<: *python
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/onchain/eth/Dockerfile
     command: python -m services.onchain.eth.worker
     environment:
+      <<: *common_env
       SERVICE_NAME:  onchain-eth-worker
       INFURA_KEY:    ${INFURA_KEY:-}
       THRESHOLD_ETH: ${THRESHOLD_ETH:-500}
@@ -168,9 +258,13 @@ services:
         limits: {cpus: '0.3', memory: 128M}
 
   onchain-sol-worker:
-    <<: *python
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/onchain/sol/Dockerfile
     command: python -m services.onchain.sol.worker
     environment:
+      <<: *common_env
       SERVICE_NAME:  onchain-sol-worker
       HELIUS_KEY:    ${HELIUS_KEY:-}
       THRESHOLD_SOL: ${THRESHOLD_SOL:-50000}
@@ -180,21 +274,28 @@ services:
       resources:
         limits: {cpus: '0.3', memory: 128M}
 
-  # ── Monitoring Service ──────────────────────────────────────────────────────
+  # ── Monitoring ────────────────────────────────────────────────────────────
   monitoring-service:
-    <<: *python
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/monitoring/Dockerfile
     command: python -m services.monitoring.main
     environment:
-      SERVICE_NAME: monitoring-service
-      SERVICE_PORT: "8021"
+      <<: *common_env
+      SERVICE_NAME:              monitoring-service
+      SERVICE_PORT:              "8021"
       REPORT_HOUR_CST:           ${REPORT_HOUR_CST:-9}
       REPORT_DAYS:               ${REPORT_DAYS:-1}
       REPORT_PUSH:               ${REPORT_PUSH:-true}
       CONSECUTIVE_DAYS_REQUIRED: ${CONSECUTIVE_DAYS_REQUIRED:-3}
-    ports: ['8021:8021']
+      TELEGRAM_BOT_TOKEN:        ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID:          ${TELEGRAM_CHAT_ID:-}
+      WX_WEBHOOK:                ${WX_WEBHOOK:-}
     depends_on:
       signal-service: {condition: service_healthy}
       risk-service:   {condition: service_healthy}
+    ports: ['8021:8021']
     deploy:
       resources:
         limits: {cpus: '0.2', memory: 128M}
@@ -205,10 +306,15 @@ services:
       retries: 3
       start_period: 20s
 
+  # ── Gateway ───────────────────────────────────────────────────────────────
   gateway:
-    <<: *python
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
     command: uvicorn services.gateway.main:app --host 0.0.0.0 --port 5000
     environment:
+      <<: *common_env
       SERVICE_NAME: gateway
       SERVICE_PORT: "5000"
     depends_on:
@@ -225,7 +331,7 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
 
-  # ── Frontend ────────────────────────────────────────────────────────────────
+  # ── Frontend ──────────────────────────────────────────────────────────────
   frontend:
     <<: *defaults
     build:
