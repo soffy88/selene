@@ -174,7 +174,7 @@ services:
     build:
       context: .
       dockerfile: services/notification/Dockerfile
-    command: python -m services.notification.main
+    command: uvicorn services.notification.main:app --host 0.0.0.0 --port 8006
     environment:
       <<: *common_env
       SERVICE_NAME:         notification-service
@@ -240,39 +240,85 @@ services:
       resources:
         limits: {cpus: '0.3', memory: 128M}
 
-  onchain-eth-worker:
-    <<: *defaults
-    build:
-      context: .
-      dockerfile: services/onchain/eth/Dockerfile
-    command: python -m services.onchain.eth.worker
-    environment:
-      <<: *common_env
-      SERVICE_NAME:  onchain-eth-worker
-      INFURA_KEY:    ${INFURA_KEY:-}
-      THRESHOLD_ETH: ${THRESHOLD_ETH:-500}
-    depends_on:
-      onchain-sentinel: {condition: service_healthy}
-    deploy:
-      resources:
-        limits: {cpus: '0.3', memory: 128M}
+# H3-PENDING   onchain-eth-worker:
+# H3-PENDING     <<: *defaults
+# H3-PENDING     build:
+# H3-PENDING       context: .
+# H3-PENDING       dockerfile: services/onchain/eth/Dockerfile
+# H3-PENDING     command: python -m services.onchain.eth.worker
+# H3-PENDING     environment:
+# H3-PENDING       <<: *common_env
+# H3-PENDING       SERVICE_NAME:  onchain-eth-worker
+# H3-PENDING       INFURA_KEY:    ${INFURA_KEY:-}
+# H3-PENDING       THRESHOLD_ETH: ${THRESHOLD_ETH:-500}
+# H3-PENDING     depends_on:
+# H3-PENDING       onchain-sentinel: {condition: service_healthy}
+# H3-PENDING     deploy:
+# H3-PENDING       resources:
+# H3-PENDING         limits: {cpus: '0.3', memory: 128M}
+# H3-PENDING 
+# H3-PENDING   onchain-sol-worker:
+# H3-PENDING     <<: *defaults
+# H3-PENDING     build:
+# H3-PENDING       context: .
+# H3-PENDING       dockerfile: services/onchain/sol/Dockerfile
+# H3-PENDING     command: python -m services.onchain.sol.worker
+# H3-PENDING     environment:
+# H3-PENDING       <<: *common_env
+# H3-PENDING       SERVICE_NAME:  onchain-sol-worker
+# H3-PENDING       HELIUS_KEY:    ${HELIUS_KEY:-}
+# H3-PENDING       THRESHOLD_SOL: ${THRESHOLD_SOL:-50000}
+# H3-PENDING     depends_on:
+# H3-PENDING       onchain-sentinel: {condition: service_healthy}
+# H3-PENDING     deploy:
+# H3-PENDING       resources:
+# H3-PENDING         limits: {cpus: '0.3', memory: 128M}
 
-  onchain-sol-worker:
+  # ── sel Collectors ───────────────────────────────────────────────────────
+  sel-orderbook:
     <<: *defaults
     build:
       context: .
-      dockerfile: services/onchain/sol/Dockerfile
-    command: python -m services.onchain.sol.worker
+      dockerfile: services/sel_collectors/Dockerfile
+    command: python -m services.sel_collectors.run_orderbook
     environment:
       <<: *common_env
-      SERVICE_NAME:  onchain-sol-worker
-      HELIUS_KEY:    ${HELIUS_KEY:-}
-      THRESHOLD_SOL: ${THRESHOLD_SOL:-50000}
-    depends_on:
-      onchain-sentinel: {condition: service_healthy}
+      SERVICE_NAME: sel-orderbook
+      SEL_SYMBOL:   ${SEL_SYMBOL:-BTCUSDT}
+      SEL_INST_ID:  ${SEL_INST_ID:-BTC-USDT-SWAP}
     deploy:
       resources:
-        limits: {cpus: '0.3', memory: 128M}
+        limits: {cpus: '0.2', memory: 128M}
+
+  sel-trade-flow:
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/sel_collectors/Dockerfile
+    command: python -m services.sel_collectors.run_trade_flow
+    environment:
+      <<: *common_env
+      SERVICE_NAME: sel-trade-flow
+      SEL_SYMBOL:   ${SEL_SYMBOL:-BTCUSDT}
+      SEL_INST_ID:  ${SEL_INST_ID:-BTC-USDT-SWAP}
+    deploy:
+      resources:
+        limits: {cpus: '0.2', memory: 128M}
+
+  sel-oi:
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/sel_collectors/Dockerfile
+    command: python -m services.sel_collectors.run_oi
+    environment:
+      <<: *common_env
+      SERVICE_NAME: sel-oi
+      SEL_SYMBOL:   ${SEL_SYMBOL:-BTCUSDT}
+      SEL_INST_ID:  ${SEL_INST_ID:-BTC-USDT-SWAP}
+    deploy:
+      resources:
+        limits: {cpus: '0.1', memory: 64M}
 
   # ── Monitoring ────────────────────────────────────────────────────────────
   monitoring-service:
