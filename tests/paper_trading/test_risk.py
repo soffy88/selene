@@ -354,3 +354,78 @@ class TestRecentEvents:
         events = gate.recent_events(n=20)
         assert events[0].time == t1
         assert events[1].time == t2
+
+
+# ---------------------------------------------------------------------------
+# Test 11: Rule 2 subtype (missing_data vs no_match)
+# ---------------------------------------------------------------------------
+
+class TestSignalLagRule2Subtype:
+    """Rule 2 tags the correct subtype based on none_reason distribution in lag window."""
+
+    def _stale(self, risk_cfg: RiskConfig) -> datetime:
+        return _T - timedelta(hours=risk_cfg.signal_lag_max_hours + 1)
+
+    def test_rule_2_subtype_missing_data_when_any_missing(self, risk_cfg):
+        gate = _gate(risk_cfg)
+        none_reasons = {"missing_data": 18, "no_match": 6, "cold_start": 0}
+        result = gate.check(
+            proposed_action=DecisionAction.OPEN_LONG,
+            current_state="Surging_Up",
+            bar_time=_T,
+            position=None,
+            account=_account(),
+            last_state_update_time=self._stale(risk_cfg),
+            none_reasons_in_lag=none_reasons,
+        )
+        assert result.triggered_rule == "signal_lag"
+        assert result.rule_2_subtype == "missing_data"
+        assert result.none_reasons_in_lag == none_reasons
+
+    def test_rule_2_subtype_no_match_when_no_missing_data(self, risk_cfg):
+        gate = _gate(risk_cfg)
+        none_reasons = {"missing_data": 0, "no_match": 24, "cold_start": 0}
+        result = gate.check(
+            proposed_action=DecisionAction.OPEN_LONG,
+            current_state="Surging_Up",
+            bar_time=_T,
+            position=None,
+            account=_account(),
+            last_state_update_time=self._stale(risk_cfg),
+            none_reasons_in_lag=none_reasons,
+        )
+        assert result.triggered_rule == "signal_lag"
+        assert result.rule_2_subtype == "no_match"
+
+    def test_rule_2_subtype_defaults_to_no_match_when_reasons_none(self, risk_cfg):
+        """Backward compat: when none_reasons_in_lag not passed, subtype is 'no_match'."""
+        gate = _gate(risk_cfg)
+        result = gate.check(
+            proposed_action=DecisionAction.OPEN_LONG,
+            current_state="Surging_Up",
+            bar_time=_T,
+            position=None,
+            account=_account(),
+            last_state_update_time=self._stale(risk_cfg),
+        )
+        assert result.triggered_rule == "signal_lag"
+        assert result.rule_2_subtype == "no_match"
+        assert result.force_action == DecisionAction.CLOSE  # candidate A: always CLOSE
+
+    def test_rule_2_action_is_close_for_both_subtypes(self, risk_cfg):
+        """Candidate A: missing_data and no_match both produce CLOSE (behaviour unchanged)."""
+        gate = _gate(risk_cfg)
+        for reasons in [
+            {"missing_data": 10, "no_match": 0, "cold_start": 0},
+            {"missing_data": 0, "no_match": 10, "cold_start": 0},
+        ]:
+            result = gate.check(
+                proposed_action=DecisionAction.OPEN_LONG,
+                current_state="Surging_Up",
+                bar_time=_T,
+                position=None,
+                account=_account(),
+                last_state_update_time=self._stale(risk_cfg),
+                none_reasons_in_lag=reasons,
+            )
+            assert result.force_action == DecisionAction.CLOSE
