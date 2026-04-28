@@ -230,6 +230,8 @@ Output: "curl: (7) Failed to connect to localhost port 8000 after 0 ms: Could no
 | EC-08 | TF collector sz 单位待确认（lot vs BTC） | ~~B（中）~~ **RESOLVED** | 公式正确，无污染 | — |
 | EC-09 | sel_state_sequence 表缺失 | ~~**A（高）**~~ **RESOLVED** | — | — |
 | EC-10 | StateEngine 内存状态在容器重启时丢失 | C（设计记录） | 重启后数个 bar Dwell/Cooling 状态可能不准确 | cold start 期内无影响；post-warmup 重启偶发伪 no_match |
+| EC-11 | 调度器失败 bar 无持久记录 | B（中） | 失败 bar 不可事后追溯，gap 不可审计 | 运营不知哪些 bar 失败，cold start 时序不透明 |
+| EC-12 | candles schema 错配：backfill.py + validate_e2e.py 使用 open_time（表实际为 time）| B（中） | backfill 和 e2e 验证脚本运行即失败 | backfill 功能完全失效；validate_e2e 无法运行 |
 
 ## EC-10：StateEngine 重启后内存状态丢失（C = 设计记录，低紧急度）
 
@@ -248,3 +250,50 @@ Output: "curl: (7) Failed to connect to localhost port 8000 after 0 ms: Could no
 **相关文件**：`sel_engine/states/engine.py::StateEngine`（`_last_confirmed`）、`sel_engine/states/transition.py::DwellFilter`、`CascadeCooling`
 
 **推荐修复方向**（不在当前范围）：于 bar 处理完成后将 `_last_confirmed`、`_cascade_end_time` 写入 Redis；启动时从 Redis 恢复。
+
+---
+
+## EC-11：调度器失败 bar 无持久记录（B = 中优先度，可观测性缺失）
+
+**发现日期**：2026-04-28（Task 2.2.1 事后审查）
+
+**现象**：Task 2.2 Fix 2.2 明细中要求"失败 bar 记录到 `sel_engine_errors` 表或日志聚合系统"，但实际未实装：
+- `sel_engine_errors` 表不存在（DB 确认）
+- `sel:scheduler:consecutive_failures` Redis 键仅记录连续失败次数，不记录哪个 bar、何种错误、何时发生
+- 容器重启后旧日志丢失，失败证据无法事后查询
+
+**直接影响（Task 2.2.1 发现）**：2026-04-28T06:00Z bar 在首次触发时失败（UndefinedColumnError: open_time），容器重启后该 traceback 已无法从 DB 或 Redis 恢复——仅存于本次会话的临时文件 `/tmp/…/bwnsej30o.output`。
+
+**数据流影响**：失败的 bar 不写入 `sel_state_sequence`（正상적 동작），但运营人员无法：
+1. 得知 cold start 期间哪些 bar 被跳过（形成时序 gap）
+2. 事后重现失败原因
+3. 统计连续失败 bar 数并触发自动告警
+
+**相关文件**：`sel_engine/scheduler/bar_close_runner.py`（`except` 块只 incr Redis 计数器）
+
+**推荐修复方向**（等决策）：
+- 方向 A：建 `sel_engine_errors` 表，失败 bar 写一行（time, symbol, error_type, traceback_excerpt）
+- 方向 B：将失败 bar 信息写入 Redis stream `sel:bar_errors`（轻量、TTL 7d）
+- 方向 C：接入现有 `system.alerts` Redis stream 发送 risk_alert（复用 Task 1.8.1 告警路径）
+
+---
+
+## EC-12：candles 表 schema 错配——backfill.py 和 validate_e2e.py 使用 open_time（B = 中优先度）
+
+**发现日期**：2026-04-28（Task 2.2.1 事后审查，768f887 披露调查）
+
+**现象**：生产数据库 candles 表（DDL 在 `infra/timescaledb/schema.sql`）主时间戳列名为 `time`，但以下文件使用了不存在的 `open_time` 列：
+- `sel_engine/backfill.py:25` — `INSERT INTO candles (symbol, interval, open_time, ...)` + `ON CONFLICT (symbol, interval, open_time)`
+- `sel_engine/scripts/validate_e2e.py:65` — `SELECT open_time, close FROM candles ORDER BY open_time DESC`
+
+**根因**：`infra/timescaledb/schema.sql`（平台团队）与 `sel_engine/` 模块各自独立开发，接口契约未文档化。`sel_engine/db/reader.py` 中同类错误已由 commit 768f887 修复（但此修复本身未经授权，见 Task 2.2.1 审查）。
+
+**数据流影响**：
+- **backfill.py**：若执行历史 K 线回填，INSERT 会因 `open_time` 列不存在立即失败；现有数据由 data-service 写入，不受影响
+- **validate_e2e.py**：e2e 验证脚本无法运行，但该脚本是离线诊断工具，不在 critical path 上
+
+**不处理后果**：backfill 功能完全失效（如需补历史数据无法运行）；e2e 验证脚本形同虚设。
+
+**相关文件**：`sel_engine/backfill.py`、`sel_engine/scripts/validate_e2e.py`、`infra/timescaledb/schema.sql`
+
+**推荐修复方向**（等决策）：将 backfill.py 和 validate_e2e.py 中的 `open_time` 改为 `time`，与实际 schema 对齐。同时在 `sel_engine/db/` 中建立 candles 表的 schema 常量，防止未来再次错配。
