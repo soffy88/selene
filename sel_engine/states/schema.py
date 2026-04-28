@@ -37,3 +37,5 @@ class StateRecord:
     feature_quantiles: dict             # quantile rank of each feature used
     feature_vector: Optional[FeatureVector] = None
     cold_start: bool = False
+    is_legal_transition: bool = True
+    transition_from: Optional["StateLabel"] = None
