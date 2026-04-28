@@ -75,6 +75,7 @@ class BarCloseRunner:
         Process the bar whose open_time == bar_open_time.
         bar_open_time must be a UTC-aware datetime at a full hour boundary.
         """
+        logger.info("run_bar entry: bar_time=%s", bar_open_time.isoformat())
         bar_ts_iso = bar_open_time.isoformat()
         bar_close_time = bar_open_time + timedelta(hours=1)
 

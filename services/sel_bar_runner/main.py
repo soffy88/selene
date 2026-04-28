@@ -11,8 +11,10 @@ on container restart. During the 720-bar cold-start period this has no effect
 incorrect dwell/cooling behavior; this is an accepted limitation.
 """
 import asyncio
+import faulthandler
 import logging
 import os
+import signal
 from datetime import datetime, timedelta, timezone
 
 from shared.db.connections import close_all, get_pg, get_redis
@@ -29,6 +31,11 @@ async def main() -> None:
         level=os.environ.get("LOG_LEVEL", "INFO"),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+
+    # Dump all coroutine stacks to stderr on SIGUSR1 — diagnostic, kept permanently
+    faulthandler.enable()
+    faulthandler.register(signal.SIGUSR1, all_threads=True, chain=False)
+    logger.info("faulthandler registered on SIGUSR1")
 
     pool = await get_pg()
     redis = await get_redis()
