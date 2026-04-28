@@ -47,8 +47,8 @@ async def read_closes(
     """Return closing prices from candles table, oldest first, up to `limit` bars ending at `end`."""
     sql = """
         SELECT close FROM candles
-        WHERE symbol = $1 AND interval = '1h' AND open_time <= $2
-        ORDER BY open_time DESC
+        WHERE symbol = $1 AND interval = '1h' AND time <= $2
+        ORDER BY time DESC
         LIMIT $3
     """
     async with pool.acquire() as conn:
