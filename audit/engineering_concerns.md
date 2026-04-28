@@ -105,46 +105,28 @@
 
 ---
 
-## EC-07：Rule 2 signal_lag 对「collector 故障」vs「无状态命中」动作未区分（**A = 高优先度，需决策**）
+## EC-07：Rule 2 signal_lag 对「collector 故障」vs「无状态命中」动作未区分（**RESOLVED — 候选 B 已实装**）
 
-**现象**：`RiskGate` Rule 2（`signal_lag`）在 `last_state_update_time` 冻结超过 `signal_lag_max_hours`（当前 = 2H）后无条件触发 CLOSE。Task 1.8 实装了 `rule_2_subtype`（`missing_data` vs `no_match`）和 `none_reasons_in_lag` 分布，但动作仍为 CLOSE（候选 A 默认）。
+**决策日期**：2026-04-28  
+**决策**：采用候选 B — MISSING_DATA → HOLD + 告警；NO_MATCH → CLOSE  
+**实装 commit**：`699f219`（Task 1.8.1）
 
-**核心矛盾**：
+**实装内容**：
+- `paper_trading/risk.py::_fire_rule_2()` — subtype 分支，`missing_data` 触发 `NO_ACTION` + `alert_required=True`
+- `paper_trading/runner.py::_emit_rule2_alert_if_needed()` — 发布 `risk_alert` 到 `system.alerts` Redis stream，6H dedup
+- `paper_trading/risk.py::RiskCheckResult.alert_required` + `paper_trading/trail.py::DecisionTrail.alert_required`
+- `decision/config.py::RiskConfig.missing_data_alert_dedup_hours = 6`（工程便利值，非 spec）
 
-| 情形 | 原因 | 当前动作 | 正确动作？ |
-|------|------|---------|-----------|
-| 状态识别器健康，条件 24H 无命中（NO_MATCH）| 真市场信号缺失 | CLOSE | **有争议**——§11 原文意图 |
-| Collector 故障导致 WIKI 特征缺失（MISSING_DATA）| 工程故障 | CLOSE | **有争议**——宁可平仓 or 修工程？ |
+**行为对照（实装后）**：
 
-**三个候选方案（需你决策）**：
+| 情形 | subtype | 动作 | 告警 |
+|------|---------|------|------|
+| 状态识别器健康，条件 24H 无命中 | NO_MATCH | CLOSE | 无 |
+| Collector 故障导致 WIKI 特征缺失 | MISSING_DATA | HOLD（NO_ACTION） | system.alerts risk_alert |
 
-### 候选 A（保守，当前行为）
+**Rule 1 优先级不变**：Cascade state 仍在 Rule 2 之前触发 CLOSE，候选 B 不影响 Rule 1。
 
-两种情形均 CLOSE。
-
-**逻辑**：宁可平仓也不要在数据不完整下持仓。符合 Rule 2「数据完整性保护」的字面意图。  
-**代价**：collector 临时故障（如重启）会导致真实平仓，即使仓位本身健康。  
-**实装状态**：已就位（`_fire_rule_2` 对两种 subtype 均 CLOSE）。
-
-### 候选 B（防误平，需额外实装）
-
-MISSING_DATA → HOLD（不平仓），同时触发系统告警；NO_MATCH → CLOSE（保留原行为）。
-
-**逻辑**：collector 故障是已知工程问题，应修工程而非平仓。HOLD 期间仓位照常承担市场风险，但不被强制清出。  
-**代价**：1) 需配套监控告警（否则 collector 故障可能无人知晓）；2) 若 collector 长期故障（数天），仓位将在完全无状态信息下持续持仓，风险无法量化。  
-**实装工作量**：`_fire_rule_2` 里加一个 `if subtype == "missing_data": force_action = HOLD`；告警目前无 hook，需另起任务实装。
-
-### 候选 C（混合，需额外实装）
-
-MISSING_DATA + lag ≤ 6H → HOLD；MISSING_DATA + lag > 6H → CLOSE；NO_MATCH → CLOSE（保留原行为）。
-
-**逻辑**：短暂故障（≤ 6H）不平仓，给 collector 自动恢复窗口；长期故障当作未知风险处理，执行 CLOSE。  
-**代价**：1) 6H 阈值是拍板数字，需实证校准（collector 实际恢复时间 SLA 未知）；2) MISSING_DATA lag 计算需传递 lag_hours 到分支逻辑，稍复杂。  
-**实装工作量**：同候选 B + 一层 lag_hours 阈值判断。
-
-**当前代码位置**：`paper_trading/risk.py::RiskGate._fire_rule_2()`，修改只需约 5 行。
-
-**不决策的后果**：候选 A 作为默认运行。每次 collector 重启（~3-5 分钟停服，但 signal_lag_max_hours=2H 需连续 2H 无状态）实际上不会立即触发，但长期 collector 停机（> 2H）会误触发 CLOSE。
+**残余风险**：collector 长期故障（数天）期间仓位持续持仓，无状态保护；运营人员需响应 risk_alert 告警手动干预。详见 `audit/p1_8_1_candidate_b_impact.md`。
 
 ---
 
@@ -158,4 +140,4 @@ MISSING_DATA + lag ≤ 6H → HOLD；MISSING_DATA + lag > 6H → CLOSE；NO_MATC
 | EC-04 | sel_features 无写入（bar-close 未启动） | **A（高）** | **端到端断路** | 状态历史无法积累，下游信号无数据 |
 | EC-05 | MISSING_DATA 后验检查而非三值返回 | C（设计记录） | 无 | 新增 WIKI 特征时需手动同步集合 |
 | EC-06 | state_rates 分母 active_bars 未文档化 | C（设计记录） | 无 | 校准时分母误用导致阈值错误 |
-| EC-07 | Rule 2 对 collector 故障 vs 无状态命中动作未区分 | **A（高，待决策）** | paper trading 误平仓风险 | 候选 A 持续运行；长期故障误触发 CLOSE |
+| EC-07 | Rule 2 对 collector 故障 vs 无状态命中动作未区分 | ~~A（高，待决策）~~ **RESOLVED** | 候选 B 已实装（HOLD+alert for MISSING_DATA） | — |
