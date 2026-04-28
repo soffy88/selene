@@ -142,4 +142,5 @@ class StateOutputService:
             funding_rate=fv.funding_rate,
             LV=fv.LV,
             feature_completeness=completeness,
+            none_reason=record.none_reason.value if record.state is None else None,
         )

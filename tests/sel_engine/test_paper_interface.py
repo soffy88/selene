@@ -86,6 +86,7 @@ def _make_state_output(
     health_warning: bool = False,
     transition_from: Optional[str] = None,
     feature_completeness: float = 0.5,
+    none_reason: Optional[str] = None,
 ) -> StateOutput:
     return StateOutput(
         bar_time=_T0,
@@ -99,6 +100,7 @@ def _make_state_output(
         is_legal_transition=True,
         transition_from=transition_from,
         health_warning=health_warning,
+        none_reason=none_reason,
         close=50000.0,
         sigma_p_24h=0.012,
         H=None,

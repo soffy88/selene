@@ -29,6 +29,7 @@ class StateOutput:
     funding_rate: Optional[float]
     LV: Optional[float]
     feature_completeness: float  # fraction of non-None features
+    none_reason: Optional[str] = None   # StateNoneReason.value when state is None, else None
 
 
 @dataclass
