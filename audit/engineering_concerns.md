@@ -76,6 +76,35 @@
 
 ---
 
+## EC-05：MISSING_DATA 检测采用后验检查而非条件函数三值返回（C = 设计记录）
+
+**现象**：TASK 1.7 引入 `StateNoneReason.MISSING_DATA`。检测逻辑实现为：在 `recognize()` 的 no-match 路径调用 `_none_reason_for_no_match(qr, fv)`，检查 `_HARD_SHORT_CIRCUIT_QR` 中的量化特征是否为 None。
+
+**为何不用三值返回**：备选方案是将所有条件函数签名改为返回 `Optional[bool]`（`True=matched`, `False=no_match`, `None=missing_data`），约 60 处测试断言需同步修改，且条件函数本身职责更单纯时可读性更好。
+
+**当前方案限制**：
+- `_HARD_SHORT_CIRCUIT_QR` 集合须与实际条件代码手动保持同步；若新增条件用到新的 WIKI 特征，需记得同步更新该集合
+- 极端情况：若所有 WIKI 特征都存在但某条件的第一个 gate 恰好失败（非 None 原因），仍返回 NO_MATCH，正确
+- 当前集合覆盖：`H_24h_mean`、`abs_tf_24h_sum`、`oi_change_rate_24h`、`tf_dp_ratio_24h`、`abs_oi_change_rate_24h`、`tf_directional_ratio_6h`（fv 字段直接检查）
+
+**相关文件**：`sel_engine/states/recognizer.py::_HARD_SHORT_CIRCUIT_QR`、`recognizer.py::_none_reason_for_no_match()`
+
+---
+
+## EC-06：`state_rates` 分母选 `active_bars`（非 `total_bars`）未在 §10.5 文档化（C = 文档缺失）
+
+**现象**：`compute_state_distribution()` 和 `HealthMonitor.generate()` 中，`state_rates` 分母为 `active_bars`（即已确认状态的 bar 数），而非 `total_bars`。
+
+**设计意图**：速率表示「有状态时各状态的相对频率」，分母含 cold_start/missing_data/no_match bar 会稀释速率使其失去可比性。
+
+**文档缺口**：`v1.0.md §10.5` 中 EXPECTED_RATE_RANGES 表格给出了速率期望范围，但未说明「速率分母为 active_bars」。若后续校准工作以 `total_bars` 为分母计算期望范围，阈值会不匹配。
+
+**不处理后果**：校准人员若未查看代码，可能以 `total_bars` 为基准设置错误的期望范围（如 `Cascade: [0.001, 0.03]`，若用 `total_bars` 分母则需换算）。
+
+**相关文件**：`sel_engine/states/recognizer.py::compute_state_distribution()`、`sel_engine/states/health.py::HealthMonitor.generate()`
+
+---
+
 ## 汇总表
 
 | ID | 描述 | 优先级 | 数据流影响 | 不处理后果 |
@@ -84,3 +113,5 @@
 | EC-02 | orderbook_samples 多行/bucket | B（中） | DB 回溯分析多计 5× | 回溯分析结果错误 |
 | EC-03 | writer.py 缺 delta_H 字段 | B（中） | 状态引擎无影响 | Cascade 历史记录不完整 |
 | EC-04 | sel_features 无写入（bar-close 未启动） | **A（高）** | **端到端断路** | 状态历史无法积累，下游信号无数据 |
+| EC-05 | MISSING_DATA 后验检查而非三值返回 | C（设计记录） | 无 | 新增 WIKI 特征时需手动同步集合 |
+| EC-06 | state_rates 分母 active_bars 未文档化 | C（设计记录） | 无 | 校准时分母误用导致阈值错误 |
