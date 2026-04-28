@@ -1,0 +1,141 @@
+# sel decision rules — v0.1 (Claude defaults, awaiting Wiki confirmation)
+# Config hash is embedded in every decision_trail record for traceability.
+
+meta:
+  version: "0.1"
+  author: "claude-default"  # wiki-confirmed when updated
+  created_at: "2026-04-28"
+  notes: "All parameters are Claude-derived defaults. Wiki confirmation pending."
+
+# --- Decision matrix ---
+# Maps (current_state, previous_state_pattern) -> action
+# action: open_long | open_short | close | hold | no_action
+# Rule matching: first match wins (order matters, higher rules take priority)
+decision_matrix:
+  - id: "cascade_force_close"
+    current_state: "Cascade"
+    previous_state: "*"          # wildcard = any
+    action: "close"
+    position_multiplier: 0.0    # close everything
+    notes: "REDLINE — unconditional. [Wiki: agreed]"
+
+  - id: "critical_hold"
+    current_state: "Critical"
+    previous_state: "*"
+    action: "hold"
+    position_multiplier: null   # maintain current
+    notes: "Wait for state clarification. [Wiki: using Claude default]"
+
+  - id: "coiling_after_drifting_prepare"
+    current_state: "Coiling"
+    previous_state_pattern: "Drifting_*"  # regex/glob on previous state
+    action: "no_action"
+    position_multiplier: 0.0
+    notes: "Record only, wait for Release (Surging). [Wiki: using Claude default]"
+
+  - id: "surging_up_from_coiling"
+    current_state: "Surging_Up"
+    previous_state: "Coiling"
+    action: "open_long"
+    position_multiplier: 1.0
+    notes: "Primary open window. [Wiki: confirm base_size]"
+
+  - id: "surging_down_from_coiling"
+    current_state: "Surging_Down"
+    previous_state: "Coiling"
+    action: "open_short"
+    position_multiplier: 1.0
+    notes: "Primary open window. [Wiki: confirm base_size]"
+
+  - id: "reverse_surging_close_long"
+    current_state: "Surging_Down"
+    previous_state: "Surging_Up"
+    action: "close"
+    position_multiplier: 0.0
+    notes: "Direction reversal = exit long immediately."
+
+  - id: "reverse_surging_close_short"
+    current_state: "Surging_Up"
+    previous_state: "Surging_Down"
+    action: "close"
+    position_multiplier: 0.0
+    notes: "Direction reversal = exit short immediately."
+
+  - id: "surging_up_not_from_coiling"
+    current_state: "Surging_Up"
+    previous_state_pattern: "(?!Coiling).*"   # NOT from Coiling
+    action: "no_action"
+    position_multiplier: 0.0
+    notes: "Surging without Coiling setup = suspicious. [Wiki: decision point 5 — may be too strict]"
+
+  - id: "surging_down_not_from_coiling"
+    current_state: "Surging_Down"
+    previous_state_pattern: "(?!Coiling).*"
+    action: "no_action"
+    position_multiplier: 0.0
+    notes: "Same as above."
+
+  - id: "drifting_charged_after_surging_reduce"
+    current_state: "Drifting_Charged"
+    previous_state_pattern: "Surging_.*"
+    action: "hold"
+    position_multiplier: 0.5
+    notes: "Exhaustion precursor — reduce to half. [Wiki: using Claude default]"
+
+  - id: "drifting_calm_after_surging_close"
+    current_state: "Drifting_Calm"
+    previous_state_pattern: "Surging_.*"
+    action: "close"
+    position_multiplier: 0.0
+    notes: "Trend ended — full exit. [Wiki: using Claude default]"
+
+  - id: "drifting_calm_default_hold"
+    current_state: "Drifting_Calm"
+    previous_state: "*"
+    action: "hold"
+    position_multiplier: null
+    notes: "Default — no signal."
+
+  - id: "coiling_default_no_action"
+    current_state: "Coiling"
+    previous_state: "*"
+    action: "no_action"
+    position_multiplier: 0.0
+    notes: "Default coiling — wait for direction. [Wiki: using Claude default]"
+
+# --- Position sizing ---
+# WIKI DECISION POINT 1: base_size — currently 20% of nav
+# WIKI DECISION POINT 2: max_concurrent_positions — currently 1
+position:
+  base_size_pct: 0.20       # fraction of account NAV  [Wiki: confirm]
+  max_concurrent: 1          # max simultaneous open positions  [Wiki: confirm]
+  allow_add_to_position: false  # no position scaling — open then close only
+
+# --- Account initialization ---
+# WIKI DECISION POINT 6: initial_nav — currently 10000 USDT (virtual)
+account:
+  initial_nav_usdt: 10000.0   # virtual paper trading starting capital  [Wiki: confirm]
+  currency: "USDT"
+
+# --- Risk controls ---
+# WIKI DECISION POINT 3: max_loss_per_trade_pct
+# WIKI DECISION POINT 4: signal_lag_max_hours
+risk:
+  max_loss_per_trade_pct: 0.03    # -3% NAV → force close  [Wiki: confirm]
+  max_daily_drawdown_pct: 0.05    # -5% NAV → pause until next day  [Wiki: confirm]
+  consecutive_loss_stop: 3         # 3 consecutive losses → 24H pause  [Wiki: confirm]
+  signal_lag_max_hours: 2          # no state update for 2H → force close  [Wiki: confirm]
+  cascade_always_overrides: true   # Cascade closes even during 24H pause
+
+# --- Execution simulation ---
+maker_fee_pct: 0.0002    # 0.02%
+taker_fee_pct: 0.0005    # 0.05%
+slippage_open_pct: 0.0005   # 0.05%
+slippage_close_pct: 0.0005  # 0.05%
+assume_taker: true           # conservative assumption
+
+# --- Reporting schedule ---
+reports:
+  weekly_report_dir: "reports/weekly"
+  weekly_report_day: 0     # 0=Monday
+  weekly_report_hour_utc: 0
