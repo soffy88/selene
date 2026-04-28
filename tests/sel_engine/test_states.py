@@ -38,6 +38,16 @@ def make_fv(
     OI_hurst: Optional[float] = None,
     price_autocorr_12h: Optional[float] = None,
     price_autocorr_24h: Optional[float] = None,
+    price_autocorr_48h: Optional[float] = None,
+    # P1 features
+    price_slope_6h: Optional[float] = None,
+    tf_directional_ratio_6h: Optional[float] = None,
+    sigma_rising_12h: Optional[bool] = None,
+    sigma_change_rate_std_6h: Optional[float] = None,
+    H_24h_mean: Optional[float] = None,
+    abs_tf_24h_sum: Optional[float] = None,
+    oi_change_rate_24h: Optional[float] = None,
+    tf_dp_ratio_24h: Optional[float] = None,
 ) -> FeatureVector:
     if time is None:
         time = datetime(2024, 1, 1, tzinfo=timezone.utc)
@@ -56,6 +66,15 @@ def make_fv(
         OI_hurst=OI_hurst,
         price_autocorr_12h=price_autocorr_12h,
         price_autocorr_24h=price_autocorr_24h,
+        price_autocorr_48h=price_autocorr_48h,
+        price_slope_6h=price_slope_6h,
+        tf_directional_ratio_6h=tf_directional_ratio_6h,
+        sigma_rising_12h=sigma_rising_12h,
+        sigma_change_rate_std_6h=sigma_change_rate_std_6h,
+        H_24h_mean=H_24h_mean,
+        abs_tf_24h_sum=abs_tf_24h_sum,
+        oi_change_rate_24h=oi_change_rate_24h,
+        tf_dp_ratio_24h=tf_dp_ratio_24h,
     )
 
 
@@ -184,156 +203,181 @@ class TestRollingQuantileCalculator:
 
 class TestCheckCascade:
     def test_matches_with_all_secondary_conditions(self):
-        fv = make_fv(sigma_p_24h=0.1, delta_p_pct=5.0)
+        """Primary (abs_delta_p_pct > 97th) + LV secondary + delta_H secondary."""
+        fv = make_fv(delta_p_pct=5.0)
         qr = {
-            "sigma_p_24h": 0.98,
-            "abs_delta_p_pct": 0.96,
-            "LV": 0.97,
-            "abs_TF": 0.98,
+            "abs_delta_p_pct": 0.98,  # > 0.97 ✓ primary
+            "LV": 0.97,               # > 0.95 ✓ secondary
+            "delta_H": 0.97,          # > 0.95 ✓ secondary
         }
         matched, reason, used = check_cascade(fv, qr)
         assert matched
         assert "CASCADE" in reason
 
-    def test_matches_with_only_abs_delta_p(self):
-        fv = make_fv(sigma_p_24h=0.1, delta_p_pct=5.0)
+    def test_matches_with_lv_secondary_only(self):
+        """Primary gate + LV secondary is sufficient."""
+        fv = make_fv(delta_p_pct=5.0)
         qr = {
-            "sigma_p_24h": 0.98,
-            "abs_delta_p_pct": 0.96,
-            "LV": None,
-            "abs_TF": None,
+            "abs_delta_p_pct": 0.98,
+            "LV": 0.97,
+            "delta_H": None,
         }
         matched, reason, _ = check_cascade(fv, qr)
         assert matched
         assert "CASCADE" in reason
 
-    def test_fails_without_secondary(self):
+    def test_matches_with_delta_h_secondary_only(self):
+        """Primary gate + delta_H secondary is sufficient."""
+        fv = make_fv(delta_p_pct=5.0)
+        qr = {
+            "abs_delta_p_pct": 0.98,
+            "LV": None,
+            "delta_H": 0.97,
+        }
+        matched, reason, _ = check_cascade(fv, qr)
+        assert matched
+
+    def test_fails_without_any_secondary(self):
+        """Primary gate met but no secondary → False (Cond1 AND (Cond3 OR Cond4) required)."""
         fv = make_fv()
         qr = {
-            "sigma_p_24h": 0.98,
-            "abs_delta_p_pct": None,
-            "LV": None,
-            "abs_TF": None,
+            "abs_delta_p_pct": 0.98,  # primary ✓
+            "LV": None,               # no secondary
+            "delta_H": None,          # no secondary
         }
         matched, _, _ = check_cascade(fv, qr)
         assert not matched
 
-    def test_fails_when_sigma_below_threshold(self):
+    def test_fails_when_primary_below_threshold(self):
+        """abs_delta_p_pct < 0.97 → False regardless of secondary."""
         fv = make_fv()
         qr = {
-            "sigma_p_24h": 0.90,  # below 0.97
-            "abs_delta_p_pct": 0.99,
-            "LV": None,
-            "abs_TF": None,
-        }
-        matched, _, _ = check_cascade(fv, qr)
-        assert not matched
-
-    def test_fails_when_sigma_is_none(self):
-        fv = make_fv(sigma_p_24h=None)
-        qr = {
-            "sigma_p_24h": None,
-            "abs_delta_p_pct": 0.99,
+            "abs_delta_p_pct": 0.96,  # below 0.97
             "LV": 0.99,
-            "abs_TF": 0.99,
+            "delta_H": 0.99,
+        }
+        matched, _, _ = check_cascade(fv, qr)
+        assert not matched
+
+    def test_fails_when_primary_is_none(self):
+        """abs_delta_p_pct=None → False."""
+        fv = make_fv()
+        qr = {
+            "abs_delta_p_pct": None,
+            "LV": 0.99,
+            "delta_H": 0.99,
         }
         matched, _, _ = check_cascade(fv, qr)
         assert not matched
 
     def test_secondary_below_threshold_not_counted(self):
+        """LV=0.90 < 0.95 and delta_H=0.90 < 0.95 → no valid secondary → False."""
         fv = make_fv()
         qr = {
-            "sigma_p_24h": 0.98,
-            "abs_delta_p_pct": 0.80,  # below 0.95
-            "LV": None,
-            "abs_TF": None,
+            "abs_delta_p_pct": 0.98,
+            "LV": 0.90,    # below 0.95
+            "delta_H": 0.90,  # below 0.95
         }
         matched, _, _ = check_cascade(fv, qr)
         assert not matched
 
-    def test_used_quantiles_contain_sigma(self):
+    def test_used_quantiles_contain_abs_delta_p(self):
+        """abs_delta_p_pct should appear in used dict (primary gate)."""
         fv = make_fv(delta_p_pct=5.0)
         qr = {
-            "sigma_p_24h": 0.98,
-            "abs_delta_p_pct": 0.96,
-            "LV": None,
-            "abs_TF": None,
+            "abs_delta_p_pct": 0.98,
+            "LV": 0.97,
+            "delta_H": None,
         }
         matched, _, used = check_cascade(fv, qr)
         assert matched
-        assert "sigma_p_24h" in used
+        assert "abs_delta_p_pct" in used
 
 
 # ── check_critical ────────────────────────────────────────────────────────────
 
 class TestCheckCritical:
-    def test_matches_full_conditions(self):
-        fv = make_fv()
-        qr = {
-            "sigma_p_d2": 0.85,
-            "OI_hurst": 0.75,
-            "LV": 0.80,
-            "price_autocorr_24h": 0.50,
-        }
+    """Cond1: ac12 > ac24 > ac48 (monotone rising). Cond2: sigma_p_d2 > 0 AND > 80th.
+    Cond3: H_change_rate_std_12h > 80th. Cond4: OI_hurst > 70th. Trigger: 1 AND 2 AND (3 OR 4)."""
+
+    def _csd_fv(self, **kwargs):
+        """FeatureVector with Cond1 monotone autocorr and positive sigma_p_d2 by default."""
+        defaults = dict(
+            price_autocorr_12h=0.60,
+            price_autocorr_24h=0.40,
+            price_autocorr_48h=0.20,
+            sigma_p_d2=0.001,
+        )
+        defaults.update(kwargs)
+        return make_fv(**defaults)
+
+    def test_matches_with_cond4_oi_hurst(self):
+        """Cond1+2+4 — OI_hurst satisfies Cond4."""
+        fv = self._csd_fv()
+        qr = {"sigma_p_d2": 0.85, "H_change_rate_std_12h": None, "OI_hurst": 0.75}
         matched, reason, _ = check_critical(fv, qr)
         assert matched
         assert "CRITICAL" in reason
 
-    def test_fails_when_sigma_d2_none(self):
-        fv = make_fv()
-        qr = {
-            "sigma_p_d2": None,
-            "OI_hurst": 0.75,
-            "LV": 0.80,
-            "price_autocorr_24h": 0.10,
-        }
-        matched, _, _ = check_critical(fv, qr)
-        assert not matched
-
-    def test_relaxes_when_oi_hurst_none(self):
-        """Without OI_hurst, should still match if sigma_d2 + cond3 met."""
-        fv = make_fv()
-        qr = {
-            "sigma_p_d2": 0.85,
-            "OI_hurst": None,
-            "LV": 0.80,
-            "price_autocorr_24h": None,
-        }
-        matched, _, _ = check_critical(fv, qr)
-        assert matched
-
-    def test_fails_when_oi_hurst_below_threshold(self):
-        fv = make_fv()
-        qr = {
-            "sigma_p_d2": 0.85,
-            "OI_hurst": 0.50,  # below 0.70
-            "LV": 0.80,
-            "price_autocorr_24h": None,
-        }
-        matched, _, _ = check_critical(fv, qr)
-        assert not matched
-
-    def test_cond3_via_autocorr_low(self):
-        """Low autocorr_24h (≤0.20) satisfies cond3."""
-        fv = make_fv()
-        qr = {
-            "sigma_p_d2": 0.85,
-            "OI_hurst": 0.75,
-            "LV": None,
-            "price_autocorr_24h": 0.10,
-        }
+    def test_matches_with_cond3_h_change_rate(self):
+        """Cond1+2+3 — H_change_rate_std satisfies Cond3."""
+        fv = self._csd_fv()
+        qr = {"sigma_p_d2": 0.85, "H_change_rate_std_12h": 0.85, "OI_hurst": None}
         matched, reason, _ = check_critical(fv, qr)
         assert matched
-        assert "autocorr_24h" in reason
+        assert "H_cr_std" in reason
 
-    def test_fails_when_cond3_unavailable(self):
-        fv = make_fv()
-        qr = {
-            "sigma_p_d2": 0.85,
-            "OI_hurst": 0.75,
-            "LV": None,
-            "price_autocorr_24h": None,
-        }
+    def test_fails_cond1_autocorr_not_monotone(self):
+        """autocorr_12h < autocorr_24h violates Cond1."""
+        fv = make_fv(
+            price_autocorr_12h=0.30,
+            price_autocorr_24h=0.40,  # higher than 12h → NOT rising
+            price_autocorr_48h=0.20,
+            sigma_p_d2=0.001,
+        )
+        qr = {"sigma_p_d2": 0.85, "H_change_rate_std_12h": None, "OI_hurst": 0.75}
+        matched, _, _ = check_critical(fv, qr)
+        assert not matched
+
+    def test_fails_cond1_autocorr_none(self):
+        """Any None autocorr fails Cond1."""
+        fv = make_fv(price_autocorr_12h=0.60, price_autocorr_24h=None, sigma_p_d2=0.001)
+        qr = {"sigma_p_d2": 0.85, "H_change_rate_std_12h": None, "OI_hurst": 0.75}
+        matched, _, _ = check_critical(fv, qr)
+        assert not matched
+
+    def test_fails_cond2_sigma_d2_none(self):
+        """sigma_p_d2=None fails Cond2."""
+        fv = self._csd_fv(sigma_p_d2=None)
+        qr = {"sigma_p_d2": None, "H_change_rate_std_12h": None, "OI_hurst": 0.75}
+        matched, _, _ = check_critical(fv, qr)
+        assert not matched
+
+    def test_fails_cond2_sigma_d2_not_positive(self):
+        """sigma_p_d2 <= 0 fails Cond2 even if qr is high."""
+        fv = self._csd_fv(sigma_p_d2=-0.001)
+        qr = {"sigma_p_d2": 0.85, "H_change_rate_std_12h": None, "OI_hurst": 0.75}
+        matched, _, _ = check_critical(fv, qr)
+        assert not matched
+
+    def test_fails_cond2_sigma_d2_qr_below_80(self):
+        """sigma_p_d2 qr < 0.80 fails Cond2."""
+        fv = self._csd_fv()
+        qr = {"sigma_p_d2": 0.75, "H_change_rate_std_12h": None, "OI_hurst": 0.75}
+        matched, _, _ = check_critical(fv, qr)
+        assert not matched
+
+    def test_fails_when_neither_cond3_nor_cond4(self):
+        """Both H_change_rate_std and OI_hurst unavailable → False."""
+        fv = self._csd_fv()
+        qr = {"sigma_p_d2": 0.85, "H_change_rate_std_12h": None, "OI_hurst": None}
+        matched, _, _ = check_critical(fv, qr)
+        assert not matched
+
+    def test_fails_cond4_oi_hurst_below_70(self):
+        """OI_hurst present but below 0.70 threshold → Cond4 fails."""
+        fv = self._csd_fv()
+        qr = {"sigma_p_d2": 0.85, "H_change_rate_std_12h": None, "OI_hurst": 0.65}
         matched, _, _ = check_critical(fv, qr)
         assert not matched
 
@@ -342,70 +386,98 @@ class TestCheckCritical:
 
 class TestCheckCoiling:
     def test_matches_all_conditions(self):
+        """Low sigma, low H, high OI change rate, high absorption ratio."""
         fv = make_fv(H=3.5)
         qr = {
-            "sigma_p_24h": 0.20,
-            "H": 0.80,
-            "price_autocorr_24h": 0.70,
-            "OI": 0.60,
+            "sigma_p_24h": 0.20,          # < 0.30 ✓
+            "H": 0.20,                     # < 0.30 ✓
+            "oi_change_rate_24h": 0.75,   # > 0.70 ✓
+            "tf_dp_ratio_24h": 0.85,      # > 0.80 ✓
         }
         matched, reason, _ = check_coiling(fv, qr)
         assert matched
         assert "COILING" in reason
 
     def test_matches_without_h(self):
-        """H is WIKI_REQUIRED — should match even if H is None."""
+        """H is WIKI_REQUIRED — absent H is skipped (Cond2 relaxed)."""
         fv = make_fv(H=None)
         qr = {
             "sigma_p_24h": 0.20,
             "H": None,
-            "price_autocorr_24h": 0.70,
-            "OI": 0.60,
+            "oi_change_rate_24h": 0.75,
+            "tf_dp_ratio_24h": 0.85,
         }
-        matched, reason, _ = check_coiling(fv, qr)
+        matched, _, _ = check_coiling(fv, qr)
         assert matched
 
     def test_fails_high_sigma(self):
+        """sigma_p_24h > 30th pct → Cond1 fails."""
         fv = make_fv()
         qr = {
             "sigma_p_24h": 0.60,  # above 0.30
-            "H": 0.80,
-            "price_autocorr_24h": 0.70,
-            "OI": 0.60,
+            "H": None,
+            "oi_change_rate_24h": 0.75,
+            "tf_dp_ratio_24h": 0.85,
         }
         matched, _, _ = check_coiling(fv, qr)
         assert not matched
 
-    def test_fails_low_autocorr(self):
+    def test_fails_when_h_present_above_30th(self):
+        """H present and qr > 0.30 → Cond2 fails (high entropy = not coiling)."""
+        fv = make_fv(H=5.0)
+        qr = {
+            "sigma_p_24h": 0.20,
+            "H": 0.50,  # > 0.30 → fails
+            "oi_change_rate_24h": 0.75,
+            "tf_dp_ratio_24h": 0.85,
+        }
+        matched, _, _ = check_coiling(fv, qr)
+        assert not matched
+
+    def test_fails_oi_change_rate_none(self):
+        """oi_change_rate_24h=None → Cond3 short-circuits to False."""
         fv = make_fv()
         qr = {
             "sigma_p_24h": 0.20,
-            "H": 0.80,
-            "price_autocorr_24h": 0.40,  # below 0.60
-            "OI": 0.60,
+            "H": None,
+            "oi_change_rate_24h": None,
+            "tf_dp_ratio_24h": 0.85,
         }
         matched, _, _ = check_coiling(fv, qr)
         assert not matched
 
-    def test_fails_low_oi(self):
+    def test_fails_oi_change_rate_low(self):
+        """oi_change_rate_24h < 0.70 → Cond3 fails."""
         fv = make_fv()
         qr = {
             "sigma_p_24h": 0.20,
-            "H": 0.80,
-            "price_autocorr_24h": 0.70,
-            "OI": 0.30,  # below 0.50
+            "H": None,
+            "oi_change_rate_24h": 0.60,  # below 0.70
+            "tf_dp_ratio_24h": 0.85,
         }
         matched, _, _ = check_coiling(fv, qr)
         assert not matched
 
-    def test_fails_when_h_present_but_low(self):
-        """If H is available but below threshold, should fail (not relaxed)."""
-        fv = make_fv(H=1.0)
+    def test_fails_tf_dp_ratio_none(self):
+        """tf_dp_ratio_24h=None → Cond4 short-circuits to False."""
+        fv = make_fv()
         qr = {
             "sigma_p_24h": 0.20,
-            "H": 0.40,  # below 0.70
-            "price_autocorr_24h": 0.70,
-            "OI": 0.60,
+            "H": None,
+            "oi_change_rate_24h": 0.75,
+            "tf_dp_ratio_24h": None,
+        }
+        matched, _, _ = check_coiling(fv, qr)
+        assert not matched
+
+    def test_fails_tf_dp_ratio_low(self):
+        """tf_dp_ratio_24h < 0.80 → Cond4 fails."""
+        fv = make_fv()
+        qr = {
+            "sigma_p_24h": 0.20,
+            "H": None,
+            "oi_change_rate_24h": 0.75,
+            "tf_dp_ratio_24h": 0.70,  # below 0.80
         }
         matched, _, _ = check_coiling(fv, qr)
         assert not matched
@@ -414,129 +486,187 @@ class TestCheckCoiling:
 # ── check_surging ─────────────────────────────────────────────────────────────
 
 class TestCheckSurging:
-    def test_surging_up_positive_delta(self):
-        fv = make_fv(delta_p_pct=3.0)
+    def test_surging_up_positive_tf(self):
+        """price_slope_6h > 80th + tf_dir > 0 → SURGING_UP."""
+        fv = make_fv(tf_directional_ratio_6h=0.85, sigma_rising_12h=True)
         qr = {
-            "abs_delta_p_pct": 0.80,
-            "sigma_p_24h": 0.70,
-            "price_autocorr_12h": 0.65,
+            "price_slope_6h": 0.85,
+            "sigma_change_rate_std_6h": 0.30,  # < 0.50 ✓
         }
         matched, reason, _ = check_surging(fv, qr)
         assert matched
         assert "SURGING_UP" in reason
 
-    def test_surging_down_negative_delta(self):
-        fv = make_fv(delta_p_pct=-3.0)
+    def test_surging_down_negative_tf(self):
+        """tf_dir < 0 → SURGING_DOWN."""
+        fv = make_fv(tf_directional_ratio_6h=-0.85, sigma_rising_12h=True)
         qr = {
-            "abs_delta_p_pct": 0.80,
-            "sigma_p_24h": 0.70,
-            "price_autocorr_12h": 0.65,
+            "price_slope_6h": 0.85,
+            "sigma_change_rate_std_6h": 0.30,
         }
         matched, reason, _ = check_surging(fv, qr)
         assert matched
         assert "SURGING_DOWN" in reason
 
-    def test_fails_low_abs_delta(self):
-        fv = make_fv(delta_p_pct=0.1)
+    def test_fails_slope_below_threshold(self):
+        """price_slope_6h < 0.80 → Cond1 fails."""
+        fv = make_fv(tf_directional_ratio_6h=0.85)
         qr = {
-            "abs_delta_p_pct": 0.50,  # below 0.70
-            "sigma_p_24h": 0.70,
-            "price_autocorr_12h": 0.65,
+            "price_slope_6h": 0.70,  # below 0.80
+            "sigma_change_rate_std_6h": 0.30,
         }
         matched, _, _ = check_surging(fv, qr)
         assert not matched
 
-    def test_fails_low_sigma(self):
-        fv = make_fv(delta_p_pct=3.0)
-        qr = {
-            "abs_delta_p_pct": 0.80,
-            "sigma_p_24h": 0.40,  # below 0.60
-            "price_autocorr_12h": 0.65,
-        }
+    def test_fails_slope_none(self):
+        """price_slope_6h=None → Cond1 fails."""
+        fv = make_fv(tf_directional_ratio_6h=0.85)
+        qr = {"price_slope_6h": None}
         matched, _, _ = check_surging(fv, qr)
         assert not matched
 
-    def test_fails_low_autocorr(self):
-        fv = make_fv(delta_p_pct=3.0)
-        qr = {
-            "abs_delta_p_pct": 0.80,
-            "sigma_p_24h": 0.70,
-            "price_autocorr_12h": 0.30,  # below 0.60
-        }
+    def test_fails_tf_dir_none(self):
+        """tf_directional_ratio_6h=None → hard short-circuit (TF absent)."""
+        fv = make_fv(tf_directional_ratio_6h=None)
+        qr = {"price_slope_6h": 0.85}
         matched, _, _ = check_surging(fv, qr)
         assert not matched
 
-    def test_fails_when_any_none(self):
-        fv = make_fv(delta_p_pct=3.0)
-        qr = {
-            "abs_delta_p_pct": None,
-            "sigma_p_24h": 0.70,
-            "price_autocorr_12h": 0.65,
-        }
+    def test_fails_tf_dir_low(self):
+        """|tf_directional_ratio_6h| <= 0.70 → Cond2 fails."""
+        fv = make_fv(tf_directional_ratio_6h=0.50)
+        qr = {"price_slope_6h": 0.85}
         matched, _, _ = check_surging(fv, qr)
         assert not matched
+
+    def test_fails_sigma_not_rising(self):
+        """sigma_rising_12h=False → Cond3a fails."""
+        fv = make_fv(tf_directional_ratio_6h=0.85, sigma_rising_12h=False)
+        qr = {"price_slope_6h": 0.85, "sigma_change_rate_std_6h": 0.30}
+        matched, _, _ = check_surging(fv, qr)
+        assert not matched
+
+    def test_passes_sigma_rising_none(self):
+        """sigma_rising_12h=None → Cond3a skipped (history insufficient)."""
+        fv = make_fv(tf_directional_ratio_6h=0.85, sigma_rising_12h=None)
+        qr = {"price_slope_6h": 0.85}
+        matched, _, _ = check_surging(fv, qr)
+        assert matched
+
+    def test_fails_sigma_cr_std_above_50(self):
+        """sigma_change_rate_std_6h >= 0.50 → Cond3b fails (σ unstable)."""
+        fv = make_fv(tf_directional_ratio_6h=0.85, sigma_rising_12h=None)
+        qr = {"price_slope_6h": 0.85, "sigma_change_rate_std_6h": 0.60}
+        matched, _, _ = check_surging(fv, qr)
+        assert not matched
+
+    def test_passes_sigma_cr_std_none(self):
+        """sigma_change_rate_std_6h=None → Cond3b skipped."""
+        fv = make_fv(tf_directional_ratio_6h=0.85, sigma_rising_12h=None)
+        qr = {"price_slope_6h": 0.85, "sigma_change_rate_std_6h": None}
+        matched, _, _ = check_surging(fv, qr)
+        assert matched
 
 
 # ── check_drifting_charged ────────────────────────────────────────────────────
 
 class TestCheckDriftingCharged:
-    def test_matches_with_both_derivatives(self):
-        fv = make_fv(OI=1000.0, funding_rate=0.001)
+    def test_matches_all_conditions(self):
+        """σ in [40th, 70th], H_24h_mean < 50th, abs_tf in [30th, 70th], OI_hurst > 0.6."""
+        fv = make_fv(OI_hurst=0.72)
         qr = {
-            "sigma_p_24h": 0.30,
-            "OI": 0.75,
-            "abs_funding_rate": 0.65,
+            "sigma_p_24h": 0.55,     # in [0.40, 0.70] ✓
+            "H_24h_mean": 0.40,      # < 0.50 ✓
+            "abs_tf_24h_sum": 0.50,  # in [0.30, 0.70] ✓
         }
         matched, reason, _ = check_drifting_charged(fv, qr)
         assert matched
         assert "DRIFTING_CHARGED" in reason
 
-    def test_matches_with_only_oi(self):
-        fv = make_fv(OI=1000.0, funding_rate=None)
+    def test_fails_sigma_below_band(self):
+        """sigma_p_24h < 0.40 → Cond1 fails."""
+        fv = make_fv(OI_hurst=0.72)
         qr = {
-            "sigma_p_24h": 0.30,
-            "OI": 0.75,
-            "abs_funding_rate": None,
-        }
-        matched, _, _ = check_drifting_charged(fv, qr)
-        assert matched
-
-    def test_matches_with_only_funding(self):
-        fv = make_fv(OI=None, funding_rate=0.001)
-        qr = {
-            "sigma_p_24h": 0.30,
-            "OI": None,
-            "abs_funding_rate": 0.65,
-        }
-        matched, _, _ = check_drifting_charged(fv, qr)
-        assert matched
-
-    def test_fails_both_derivatives_unavailable(self):
-        fv = make_fv()
-        qr = {
-            "sigma_p_24h": 0.30,
-            "OI": None,
-            "abs_funding_rate": None,
+            "sigma_p_24h": 0.30,  # below 0.40
+            "H_24h_mean": 0.40,
+            "abs_tf_24h_sum": 0.50,
         }
         matched, _, _ = check_drifting_charged(fv, qr)
         assert not matched
 
-    def test_fails_high_sigma(self):
-        fv = make_fv(OI=1000.0, funding_rate=0.001)
+    def test_fails_sigma_above_band(self):
+        """sigma_p_24h > 0.70 → Cond1 fails."""
+        fv = make_fv(OI_hurst=0.72)
         qr = {
-            "sigma_p_24h": 0.70,  # above 0.50
-            "OI": 0.75,
-            "abs_funding_rate": 0.65,
+            "sigma_p_24h": 0.80,  # above 0.70
+            "H_24h_mean": 0.40,
+            "abs_tf_24h_sum": 0.50,
         }
         matched, _, _ = check_drifting_charged(fv, qr)
         assert not matched
 
-    def test_fails_oi_below_threshold(self):
-        fv = make_fv(OI=100.0, funding_rate=None)
+    def test_fails_h24_none(self):
+        """H_24h_mean=None → Cond2 short-circuits (H collector absent)."""
+        fv = make_fv(OI_hurst=0.72)
         qr = {
-            "sigma_p_24h": 0.30,
-            "OI": 0.50,  # below 0.70
-            "abs_funding_rate": None,
+            "sigma_p_24h": 0.55,
+            "H_24h_mean": None,
+            "abs_tf_24h_sum": 0.50,
+        }
+        matched, _, _ = check_drifting_charged(fv, qr)
+        assert not matched
+
+    def test_fails_h24_above_50th(self):
+        """H_24h_mean >= 0.50 → Cond2 fails (entropy not low enough)."""
+        fv = make_fv(OI_hurst=0.72)
+        qr = {
+            "sigma_p_24h": 0.55,
+            "H_24h_mean": 0.60,  # >= 0.50
+            "abs_tf_24h_sum": 0.50,
+        }
+        matched, _, _ = check_drifting_charged(fv, qr)
+        assert not matched
+
+    def test_fails_tf24_none(self):
+        """abs_tf_24h_sum=None → Cond3 short-circuits (TF collector absent)."""
+        fv = make_fv(OI_hurst=0.72)
+        qr = {
+            "sigma_p_24h": 0.55,
+            "H_24h_mean": 0.40,
+            "abs_tf_24h_sum": None,
+        }
+        matched, _, _ = check_drifting_charged(fv, qr)
+        assert not matched
+
+    def test_fails_tf24_out_of_band(self):
+        """abs_tf_24h_sum outside [0.30, 0.70] → Cond3 fails."""
+        fv = make_fv(OI_hurst=0.72)
+        qr = {
+            "sigma_p_24h": 0.55,
+            "H_24h_mean": 0.40,
+            "abs_tf_24h_sum": 0.20,  # below 0.30
+        }
+        matched, _, _ = check_drifting_charged(fv, qr)
+        assert not matched
+
+    def test_fails_oi_hurst_none(self):
+        """OI_hurst=None → Cond4 short-circuits."""
+        fv = make_fv(OI_hurst=None)
+        qr = {
+            "sigma_p_24h": 0.55,
+            "H_24h_mean": 0.40,
+            "abs_tf_24h_sum": 0.50,
+        }
+        matched, _, _ = check_drifting_charged(fv, qr)
+        assert not matched
+
+    def test_fails_oi_hurst_at_boundary(self):
+        """OI_hurst=0.60 → Cond4 fails (threshold is > 0.6, not >=)."""
+        fv = make_fv(OI_hurst=0.60)
+        qr = {
+            "sigma_p_24h": 0.55,
+            "H_24h_mean": 0.40,
+            "abs_tf_24h_sum": 0.50,
         }
         matched, _, _ = check_drifting_charged(fv, qr)
         assert not matched
@@ -545,31 +675,114 @@ class TestCheckDriftingCharged:
 # ── check_drifting_calm ───────────────────────────────────────────────────────
 
 class TestCheckDriftingCalm:
-    def test_matches_with_low_sigma(self):
+    def test_matches_all_conditions(self):
+        """σ in [30th, 60th], H_24h_mean in [40th, 80th], abs_tf < 50th, |oi_cr| < 50th."""
         fv = make_fv()
-        qr = {"sigma_p_24h": 0.30}
+        qr = {
+            "sigma_p_24h": 0.45,             # in [0.30, 0.60] ✓
+            "H_24h_mean": 0.60,              # in [0.40, 0.80] ✓
+            "abs_tf_24h_sum": 0.35,          # < 0.50 ✓
+            "abs_oi_change_rate_24h": 0.30,  # < 0.50 ✓
+        }
         matched, reason, _ = check_drifting_calm(fv, qr)
         assert matched
         assert "DRIFTING_CALM" in reason
 
-    def test_matches_when_sigma_none(self):
-        fv = make_fv(sigma_p_24h=None)
-        qr = {"sigma_p_24h": None}
-        matched, reason, _ = check_drifting_calm(fv, qr)
-        assert matched
-        assert "fallback" in reason.lower() or "DRIFTING_CALM" in reason
-
-    def test_fails_high_sigma(self):
+    def test_fails_sigma_below_band(self):
+        """sigma_p_24h < 0.30 → Cond1 fails."""
         fv = make_fv()
-        qr = {"sigma_p_24h": 0.80}  # above 0.50
+        qr = {
+            "sigma_p_24h": 0.20,  # below 0.30
+            "H_24h_mean": 0.60,
+            "abs_tf_24h_sum": 0.35,
+            "abs_oi_change_rate_24h": 0.30,
+        }
         matched, _, _ = check_drifting_calm(fv, qr)
         assert not matched
 
-    def test_matches_at_boundary(self):
+    def test_fails_sigma_above_band(self):
+        """sigma_p_24h > 0.60 → Cond1 fails."""
         fv = make_fv()
-        qr = {"sigma_p_24h": 0.50}
+        qr = {
+            "sigma_p_24h": 0.70,  # above 0.60
+            "H_24h_mean": 0.60,
+            "abs_tf_24h_sum": 0.35,
+            "abs_oi_change_rate_24h": 0.30,
+        }
         matched, _, _ = check_drifting_calm(fv, qr)
-        assert matched  # ≤ 0.50 includes 0.50
+        assert not matched
+
+    def test_fails_h24_none(self):
+        """H_24h_mean=None → Cond2 short-circuits (H collector absent, §10.1 principle 3)."""
+        fv = make_fv()
+        qr = {
+            "sigma_p_24h": 0.45,
+            "H_24h_mean": None,
+            "abs_tf_24h_sum": 0.35,
+            "abs_oi_change_rate_24h": 0.30,
+        }
+        matched, _, _ = check_drifting_calm(fv, qr)
+        assert not matched
+
+    def test_fails_h24_out_of_band(self):
+        """H_24h_mean outside [0.40, 0.80] → Cond2 fails."""
+        fv = make_fv()
+        qr = {
+            "sigma_p_24h": 0.45,
+            "H_24h_mean": 0.30,  # below 0.40
+            "abs_tf_24h_sum": 0.35,
+            "abs_oi_change_rate_24h": 0.30,
+        }
+        matched, _, _ = check_drifting_calm(fv, qr)
+        assert not matched
+
+    def test_fails_tf24_none(self):
+        """abs_tf_24h_sum=None → Cond3 short-circuits (TF collector absent)."""
+        fv = make_fv()
+        qr = {
+            "sigma_p_24h": 0.45,
+            "H_24h_mean": 0.60,
+            "abs_tf_24h_sum": None,
+            "abs_oi_change_rate_24h": 0.30,
+        }
+        matched, _, _ = check_drifting_calm(fv, qr)
+        assert not matched
+
+    def test_fails_tf24_above_50th(self):
+        """abs_tf_24h_sum >= 0.50 → Cond3 fails (flow too high)."""
+        fv = make_fv()
+        qr = {
+            "sigma_p_24h": 0.45,
+            "H_24h_mean": 0.60,
+            "abs_tf_24h_sum": 0.60,  # >= 0.50
+            "abs_oi_change_rate_24h": 0.30,
+        }
+        matched, _, _ = check_drifting_calm(fv, qr)
+        assert not matched
+
+    def test_fails_oi_cr_none(self):
+        """abs_oi_change_rate_24h=None → Cond4 short-circuits (OI collector absent)."""
+        fv = make_fv()
+        qr = {
+            "sigma_p_24h": 0.45,
+            "H_24h_mean": 0.60,
+            "abs_tf_24h_sum": 0.35,
+            "abs_oi_change_rate_24h": None,
+        }
+        matched, _, _ = check_drifting_calm(fv, qr)
+        assert not matched
+
+    def test_fails_oi_cr_above_50th(self):
+        """abs_oi_change_rate_24h >= 0.50 → Cond4 fails (OI moving too much)."""
+        fv = make_fv()
+        qr = {
+            "sigma_p_24h": 0.45,
+            "H_24h_mean": 0.60,
+            "abs_tf_24h_sum": 0.35,
+            "abs_oi_change_rate_24h": 0.60,  # >= 0.50
+        }
+        matched, _, _ = check_drifting_calm(fv, qr)
+        assert not matched
 
 
 # ── StateRecognizer — end-to-end ──────────────────────────────────────────────
@@ -592,47 +805,42 @@ class TestStateRecognizer:
         recognizer = StateRecognizer()
         fvs = _flat_fv_sequence(self.WINDOW)
         records = [recognizer.recognize(fv) for fv in fvs]
-        # First 719 are cold start
         for r in records[: self.WINDOW - 1]:
             assert r.cold_start is True
-        # 720th bar exits cold start
         assert records[-1].cold_start is False
-        assert records[-1].state is not None
+        # No WIKI-REQUIRED data in flat sequence → state=None expected (§10.1 principle 3)
+        assert records[-1].reason == "NO_STATE_MATCHED"
 
-    def test_stable_bars_yield_drifting_calm(self):
-        """Flat, low-vol data → should resolve to Drifting_Calm after warm-up."""
+    def test_stable_bars_yield_no_state_without_wiki_data(self):
+        """Flat data with no WIKI-REQUIRED features → state=None after warm-up."""
         recognizer = StateRecognizer()
         fvs = _flat_fv_sequence(self.WINDOW + 5)
         records = [recognizer.recognize(fv) for fv in fvs]
         warm_records = [r for r in records if not r.cold_start]
-        # All warm records should be drifting calm (constant series → sigma at bottom)
         for r in warm_records:
-            assert r.state == StateLabel.DRIFTING_CALM, (
-                f"Expected DRIFTING_CALM, got {r.state} ({r.reason})"
-            )
+            assert r.state is None
+            assert r.reason == "NO_STATE_MATCHED"
 
     def test_cascade_triggers_on_extreme_bar_721(self):
         """
-        Feed 720 bars of normal data, then one bar with extreme sigma_p_24h,
-        high abs_delta_p_pct. Cascade should trigger.
+        720 bars with spreading LV distribution, then one bar with extreme
+        abs_delta_p_pct + extreme LV. Cascade should trigger on bar 721.
         """
         recognizer = StateRecognizer()
         base_time = datetime(2023, 1, 1, tzinfo=timezone.utc)
 
-        # 720 flat bars (use strictly increasing sigma to create quantile spread)
         for i in range(self.WINDOW):
             fv = make_fv(
                 time=base_time + timedelta(hours=i),
-                sigma_p_24h=0.001 + i * 0.00001,  # tiny increasing trend
                 delta_p_pct=0.01,
+                LV=0.001 + i * 0.0001,  # spread LV distribution
             )
             recognizer.recognize(fv)
 
-        # Bar 721: extreme values well above 97th percentile
         extreme_fv = make_fv(
             time=base_time + timedelta(hours=self.WINDOW),
-            sigma_p_24h=100.0,      # extreme sigma → top of distribution
-            delta_p_pct=50.0,       # extreme delta
+            delta_p_pct=50.0,  # extreme → abs_delta_p_pct > 97th
+            LV=1.0,            # extreme → LV > 95th (CASCADE secondary)
         )
         record = recognizer.recognize(extreme_fv)
         assert record.cold_start is False
@@ -648,25 +856,23 @@ class TestStateRecognizer:
         recognizer = StateRecognizer()
         base_time = datetime(2023, 1, 1, tzinfo=timezone.utc)
 
-        # Build window with varying data so quantile ranks are meaningful
         for i in range(self.WINDOW):
             fv = make_fv(
                 time=base_time + timedelta(hours=i),
-                sigma_p_24h=0.001 + i * 0.00001,
                 delta_p_pct=float(i % 10) * 0.01,
-                price_autocorr_12h=0.5 + (i % 5) * 0.01,
+                LV=0.001 + i * 0.0001,
+                price_slope_6h=0.0001 + i * 0.000001,
             )
             recognizer.recognize(fv)
 
-        # Extreme bar that satisfies both Cascade and Surging conditions
         extreme_fv = make_fv(
             time=base_time + timedelta(hours=self.WINDOW),
-            sigma_p_24h=500.0,   # extreme → Cascade primary
-            delta_p_pct=100.0,   # extreme positive → both Cascade secondary + Surging
-            price_autocorr_12h=1.0,
+            delta_p_pct=100.0,              # extreme → CASCADE primary
+            LV=1.0,                         # extreme → CASCADE secondary
+            price_slope_6h=999.0,           # extreme → SURGING Cond1
+            tf_directional_ratio_6h=0.85,   # SURGING Cond2 direction
         )
         record = recognizer.recognize(extreme_fv)
-        # CASCADE must beat SURGING_UP due to priority ordering
         assert record.state == StateLabel.CASCADE
 
     def test_symbol_propagated(self):
