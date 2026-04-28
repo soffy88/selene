@@ -232,6 +232,8 @@ Output: "curl: (7) Failed to connect to localhost port 8000 after 0 ms: Could no
 | EC-10 | StateEngine 内存状态在容器重启时丢失 | C（设计记录） | 重启后数个 bar Dwell/Cooling 状态可能不准确 | cold start 期内无影响；post-warmup 重启偶发伪 no_match |
 | EC-11 | 调度器失败 bar 无持久记录 | B（中） | 失败 bar 不可事后追溯，gap 不可审计 | 运营不知哪些 bar 失败，cold start 时序不透明 |
 | EC-12 | candles schema 错配：backfill.py + validate_e2e.py 使用 open_time（表实际为 time）| B（中） | backfill 和 e2e 验证脚本运行即失败 | backfill 功能完全失效；validate_e2e 无法运行 |
+| EC-13 | asyncpg pool 无 acquire/command timeout，长空闲后 pool.acquire() 可能无限挂起 | B（中） | 调度器在触发时静默挂起，无 log 无异常，直到 SIGTERM | cold start 期间触发即挂起 → bar 丢失 → cold start 延迟 |
+| EC-14 | funding_rate Redis 值为 JSON（`{"rate":0.0}`），flow.py 用 float() 直接解析 → ValueError | C（低） | funding_rate 始终为 None，不参与 WIKI_REQUIRED 检查 | funding_rate 特征永远缺失；warn 持续出现 |
 
 ## EC-10：StateEngine 重启后内存状态丢失（C = 设计记录，低紧急度）
 
@@ -297,3 +299,60 @@ Output: "curl: (7) Failed to connect to localhost port 8000 after 0 ms: Could no
 **相关文件**：`sel_engine/backfill.py`、`sel_engine/scripts/validate_e2e.py`、`infra/timescaledb/schema.sql`
 
 **推荐修复方向**（等决策）：将 backfill.py 和 validate_e2e.py 中的 `open_time` 改为 `time`，与实际 schema 对齐。同时在 `sel_engine/db/` 中建立 candles 表的 schema 常量，防止未来再次错配。
+
+---
+
+## EC-13：asyncpg pool 无超时配置——长空闲后触发可能静默挂起（B = 中优先度）
+
+**发现日期**：2026-04-28（Task 2.2.1 事后分析 + Task 2.2.2 Phase 1 诊断）
+
+**现象**：`sel-bar-runner` 在 2026-04-28T08:00:30Z 触发后，进程存活但无任何日志输出，持续 62 分钟直至 SIGTERM。DB 和 Redis 零写入，健康检查持续失败。
+
+**根因**：`shared/db/connections.py::get_pg()` 调用 `asyncpg.create_pool()` 时未设置：
+- `command_timeout`（单条 SQL 命令无超时，默认 None = 永不超时）
+- `timeout`（`pool.acquire()` 等待连接无超时，默认 None = 永不超时）
+- `max_inactive_connection_lifetime`（连接在 pool 中空闲无限久，等同于 server 关闭后 pool 不感知）
+
+当 pool 空闲约 57 分钟后，postgres server 可能已关闭空闲连接。触发时 `pool.acquire()` 尝试重连，若 TCP 握手卡住则永远挂起，且不抛出异常、不输出日志。
+
+**Task 2.2.2 Phase 1 诊断结果**：加入 run_bar 入口日志后，12:00:30Z 触发（51 分钟空闲）成功执行且无挂起（148ms 完成）。推测 08:00:30Z 挂起为单次偶发，可能与 pool 初始化时机或当时 DB 负载有关。但根因未消除，下次长空闲后仍可复现。
+
+**数据流影响**：触发时 `run_bar()` 卡在 `pool.acquire()`，当前 bar 完全丢失。`consecutive_failures` 不递增（异常未传播），外部无感知。cold start 期间丢失一个 bar = 时序 gap，cold start 时钟不受影响但 sel_features 有空洞。
+
+**不处理后果**：长空闲后（如维护窗口、DB 重启）触发静默挂起 → bar 丢失 → cold start gap。无可观测性，需 SIGTERM + 重启才能恢复。
+
+**相关文件**：`shared/db/connections.py::get_pg()`
+
+**推荐修复方向**（Phase 2，待授权）：
+```python
+pool = await asyncpg.create_pool(
+    dsn,
+    min_size=2,
+    max_size=4,
+    command_timeout=30,
+    timeout=10,
+    max_inactive_connection_lifetime=300,
+)
+```
+同时为 Redis 客户端加 `socket_timeout=10, socket_connect_timeout=5, health_check_interval=60`。
+
+---
+
+## EC-14：funding_rate Redis 值为 JSON 格式，flow.py float() 解析失败（C = 低优先度）
+
+**发现日期**：2026-04-28（Task 2.2.2 Phase 1 首次成功触发日志）
+
+**现象**：首次成功触发（12:00:30Z）的 docker logs 中出现：
+```
+WARNING sel_engine.features.flow funding_rate redis read failed for BTCUSDT: could not convert string to float: b'{"rate": 0.0}'
+```
+
+**根因**：`sel_engine/features/flow.py` 中 `get_funding_rate_from_redis()` 使用 `float(raw_value)` 解析 Redis 存储的 funding_rate 值，但实际值格式为 JSON 字符串 `{"rate": 0.0}` 而非纯数值。collector 写入格式（JSON）与 reader 解析方式（float()）不匹配。
+
+**数据流影响**：`funding_rate` 特征始终为 None。`funding_rate` 不在 `WIKI_REQUIRED` 集合内（不阻止 StateRecognizer 运行），当前 cold start 不受影响。但 OI_hurst、price_autocorr 等特征依赖 funding_rate 的场景（若有）将缺失该输入。
+
+**不处理后果**：`sel_features.funding_rate` 列永远为 NULL；WARNING 每 bar 出现一次；若 funding_rate 未来进入 WIKI_REQUIRED 则变为阻断性 bug。
+
+**相关文件**：`sel_engine/features/flow.py::get_funding_rate_from_redis()`（不在当前修改范围内）
+
+**推荐修复方向**（等决策，属 sel_engine/features/ 禁区）：将解析改为 `json.loads(raw_value)["rate"]`，或要求 collector 写入纯数值格式。
