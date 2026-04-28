@@ -132,6 +132,43 @@
 
 ---
 
+## EC-08：trade_flow sz 单位待确认（B = 中优先度，数据质量）
+
+**发现日期**：2026-04-28（Task 2.0 审计）
+
+**现象**：`sel_engine/collectors/trade_flow_collector.py:75` 计算 `notional = size * px`，其中 `size = float(trade.get("sz", 0))`。OKX BTC-USDT-SWAP trades API 的 `sz` 字段单位需确认：若为 lots（1 lot = 0.01 BTC）而非 BTC，则 TF notional 高估 100×。
+
+**实测 TF 量级**：最近 3H 净流量为 ±260M～+1,183M USDT/bar。BTC 永续合约 1H 净流量在 1B+ USDT 属于偏大但并非不可能。需对照 OKX API 文档确认。
+
+**数据流影响**：
+- TF 分位数排名：**不受影响**（所有 bar 同等偏移，rank 一致）
+- `tf_dp_ratio_24h`（§4.1 Cond4，Coiling 条件之一）：若 TF 高估 100×，该比率会高估 100×，使 Coiling 的实际触发阈值与 WIKI 语义不符
+- 冷启动期（30 天）如以错误单位积累分位数窗口，未来修正后历史窗口失效
+
+**不处理后果**：Coiling §4.1 Cond4 在真实数据上可能始终不满足或始终满足。
+
+**相关文件**：`sel_engine/collectors/trade_flow_collector.py:75`
+
+---
+
+## EC-09：`sel_state_sequence` 表缺失（**A = 高优先度，与 EC-04 同批修复**）
+
+**发现日期**：2026-04-28（Task 2.0 审计）
+
+**现象**：`sel_engine/db/schema.sql` 中无 `sel_state_sequence` 定义。DB 实查确认该表不存在（`UndefinedTableError: relation "sel_state_sequence" does not exist`）。
+
+**schema.sql 现有 sel_ 表**：`sel_features`, `sel_oi_history`, `sel_funding_history`, `sel_orderbook_samples`——均无 `sel_state_sequence`。
+
+**根因**：schema.sql 在 bar-close 调度器开发（EC-04）之前编写，状态序列持久化表从未补全。
+
+**数据流影响**：bar-close 调度器（EC-04 修复后）启动，状态写入路径立即因 `UndefinedTableError` 失败 → `sel_state_sequence` 无法积累 → 状态历史回溯和下游 paper trading replay 均不可用。
+
+**不处理后果**：EC-04 修复部署后，bar-close 管道因 schema 缺失立即失败，30 天 cold start 计时无法开始。
+
+**相关文件**：`sel_engine/db/schema.sql`（需补全）、`sel_engine/db/writer.py`（写入逻辑待确认）
+
+---
+
 ## 汇总表
 
 | ID | 描述 | 优先级 | 数据流影响 | 不处理后果 |
@@ -143,3 +180,5 @@
 | EC-05 | MISSING_DATA 后验检查而非三值返回 | C（设计记录） | 无 | 新增 WIKI 特征时需手动同步集合 |
 | EC-06 | state_rates 分母 active_bars 未文档化 | ~~C（设计记录）~~ **RESOLVED** | §10.5 已补全分母说明 | — |
 | EC-07 | Rule 2 对 collector 故障 vs 无状态命中动作未区分 | ~~A（高，待决策）~~ **RESOLVED** | 候选 B 已实装（HOLD+alert for MISSING_DATA） | — |
+| EC-08 | TF collector sz 单位待确认（lot vs BTC） | B（中） | tf_dp_ratio_24h 绝对值可能偏大 100× | Coiling §4.1 Cond4 触发阈值偏离 WIKI |
+| EC-09 | sel_state_sequence 表缺失 | **A（高，与 EC-04 同批）** | bar-close 启动后状态写入立即失败 | 30 天 cold start 无法开始 |
