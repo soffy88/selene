@@ -33,6 +33,13 @@ QUANTILE_FEATURES = [
     "funding_rate",
     "H_change_rate_std_12h",  # doc §4.5 Cond3 Critical
     "delta_H",                 # doc §4.6 Cond4 Cascade: |ΔH| this bar
+    # P1 features (doc §4.1–4.4)
+    "oi_change_rate_24h",      # §4.1 Cond3, §4.3 Cond4
+    "tf_dp_ratio_24h",         # §4.1 Cond4; WIKI_REQUIRED
+    "price_slope_6h",          # §4.2 Cond1 (already abs value)
+    "sigma_change_rate_std_6h",  # §4.2 Cond3 stability
+    "H_24h_mean",              # §4.3 Cond2, §4.4 Cond2; WIKI_REQUIRED
+    "abs_tf_24h_sum",          # §4.3 Cond3, §4.4 Cond3; WIKI_REQUIRED
 ]
 
 
@@ -99,12 +106,13 @@ class StateRecognizer:
                 cold_start=False,
             )
 
-        # Should not reach here — drifting_calm is a catch-all — but defensive fallback
+        # No state matched — expected when WIKI_REQUIRED data (H, TF, OI) is not yet available.
+        # Returns state=None with cold_start=False; decision engine maps this to NO_ACTION.
         return StateRecord(
             time=fv.time,
             symbol=fv.symbol,
-            state=StateLabel.DRIFTING_CALM,
-            reason="DRIFTING_CALM:no_state_matched",
+            state=None,
+            reason="NO_STATE_MATCHED",
             feature_quantiles=qr,
             feature_vector=fv,
             cold_start=False,
@@ -131,6 +139,11 @@ class StateRecognizer:
             "abs_funding_rate",
             abs(fv.funding_rate) if fv.funding_rate is not None else None,
         )
+        # |OI 24H change rate| for Drifting-Calm Cond4 (doc §4.3)
+        qr["abs_oi_change_rate_24h"] = self.calc.quantile_rank(
+            "abs_oi_change_rate_24h",
+            abs(fv.oi_change_rate_24h) if fv.oi_change_rate_24h is not None else None,
+        )
 
         return qr
 
@@ -150,6 +163,10 @@ class StateRecognizer:
         self.calc.add(
             "abs_funding_rate",
             abs(fv.funding_rate) if fv.funding_rate is not None else None,
+        )
+        self.calc.add(
+            "abs_oi_change_rate_24h",
+            abs(fv.oi_change_rate_24h) if fv.oi_change_rate_24h is not None else None,
         )
 
 
