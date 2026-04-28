@@ -85,6 +85,7 @@ def _state_output(
     so.absorption_ratio = None
     so.OI_hurst = None
     so.feature_completeness = feature_completeness
+    so.none_reason = None
     return so
 
 
@@ -270,6 +271,7 @@ class TestFeatureCompleteness:
             absorption_ratio = None
             OI_hurst = None
             feature_completeness = 0.0
+            none_reason = "cold_start"
 
         dec = _decision(action=DecisionAction.NO_ACTION, rule_id="cold_start", cfg=cfg)
         trail = builder.build(_T, _EmptySO(), dec, _risk_passed(), None, None, _account())

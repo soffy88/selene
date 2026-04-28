@@ -144,3 +144,4 @@ class _ReplayStateOutput:
         self.absorption_ratio = trail.absorption_ratio
         self.OI_hurst = trail.OI_hurst
         self.feature_completeness = trail.feature_completeness
+        self.none_reason = trail.state_none_reason

@@ -24,6 +24,7 @@ class DecisionEngine:
         account: AccountState,
         bar_time: datetime,
         current_price: float,
+        none_reason: Optional[str] = None,
     ) -> Decision:
         """Apply decision matrix to determine the action.
 
@@ -34,19 +35,20 @@ class DecisionEngine:
         4. Compute target_size_usdt from position_multiplier
         5. Special case: hold with multiplier == 0.5 → target = current * 0.5
         """
-        # Cold start
+        # None state (cold_start, missing_data, or no_match)
         if current_state is None:
+            rule_id = f"none:{none_reason}" if none_reason else "cold_start"
             return Decision(
                 time=bar_time,
                 symbol=self._symbol(current_position),
                 action=DecisionAction.NO_ACTION,
-                rule_id="cold_start",
+                rule_id=rule_id,
                 config_hash=self.config.config_hash,
                 current_state=None,
                 previous_state=previous_state,
                 position_multiplier=None,
                 target_size_usdt=None,
-                reason="Cold start — no state available",
+                reason=f"State unavailable ({none_reason or 'cold_start'}) — no action",
             )
 
         rule = self.config.find_rule(current_state, previous_state)

@@ -67,6 +67,9 @@ class DecisionTrail:
     # Risk check summary
     risk_check_passed: bool
 
+    # None-state metadata
+    state_none_reason: Optional[str] = None  # StateNoneReason.value when state=None
+
 
 # ---------------------------------------------------------------------------
 # DecisionTrailBuilder
@@ -164,4 +167,5 @@ class DecisionTrailBuilder:
             fill_fee_usdt=fill.fee_usdt if fill is not None else None,
             realized_pnl_this_bar=realized_pnl,
             risk_check_passed=risk_result.passed,
+            state_none_reason=state_output.none_reason,
         )

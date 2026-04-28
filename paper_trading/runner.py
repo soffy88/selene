@@ -68,6 +68,7 @@ class PaperTradingRunner:
             account=account_snapshot,
             bar_time=bar_time,
             current_price=close,
+            none_reason=state_out.none_reason,
         )
 
         # 4. Risk check
