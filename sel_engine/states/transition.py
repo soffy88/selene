@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from .schema import StateLabel, StateRecord
+from .schema import StateLabel, StateNoneReason, StateRecord
 
 # ── Minimum dwell times (1H bars) ────────────────────────────────────────────
 # PLACEHOLDER — verify with v1.0.md when available
@@ -141,6 +141,7 @@ class DwellFilter:
                 cold_start=False,
                 is_legal_transition=raw.is_legal_transition,
                 transition_from=raw.transition_from,
+                none_reason=StateNoneReason.NOT_APPLICABLE,
             )
 
 
@@ -192,6 +193,7 @@ class CascadeCooling:
                 cold_start=False,
                 is_legal_transition=record.is_legal_transition,
                 transition_from=record.transition_from,
+                none_reason=StateNoneReason.NOT_APPLICABLE,
             )
 
         return record
@@ -239,6 +241,7 @@ class LegalityChecker:
                 cold_start=record.cold_start,
                 is_legal_transition=True,
                 transition_from=from_state,
+                none_reason=record.none_reason,
             )
 
         legal_set = LEGAL_TRANSITIONS.get(from_state, _ALL)
@@ -259,4 +262,5 @@ class LegalityChecker:
             cold_start=record.cold_start,
             is_legal_transition=is_legal,
             transition_from=from_state,
+            none_reason=record.none_reason,
         )
