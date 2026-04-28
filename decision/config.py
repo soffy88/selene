@@ -39,6 +39,7 @@ class RiskConfig:
     consecutive_loss_stop: int
     signal_lag_max_hours: int
     cascade_always_overrides: bool
+    missing_data_alert_dedup_hours: int = 6  # candidate B alert rate-limit; engineering value, not from spec
 
 
 @dataclass
@@ -145,6 +146,7 @@ def _parse(data: dict, config_hash: str) -> DecisionConfig:
             consecutive_loss_stop=risk["consecutive_loss_stop"],
             signal_lag_max_hours=risk["signal_lag_max_hours"],
             cascade_always_overrides=risk["cascade_always_overrides"],
+            missing_data_alert_dedup_hours=risk.get("missing_data_alert_dedup_hours", 6),
         ),
         execution=ExecutionConfig(
             maker_fee_pct=exec_.get("maker_fee_pct", 0.0002),

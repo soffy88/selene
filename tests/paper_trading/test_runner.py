@@ -1,7 +1,7 @@
-"""Tests for PaperTradingRunner._get_none_reasons_in_window.
+"""Tests for PaperTradingRunner._get_none_reasons_in_window and _emit_rule2_alert_if_needed.
 
-Only tests the none_reason collection helper — full runner integration requires
-a live StateOutputService (DB + Redis) and is not covered here.
+Only tests the none_reason collection helper and alert dedup logic — full runner
+integration requires a live StateOutputService (DB + Redis) and is not covered here.
 """
 from __future__ import annotations
 
@@ -13,16 +13,48 @@ _T = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
 _SYMBOL = "BTCUSDT"
 
 
-def _make_runner():
-    """Create a PaperTradingRunner stub with only _recent_none_reasons set.
+import asyncio
+
+from unittest.mock import AsyncMock, MagicMock
+
+
+def _make_runner(dedup_hours: int = 6):
+    """Create a PaperTradingRunner stub with minimal internal state.
 
     Uses object.__new__ to bypass __init__ (which imports StateOutputService and
-    requires DB/Redis) — we only need to test _get_none_reasons_in_window.
+    requires DB/Redis) — we only need to test window helpers and alert dedup.
     """
     from paper_trading.runner import PaperTradingRunner
     runner = object.__new__(PaperTradingRunner)
     runner._recent_none_reasons = deque(maxlen=720)
+    runner._last_alert_time = None
+    runner.symbol = _SYMBOL
+    # Minimal config mock: only risk.missing_data_alert_dedup_hours is needed
+    risk_cfg = MagicMock()
+    risk_cfg.missing_data_alert_dedup_hours = dedup_hours
+    cfg = MagicMock()
+    cfg.risk = risk_cfg
+    runner.config = cfg
     return runner
+
+
+def _make_trail_stub(
+    alert_required: bool = True,
+    risk_details: str = "State signal lag 3.0H > 2H [subtype=missing_data]",
+    lag_reasons: Optional[dict] = None,
+    position_side: Optional[str] = None,
+    position_size_usdt: float = 0.0,
+    unrealized_pnl_usdt: float = 0.0,
+) -> MagicMock:
+    """Minimal DecisionTrail-like stub for alert tests."""
+    trail = MagicMock()
+    trail.alert_required = alert_required
+    trail.risk_details = risk_details
+    trail.state_none_reason_in_lag = lag_reasons or {"missing_data": 18, "no_match": 6, "cold_start": 0}
+    trail.position_side = position_side
+    trail.position_size_usdt = position_size_usdt
+    trail.unrealized_pnl_usdt = unrealized_pnl_usdt
+    return trail
 
 
 class TestRunnerNoneReasonCollection:
@@ -82,3 +114,60 @@ class TestRunnerNoneReasonCollection:
         result = runner._get_none_reasons_in_window(_T, end)
         assert result["missing_data"] == 18
         assert result["no_match"] == 6
+
+
+# ---------------------------------------------------------------------------
+# Test: Rule 2 alert emission with deduplication
+# ---------------------------------------------------------------------------
+
+class TestRule2AlertDedup:
+    """_emit_rule2_alert_if_needed rate-limits alerts to one per dedup_hours window."""
+
+    def test_alert_fires_on_first_missing_data_entry(self):
+        runner = _make_runner(dedup_hours=6)
+        redis = AsyncMock()
+        trail = _make_trail_stub()
+
+        asyncio.run(runner._emit_rule2_alert_if_needed(redis, trail, _T))
+
+        redis.xadd.assert_called_once()
+        assert runner._last_alert_time == _T
+
+    def test_alert_dedup_suppresses_within_6h(self):
+        """Second alert within dedup window must not call redis.xadd again."""
+        runner = _make_runner(dedup_hours=6)
+        redis = AsyncMock()
+        trail = _make_trail_stub()
+
+        asyncio.run(runner._emit_rule2_alert_if_needed(redis, trail, _T))
+        # 3H later — still within 6H dedup window
+        asyncio.run(runner._emit_rule2_alert_if_needed(redis, trail, _T + timedelta(hours=3)))
+
+        assert redis.xadd.call_count == 1  # only the first call went through
+
+    def test_alert_fires_again_after_dedup_window(self):
+        """After 6H dedup window, the next alert must fire."""
+        runner = _make_runner(dedup_hours=6)
+        redis = AsyncMock()
+        trail = _make_trail_stub()
+
+        asyncio.run(runner._emit_rule2_alert_if_needed(redis, trail, _T))
+        # 7H later — beyond 6H dedup window
+        asyncio.run(runner._emit_rule2_alert_if_needed(redis, trail, _T + timedelta(hours=7)))
+
+        assert redis.xadd.call_count == 2
+
+    def test_alert_content_includes_risk_alert_type(self):
+        """Published message must have type=risk_alert for NotificationHub routing."""
+        runner = _make_runner(dedup_hours=6)
+        redis = AsyncMock()
+        trail = _make_trail_stub()
+
+        asyncio.run(runner._emit_rule2_alert_if_needed(redis, trail, _T))
+
+        call_args = redis.xadd.call_args
+        stream_name = call_args[0][0]
+        fields = call_args[0][1]
+        assert stream_name == "system.alerts"
+        assert fields.get("type") == "risk_alert"
+        assert fields.get("rule_2_subtype") == "missing_data"

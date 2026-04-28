@@ -412,20 +412,104 @@ class TestSignalLagRule2Subtype:
         assert result.rule_2_subtype == "no_match"
         assert result.force_action == DecisionAction.CLOSE  # candidate A: always CLOSE
 
-    def test_rule_2_action_is_close_for_both_subtypes(self, risk_cfg):
-        """Candidate A: missing_data and no_match both produce CLOSE (behaviour unchanged)."""
+    def test_rule_2_candidate_b_different_action_per_subtype(self, risk_cfg):
+        """Candidate B: missing_data → NO_ACTION (HOLD + alert); no_match → CLOSE."""
         gate = _gate(risk_cfg)
-        for reasons in [
-            {"missing_data": 10, "no_match": 0, "cold_start": 0},
-            {"missing_data": 0, "no_match": 10, "cold_start": 0},
-        ]:
-            result = gate.check(
-                proposed_action=DecisionAction.OPEN_LONG,
-                current_state="Surging_Up",
-                bar_time=_T,
-                position=None,
-                account=_account(),
-                last_state_update_time=self._stale(risk_cfg),
-                none_reasons_in_lag=reasons,
-            )
-            assert result.force_action == DecisionAction.CLOSE
+        stale = self._stale(risk_cfg)
+
+        missing_result = gate.check(
+            proposed_action=DecisionAction.OPEN_LONG,
+            current_state="Surging_Up",
+            bar_time=_T,
+            position=None,
+            account=_account(),
+            last_state_update_time=stale,
+            none_reasons_in_lag={"missing_data": 10, "no_match": 0, "cold_start": 0},
+        )
+        assert missing_result.force_action == DecisionAction.NO_ACTION
+        assert missing_result.alert_required is True
+
+        no_match_result = gate.check(
+            proposed_action=DecisionAction.OPEN_LONG,
+            current_state="Surging_Up",
+            bar_time=_T,
+            position=None,
+            account=_account(),
+            last_state_update_time=stale,
+            none_reasons_in_lag={"missing_data": 0, "no_match": 10, "cold_start": 0},
+        )
+        assert no_match_result.force_action == DecisionAction.CLOSE
+        assert no_match_result.alert_required is False
+
+
+# ---------------------------------------------------------------------------
+# Test 12: Candidate B — full behaviour verification
+# ---------------------------------------------------------------------------
+
+class TestCandidateB:
+    """Candidate B: missing_data → HOLD + alert; no_match → CLOSE. Rule 1 priority."""
+
+    def _stale(self, cfg: RiskConfig) -> datetime:
+        return _T - timedelta(hours=cfg.signal_lag_max_hours + 1)
+
+    def test_rule_2_missing_data_holds_not_closes(self, risk_cfg):
+        gate = _gate(risk_cfg)
+        result = gate.check(
+            proposed_action=DecisionAction.OPEN_LONG,
+            current_state=None,
+            bar_time=_T,
+            position=_position(),
+            account=_account(),
+            last_state_update_time=self._stale(risk_cfg),
+            none_reasons_in_lag={"missing_data": 18, "no_match": 6, "cold_start": 0},
+        )
+        assert result.force_action == DecisionAction.NO_ACTION
+        assert result.alert_required is True
+        assert result.rule_2_subtype == "missing_data"
+        assert result.triggered_rule == "signal_lag"
+
+    def test_rule_2_no_match_closes(self, risk_cfg):
+        gate = _gate(risk_cfg)
+        result = gate.check(
+            proposed_action=DecisionAction.OPEN_LONG,
+            current_state=None,
+            bar_time=_T,
+            position=None,
+            account=_account(),
+            last_state_update_time=self._stale(risk_cfg),
+            none_reasons_in_lag={"missing_data": 0, "no_match": 24, "cold_start": 0},
+        )
+        assert result.force_action == DecisionAction.CLOSE
+        assert result.alert_required is False
+        assert result.rule_2_subtype == "no_match"
+
+    def test_rule_2_mixed_18_missing_6_no_match_holds(self, risk_cfg):
+        """Any missing_data in window → treated as missing_data subtype → HOLD."""
+        gate = _gate(risk_cfg)
+        result = gate.check(
+            proposed_action=DecisionAction.OPEN_LONG,
+            current_state=None,
+            bar_time=_T,
+            position=None,
+            account=_account(),
+            last_state_update_time=self._stale(risk_cfg),
+            none_reasons_in_lag={"missing_data": 18, "no_match": 6, "cold_start": 0},
+        )
+        assert result.force_action == DecisionAction.NO_ACTION
+        assert result.rule_2_subtype == "missing_data"
+
+    def test_rule_1_cascade_overrides_rule_2_missing_data_hold(self, risk_cfg):
+        """Rule 1 (Cascade CLOSE) must fire before Rule 2 even with missing_data in lag."""
+        gate = _gate(risk_cfg)
+        stale = self._stale(risk_cfg)
+        result = gate.check(
+            proposed_action=DecisionAction.OPEN_LONG,
+            current_state="Cascade",
+            bar_time=_T,
+            position=_position(),
+            account=_account(),
+            last_state_update_time=stale,
+            none_reasons_in_lag={"missing_data": 20, "no_match": 0, "cold_start": 0},
+        )
+        assert result.force_action == DecisionAction.CLOSE
+        assert result.triggered_rule == "cascade"

@@ -74,6 +74,9 @@ class DecisionTrail:
     risk_rule_2_subtype: Optional[str] = None       # "missing_data" | "no_match"
     state_none_reason_in_lag: Optional[dict] = None  # {"missing_data": N, "no_match": N, "cold_start": N}
 
+    # Alert flag: True when candidate B suppresses close and operator notification is required
+    alert_required: bool = False
+
 
 # ---------------------------------------------------------------------------
 # DecisionTrailBuilder
@@ -174,4 +177,5 @@ class DecisionTrailBuilder:
             state_none_reason=state_output.none_reason,
             risk_rule_2_subtype=risk_result.rule_2_subtype,
             state_none_reason_in_lag=risk_result.none_reasons_in_lag,
+            alert_required=risk_result.alert_required,
         )

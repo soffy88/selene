@@ -42,6 +42,7 @@ class PaperTradingRunner:
         # Rolling window of (bar_time, none_reason) pairs for Rule 2 subtype classification.
         # maxlen=720 covers 30 days at 1H bars — far beyond any realistic lag window.
         self._recent_none_reasons: deque = deque(maxlen=720)
+        self._last_alert_time: Optional[datetime] = None  # for Rule 2 alert deduplication
 
     # ------------------------------------------------------------------
     async def process_bar(
@@ -142,7 +143,66 @@ class PaperTradingRunner:
             from paper_trading.db.trail_store import TrailStore
             await TrailStore.insert(pg, trail)
 
+        # 8. Emit Rule 2 alert if candidate B fired and redis is available
+        if trail.alert_required and redis is not None:
+            await self._emit_rule2_alert_if_needed(redis, trail, bar_time)
+
         return trail
+
+    # ------------------------------------------------------------------
+    async def _emit_rule2_alert_if_needed(self, redis, trail, bar_time: datetime) -> None:
+        """Publish a risk_alert to STREAM_SYSTEM_ALERTS, rate-limited by dedup interval.
+
+        The dedup interval (missing_data_alert_dedup_hours) is an engineering convenience
+        value, not from v1.0 spec. First entry into a missing_data lag window always alerts;
+        subsequent bars in the same window are suppressed until dedup_hours have elapsed.
+        """
+        dedup_hours = self.config.risk.missing_data_alert_dedup_hours
+        if (
+            self._last_alert_time is not None
+            and (bar_time - self._last_alert_time).total_seconds() < dedup_hours * 3600
+        ):
+            return  # within dedup window — suppress
+
+        self._last_alert_time = bar_time
+        lag_reasons = trail.state_none_reason_in_lag or {}
+        missing_count = lag_reasons.get("missing_data", 0)
+        total_none = sum(lag_reasons.values()) or 1
+
+        pos_summary = (
+            f"{trail.position_side} ${trail.position_size_usdt:,.0f}"
+            f" (unrealized: ${trail.unrealized_pnl_usdt:+.0f})"
+            if trail.position_side
+            else "no position"
+        )
+
+        reason_text = (
+            f"[Selene Risk Alert] Rule 2 - Missing Data Lag\n\n"
+            f"Bar: {bar_time.isoformat()}\n"
+            f"Lag details: {trail.risk_details}\n"
+            f"Missing data ratio: {missing_count}/{total_none}\n"
+            f"None reasons: {lag_reasons}\n"
+            f"Current position: {pos_summary}\n\n"
+            f"Action: HOLD (no close)\n"
+            f"Likely cause: collector data missing"
+        )
+
+        try:
+            await redis.xadd(
+                "system.alerts",
+                {
+                    "type": "risk_alert",
+                    "reason": reason_text,
+                    "bar_time": bar_time.isoformat(),
+                    "symbol": self.symbol,
+                    "rule_2_subtype": "missing_data",
+                },
+                maxlen=10000,
+                approximate=True,
+            )
+            logger.info("Rule 2 alert emitted for %s at %s", self.symbol, bar_time)
+        except Exception as exc:
+            logger.error("Failed to emit Rule 2 alert: %s", exc)
 
     # ------------------------------------------------------------------
     def _get_none_reasons_in_window(self, start: datetime, end: datetime) -> dict:

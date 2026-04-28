@@ -32,6 +32,7 @@ class RiskCheckResult:
     details: str
     rule_2_subtype: Optional[str] = None       # "missing_data" | "no_match" (signal_lag only)
     none_reasons_in_lag: Optional[dict] = None  # {"missing_data": N, "no_match": N, ...} lag window dist
+    alert_required: bool = False               # True when candidate B suppresses close and needs operator alert
 
 
 @dataclass
@@ -204,22 +205,31 @@ class RiskGate:
             f"State signal lag {lag_hours:.1f}H > {self.config.signal_lag_max_hours}H"
             f" [subtype={subtype}]"
         )
+        # Candidate B: collector fault (missing_data) → HOLD + alert; genuine lag (no_match) → CLOSE.
+        if subtype == "missing_data":
+            force_action = DecisionAction.NO_ACTION
+            alert_required = True
+        else:
+            force_action = DecisionAction.CLOSE
+            alert_required = False
+
         event = RiskEvent(
             time=bar_time,
             symbol=self.symbol,
             rule="signal_lag",
             details=details,
-            action_taken=DecisionAction.CLOSE.value,
+            action_taken=force_action.value,
         )
         self._risk_events.append(event)
-        logger.warning("RISK[signal_lag] %s → close", details)
+        logger.warning("RISK[signal_lag] %s → %s", details, force_action.value)
         return RiskCheckResult(
             passed=False,
-            force_action=DecisionAction.CLOSE,
+            force_action=force_action,
             triggered_rule="signal_lag",
             details=details,
             rule_2_subtype=subtype,
             none_reasons_in_lag=none_reasons_in_lag,
+            alert_required=alert_required,
         )
 
     def _fire(

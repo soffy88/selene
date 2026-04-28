@@ -126,6 +126,7 @@ risk:
   consecutive_loss_stop: 3         # 3 consecutive losses → 24H pause  [Wiki: confirm]
   signal_lag_max_hours: 2          # no state update for 2H → force close  [Wiki: confirm]
   cascade_always_overrides: true   # Cascade closes even during 24H pause
+  missing_data_alert_dedup_hours: 6  # candidate B: alert rate-limit interval [engineering value, not from spec]
 
 # --- Execution simulation ---
 maker_fee_pct: 0.0002    # 0.02%
