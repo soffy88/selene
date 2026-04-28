@@ -82,22 +82,15 @@ Output: "curl: (7) Failed to connect to localhost port 8000 after 0 ms: Could no
 
 ---
 
-## EC-04：`sel_features` 表无数据 — 状态引擎 Bar-Close 写入路径未启动（A = 高优先度，端到端功能缺失）
+## EC-04：`sel_features` 表无数据 — 状态引擎 Bar-Close 写入路径未启动（~~A = 高优先度~~ **RESOLVED**）
 
-**现象**：`sel_features` 表行数 = 0（部署后 73 分钟内无写入）。
+**修复日期**：2026-04-28（Task 2.2）  
+**Resolution**：新增 `sel-bar-runner` Docker 服务（`services/sel_bar_runner/`）。每小时 UTC 整点 +30s 触发，从 DB + Redis 读取数据 → `FeatureCalculator.compute()` → `StateEngine.process()` → upsert `sel_features` + `sel_state_sequence`。Cold start 计时从首次成功写入开始。  
+**Commit**：见 Task 2.2 commits。
 
-**根因**：`FeatureCalculator` 和 `StateEngine` 未被任何 bar-close 事件触发。当前部署架构中：
-- 三个 collector（orderbook/trade_flow/oi_persister）均正常写入各自存储（Redis / DB）
-- **缺少 bar-close 调度器**：没有进程在每小时 bar 收盘时调用 `FeatureCalculator.calculate()` → `StateEngine.process()` → `write_feature_vector()` 写入 `sel_features`
+~~**现象**：`sel_features` 表行数 = 0（部署后 73 分钟内无写入）。~~
 
-**数据流影响**：
-- `sel_features` 表持续为空
-- `sel_state_sequence` 表无新记录（状态历史无法积累）
-- 下游信号/交易决策引擎（`services/signal/`）若依赖 `sel_features` 中的 live 状态，实际接收不到任何数据
-- **这是系统端到端功能缺失，不是性能或质量问题**
-
-**相关文件**：`sel_engine/features/calculator.py`、`sel_engine/states/engine.py`、`sel_engine/db/writer.py::write_feature_vector()`  
-**缺失组件**：bar-close 调度进程（scheduler service 或 cron job），调用链：`on_bar_close(ts, symbol)` → `FeatureCalculator` → `StateEngine` → `writer`
+~~**根因**：`FeatureCalculator` 和 `StateEngine` 未被任何 bar-close 事件触发。~~
 
 ---
 
@@ -208,21 +201,18 @@ Output: "curl: (7) Failed to connect to localhost port 8000 after 0 ms: Could no
 
 ---
 
-## EC-09：`sel_state_sequence` 表缺失（**A = 高优先度，与 EC-04 同批修复**）
+## EC-09：`sel_state_sequence` 表缺失（~~**A = 高优先度**~~ **RESOLVED**）
 
-**发现日期**：2026-04-28（Task 2.0 审计）
+**修复日期**：2026-04-28（Task 2.2）  
+**Resolution**：
+- 迁移文件：`sel_engine/db/migrations/001_create_sel_state_sequence.sql`
+- `sel_engine/db/schema.sql` 已补全表定义（新部署通过 migrations.py 自动建表）
+- `sel_engine/db/writer.py` 新增 `write_state_record()` upsert 函数
+- 表已在生产 DB 成功建立（TimescaleDB hypertable，chunk 7 days，unique index on (symbol, time)）
 
-**现象**：`sel_engine/db/schema.sql` 中无 `sel_state_sequence` 定义。DB 实查确认该表不存在（`UndefinedTableError: relation "sel_state_sequence" does not exist`）。
+**Commit**：见 Task 2.2 commits。
 
-**schema.sql 现有 sel_ 表**：`sel_features`, `sel_oi_history`, `sel_funding_history`, `sel_orderbook_samples`——均无 `sel_state_sequence`。
-
-**根因**：schema.sql 在 bar-close 调度器开发（EC-04）之前编写，状态序列持久化表从未补全。
-
-**数据流影响**：bar-close 调度器（EC-04 修复后）启动，状态写入路径立即因 `UndefinedTableError` 失败 → `sel_state_sequence` 无法积累 → 状态历史回溯和下游 paper trading replay 均不可用。
-
-**不处理后果**：EC-04 修复部署后，bar-close 管道因 schema 缺失立即失败，30 天 cold start 计时无法开始。
-
-**相关文件**：`sel_engine/db/schema.sql`（需补全）、`sel_engine/db/writer.py`（写入逻辑待确认）
+~~**现象**：`sel_engine/db/schema.sql` 中无 `sel_state_sequence` 定义。~~
 
 ---
 
@@ -233,9 +223,28 @@ Output: "curl: (7) Failed to connect to localhost port 8000 after 0 ms: Could no
 | EC-01 | Collector healthcheck 误报 | A（低） | 无 | 告警误报（运维噪音） |
 | EC-02 | orderbook_samples 多行/bucket | B（中） | DB 回溯分析多计 5× | 回溯分析结果错误 |
 | EC-03 | writer.py 缺 delta_H 字段 | B（中） | 状态引擎无影响 | Cascade 历史记录不完整 |
-| EC-04 | sel_features 无写入（bar-close 未启动） | **A（高）** | **端到端断路** | 状态历史无法积累，下游信号无数据 |
+| EC-04 | sel_features 无写入（bar-close 未启动） | ~~**A（高）**~~ **RESOLVED** | — | — |
 | EC-05 | MISSING_DATA 后验检查而非三值返回 | C（设计记录） | 无 | 新增 WIKI 特征时需手动同步集合 |
 | EC-06 | state_rates 分母 active_bars 未文档化 | ~~C（设计记录）~~ **RESOLVED** | §10.5 已补全分母说明 | — |
 | EC-07 | Rule 2 对 collector 故障 vs 无状态命中动作未区分 | ~~A（高，待决策）~~ **RESOLVED** | 候选 B 已实装（HOLD+alert for MISSING_DATA） | — |
-| EC-08 | TF collector sz 单位待确认（lot vs BTC） | B（中） | tf_dp_ratio_24h 绝对值可能偏大 100× | Coiling §4.1 Cond4 触发阈值偏离 WIKI |
-| EC-09 | sel_state_sequence 表缺失 | **A（高，与 EC-04 同批）** | bar-close 启动后状态写入立即失败 | 30 天 cold start 无法开始 |
+| EC-08 | TF collector sz 单位待确认（lot vs BTC） | ~~B（中）~~ **RESOLVED** | 公式正确，无污染 | — |
+| EC-09 | sel_state_sequence 表缺失 | ~~**A（高）**~~ **RESOLVED** | — | — |
+| EC-10 | StateEngine 内存状态在容器重启时丢失 | C（设计记录） | 重启后数个 bar Dwell/Cooling 状态可能不准确 | cold start 期内无影响；post-warmup 重启偶发伪 no_match |
+
+## EC-10：StateEngine 重启后内存状态丢失（C = 设计记录，低紧急度）
+
+**发现日期**：2026-04-28（Task 2.2 部署分析）
+
+**现象**：`sel-bar-runner` 容器重启后，`StateEngine` 的 `DwellFilter`（候选计数）和 `CascadeCooling`（冷却期截止时间）重置为初始值，丢失重启前的状态。
+
+**根因**：`StateEngine` 状态保存在进程内存中，未持久化到 Redis 或 DB。重启时无法恢复上次的 `_last_confirmed`、`_candidate`（DwellFilter）、`_cascade_end_time`（CascadeCooling）。
+
+**数据流影响**：
+- **Cold start 期间（前 720 bar）**：无影响——`StateRecognizer` 直接返回 `cold_start=True`，`DwellFilter` 和 `CascadeCooling` 在 cold_start 路径下直接 pass through
+- **Post-warmup 重启**：重启后约 `max(DWELL_TIMES)` = 12 bar（12H）内，DwellFilter 状态不准确，可能提前确认应被抑制的状态；CascadeCooling 在重启时恰好处于冷却期时会失效（6H 最长影响）
+
+**不处理后果**：post-warmup 偶发重启后，`sel_state_sequence` 中 12H 内的 dwell 状态略有偏差。概率低（容器稳定不频繁重启），影响期短。
+
+**相关文件**：`sel_engine/states/engine.py::StateEngine`（`_last_confirmed`）、`sel_engine/states/transition.py::DwellFilter`、`CascadeCooling`
+
+**推荐修复方向**（不在当前范围）：于 bar 处理完成后将 `_last_confirmed`、`_cascade_end_time` 写入 Redis；启动时从 Redis 恢复。
