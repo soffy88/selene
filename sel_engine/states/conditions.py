@@ -104,28 +104,29 @@ def check_critical(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
 
 def check_coiling(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
     """
-    Market winding up energy (low vol + high entropy + trending OI + positive autocorr).
+    Market winding up energy. doc §4.1.
 
-    σ(P)_24h quantile rank ≤ 0.30           # PLACEHOLDER — calibrate with v1.0.md when available
-    H quantile rank ≥ 0.70                  # PLACEHOLDER — calibrate with v1.0.md when available (skipped if None)
-    price_autocorr_24h quantile rank ≥ 0.60 # PLACEHOLDER — calibrate with v1.0.md when available
-    OI quantile rank ≥ 0.50                 # PLACEHOLDER — calibrate with v1.0.md when available
+    Cond1: σ(P)_24h < 30th pct  (low volatility)
+    Cond2: H < 30th pct  (low entropy = concentrated orderbook structure)  [WIKI_REQUIRED, skip if None]
+    Cond3: OI change rate > 70th pct  [proxy: price_autocorr_24h ≥ 60th pct — PLACEHOLDER feature mismatch]
+    Cond4: |TF|/|ΔP| > 80th pct  [proxy: OI ≥ 50th pct — PLACEHOLDER feature mismatch]
+    All 4 required (Cond2 skipped when H unavailable).
     """
     sigma_qr = qr.get("sigma_p_24h")
-    if sigma_qr is None or sigma_qr > 0.30:  # PLACEHOLDER — calibrate with v1.0.md when available
+    if sigma_qr is None or sigma_qr > 0.30:
+        return False, "", {}
+
+    # Cond2: H < 30th pct (doc §4.1: low entropy = concentrated orderbook)
+    h_qr = qr.get("H")
+    if h_qr is not None and h_qr > 0.30:  # fails when H is high (disordered orderbook)
         return False, "", {}
 
     autocorr_qr = qr.get("price_autocorr_24h")
-    if autocorr_qr is None or autocorr_qr < 0.60:  # PLACEHOLDER — calibrate with v1.0.md when available
+    if autocorr_qr is None or autocorr_qr < 0.60:  # PLACEHOLDER — proxy for OI change rate
         return False, "", {}
 
     oi_qr = qr.get("OI")
-    if oi_qr is None or oi_qr < 0.50:  # PLACEHOLDER — calibrate with v1.0.md when available
-        return False, "", {}
-
-    h_qr = qr.get("H")
-    # H is WIKI_REQUIRED — skip if unavailable
-    if h_qr is not None and h_qr < 0.70:  # PLACEHOLDER — calibrate with v1.0.md when available
+    if oi_qr is None or oi_qr < 0.50:  # PLACEHOLDER — proxy for |TF|/|ΔP|
         return False, "", {}
 
     used: dict = {
