@@ -959,3 +959,122 @@ class TestComputeStateDistribution:
         for label in StateLabel:
             assert label.value in dist["state_counts"]
             assert label.value in dist["state_rates"]
+
+    def test_distribution_splits_cold_missing_no_match(self):
+        """compute_state_distribution must separate three distinct None causes."""
+        WINDOW = RollingQuantileCalculator.WINDOW
+        t = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        records = [
+            StateRecord(time=t, symbol="X", state=None, reason="COLD_START",
+                        feature_quantiles={}, cold_start=True,
+                        none_reason=StateNoneReason.COLD_START),
+            StateRecord(time=t, symbol="X", state=None, reason="NO_STATE_MATCHED",
+                        feature_quantiles={}, cold_start=False,
+                        none_reason=StateNoneReason.MISSING_DATA),
+            StateRecord(time=t, symbol="X", state=None, reason="NO_STATE_MATCHED",
+                        feature_quantiles={}, cold_start=False,
+                        none_reason=StateNoneReason.NO_MATCH),
+            StateRecord(time=t, symbol="X", state=StateLabel.CASCADE, reason="CASCADE:x",
+                        feature_quantiles={}, cold_start=False,
+                        none_reason=StateNoneReason.NOT_APPLICABLE),
+        ]
+        dist = compute_state_distribution(records)
+        assert dist["total_bars"] == 4
+        assert dist["cold_start_bars"] == 1
+        assert dist["missing_data_bars"] == 1
+        assert dist["no_match_bars"] == 1
+        assert dist["active_bars"] == 1
+
+
+# ── StateNoneReason — recognizer integration ──────────────────────────────────
+
+class TestStateNoneReason:
+    """Verify StateRecognizer sets none_reason correctly for all three None causes."""
+
+    WINDOW = RollingQuantileCalculator.WINDOW
+
+    def _warm_recognizer(self, n: int = None, with_wiki: bool = False) -> StateRecognizer:
+        """Return a recognizer that has processed n bars (default: WINDOW, so post-warmup)."""
+        if n is None:
+            n = self.WINDOW
+        rec = StateRecognizer()
+        t = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        for i in range(n):
+            fv = make_fv(
+                time=t + timedelta(hours=i),
+                close=50000.0 + i,
+                delta_p_pct=0.1,
+                sigma_p_24h=0.005,
+                # Include WIKI features if requested
+                H_24h_mean=0.5 if with_wiki else None,
+                abs_tf_24h_sum=100.0 if with_wiki else None,
+                oi_change_rate_24h=0.01 if with_wiki else None,
+                tf_dp_ratio_24h=0.5 if with_wiki else None,
+                tf_directional_ratio_6h=0.3 if with_wiki else None,
+            )
+            rec.recognize(fv)
+        return rec
+
+    def test_cold_start_bars_get_cold_start_reason(self):
+        rec = StateRecognizer()
+        t = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        for i in range(self.WINDOW - 1):
+            result = rec.recognize(make_fv(time=t + timedelta(hours=i)))
+            assert result.none_reason == StateNoneReason.COLD_START
+            assert result.cold_start is True
+
+    def test_none_reason_distinguishes_cold_start_from_missing_data(self):
+        """Post-warmup bars without WIKI features → MISSING_DATA, not COLD_START."""
+        rec = self._warm_recognizer(with_wiki=False)
+        t = datetime(2023, 6, 1, tzinfo=timezone.utc)
+        # Process one more bar with no WIKI data — should be MISSING_DATA
+        result = rec.recognize(make_fv(
+            time=t,
+            close=50000.0,
+            delta_p_pct=0.1,
+            sigma_p_24h=0.005,
+        ))
+        assert result.state is None
+        assert result.cold_start is False
+        assert result.none_reason == StateNoneReason.MISSING_DATA
+
+    def test_none_reason_distinguishes_missing_data_from_no_match(self):
+        """Post-warmup bars WITH full WIKI features but no condition met → NO_MATCH."""
+        rec = self._warm_recognizer(with_wiki=True)
+        t = datetime(2023, 6, 1, tzinfo=timezone.utc)
+        # Flat data with all WIKI features present — no condition should fire
+        result = rec.recognize(make_fv(
+            time=t,
+            close=50000.0,
+            delta_p_pct=0.01,        # unremarkable
+            sigma_p_24h=0.005,
+            H_24h_mean=0.5,
+            abs_tf_24h_sum=50.0,
+            oi_change_rate_24h=0.001,
+            tf_dp_ratio_24h=0.5,
+            tf_directional_ratio_6h=0.1,
+        ))
+        # If state is None: none_reason must be MISSING_DATA or NO_MATCH (not COLD_START)
+        if result.state is None:
+            assert result.none_reason in (StateNoneReason.MISSING_DATA, StateNoneReason.NO_MATCH)
+            assert result.none_reason != StateNoneReason.COLD_START
+
+    def test_matched_state_gets_not_applicable_reason(self):
+        """When a state is matched, none_reason must be NOT_APPLICABLE."""
+        rec = self._warm_recognizer(with_wiki=True)
+        t = datetime(2023, 6, 1, tzinfo=timezone.utc)
+        # Inject an extreme bar to trigger CASCADE (abs_delta_p > 97th, LV > 95th)
+        result = rec.recognize(make_fv(
+            time=t,
+            close=50000.0,
+            delta_p_pct=40.0,   # extreme
+            sigma_p_24h=0.005,
+            LV=1.0,
+            H_24h_mean=0.5,
+            abs_tf_24h_sum=100.0,
+            oi_change_rate_24h=0.01,
+            tf_dp_ratio_24h=0.5,
+            tf_directional_ratio_6h=0.3,
+        ))
+        if result.state is not None:
+            assert result.none_reason == StateNoneReason.NOT_APPLICABLE

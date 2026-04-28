@@ -59,6 +59,7 @@ def _state_output(
     prev_state: Optional[str] = "Coiling",
     close: float = 60_000.0,
     feature_completeness: float = 0.44,
+    none_reason: Optional[str] = None,
 ):
     """Create a minimal duck-typed StateOutput."""
     class _SO:
@@ -85,7 +86,7 @@ def _state_output(
     so.absorption_ratio = None
     so.OI_hurst = None
     so.feature_completeness = feature_completeness
-    so.none_reason = None
+    so.none_reason = none_reason
     return so
 
 
@@ -511,3 +512,45 @@ class TestDecisionReplayer:
     def test_replay_empty_list_returns_empty(self, cfg):
         replayer = DecisionReplayer(cfg)
         assert replayer.replay([]) == []
+
+
+# ---------------------------------------------------------------------------
+# Test 11: DecisionTrail.state_none_reason populated from StateOutput.none_reason
+# ---------------------------------------------------------------------------
+
+class TestDecisionTrailNoneReason:
+    """Verify state_none_reason is set correctly for all three None causes."""
+
+    def test_state_none_reason_cold_start(self, cfg):
+        builder = DecisionTrailBuilder(_SYMBOL, cfg)
+        builder.record_state(None)
+        so = _state_output(state=None, prev_state=None, none_reason="cold_start")
+        so.is_cold_start = True
+        trail = builder.build(_T, so, _decision(action=DecisionAction.NO_ACTION, rule_id="none:cold_start", cfg=cfg),
+                              _risk_passed(), None, None, _account())
+        assert trail.state_none_reason == "cold_start"
+
+    def test_state_none_reason_missing_data(self, cfg):
+        builder = DecisionTrailBuilder(_SYMBOL, cfg)
+        builder.record_state(None)
+        so = _state_output(state=None, prev_state=None, none_reason="missing_data")
+        so.is_cold_start = False
+        trail = builder.build(_T, so, _decision(action=DecisionAction.NO_ACTION, rule_id="none:missing_data", cfg=cfg),
+                              _risk_passed(), None, None, _account())
+        assert trail.state_none_reason == "missing_data"
+
+    def test_state_none_reason_no_match(self, cfg):
+        builder = DecisionTrailBuilder(_SYMBOL, cfg)
+        builder.record_state(None)
+        so = _state_output(state=None, prev_state=None, none_reason="no_match")
+        so.is_cold_start = False
+        trail = builder.build(_T, so, _decision(action=DecisionAction.NO_ACTION, rule_id="none:no_match", cfg=cfg),
+                              _risk_passed(), None, None, _account())
+        assert trail.state_none_reason == "no_match"
+
+    def test_state_none_reason_none_when_state_active(self, cfg):
+        builder = DecisionTrailBuilder(_SYMBOL, cfg)
+        builder.record_state("Coiling")
+        so = _state_output(state="Coiling", prev_state=None, none_reason=None)
+        trail = builder.build(_T, so, _decision(cfg=cfg), _risk_passed(), None, None, _account())
+        assert trail.state_none_reason is None

@@ -75,6 +75,36 @@ class TestDecisionEngineColdStart:
         assert decision.rule_id == "cold_start"
         assert decision.target_size_usdt is None
 
+    def test_none_reason_encoded_in_rule_id(self, engine, cfg):
+        """none_reason parameter is encoded as 'none:<reason>' in rule_id."""
+        account = _account(cfg)
+        for reason in ("cold_start", "missing_data", "no_match"):
+            decision = engine.decide(
+                current_state=None,
+                previous_state=None,
+                current_position=None,
+                account=account,
+                bar_time=_T,
+                current_price=60_000.0,
+                none_reason=reason,
+            )
+            assert decision.action == DecisionAction.NO_ACTION
+            assert decision.rule_id == f"none:{reason}"
+
+    def test_none_reason_none_falls_back_to_cold_start(self, engine, cfg):
+        """When none_reason is not passed, rule_id stays 'cold_start' for backward compat."""
+        account = _account(cfg)
+        decision = engine.decide(
+            current_state=None,
+            previous_state=None,
+            current_position=None,
+            account=account,
+            bar_time=_T,
+            current_price=60_000.0,
+            none_reason=None,
+        )
+        assert decision.rule_id == "cold_start"
+
 
 class TestDecisionEngineCascade:
     def test_cascade_state_returns_close(self, engine, cfg):
