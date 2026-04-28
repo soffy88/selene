@@ -54,3 +54,39 @@ def compute_sigma_p_d2(sigma_history: list[float]) -> Optional[float]:
     if len(sigma_history) < 3:
         return None
     return float(sigma_history[-1] - 2 * sigma_history[-2] + sigma_history[-3])
+
+
+def compute_price_slope_6h(closes: list[float]) -> Optional[float]:
+    """
+    Absolute linear regression slope over the most recent 6H (6 one-bar intervals, 7 closes).
+    Normalized by mean close price to yield a dimensionless rate (doc §4.2 Cond1).
+    Returns None when fewer than 7 closes are available.
+    """
+    if len(closes) < 7:
+        return None
+    window = np.array(closes[-7:], dtype=float)
+    mean_price = float(window.mean())
+    if mean_price == 0.0:
+        return None
+    x = np.arange(6, dtype=float)
+    y = window[1:]  # 6 log-prices corresponding to intervals
+    slope = float(np.polyfit(x, y, 1)[0])
+    return abs(slope) / mean_price
+
+
+def compute_sigma_slope_12h(sigma_history: list[float]) -> Optional[bool]:
+    """True if current sigma_p is strictly higher than sigma_p 12H ago (sigma rising, doc §4.2 Cond3)."""
+    if len(sigma_history) < 13:
+        return None
+    return bool(sigma_history[-1] > sigma_history[-13])
+
+
+def compute_sigma_change_rate_std_6h(sigma_history: list[float]) -> Optional[float]:
+    """Std of sigma_p first-differences over the last 6 bars (doc §4.2 Cond3 stability check)."""
+    if len(sigma_history) < 7:
+        return None
+    window = np.array(sigma_history[-7:], dtype=float)
+    diffs = np.diff(window)  # 6 differences
+    if len(diffs) < 2:
+        return None
+    return float(np.std(diffs, ddof=1))

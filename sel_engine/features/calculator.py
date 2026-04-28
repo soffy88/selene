@@ -38,6 +38,8 @@ class FeatureCalculator:
         # Redis client for funding_rate + TF
         redis=None,
         bar_ts_iso: Optional[str] = None,
+        # Rolling TF history maintained by caller (None until caller enables history tracking)
+        TF_history: Optional[list] = None,
     ) -> FeatureVector:
         fv = FeatureVector(time=bar_time, symbol=symbol)
         avail = FeatureAvailability()
@@ -97,6 +99,7 @@ class FeatureCalculator:
             spread_bps_24h_mean=spread_bps_24h_mean,
             TF=fv.TF,
             delta_p_pct=fv.delta_p_pct,
+            TF_history=TF_history,
         )
         fv.LV = derived["LV"]
         fv.absorption_ratio = derived["absorption_ratio"]
@@ -106,6 +109,15 @@ class FeatureCalculator:
         fv.sigma_p_d2 = derived["sigma_p_d2"]
         fv.H_change_rate_std_12h = derived["H_change_rate_std_12h"]
         fv.OI_hurst = derived["OI_hurst"]
+        # P1 features
+        fv.oi_change_rate_24h = derived["oi_change_rate_24h"]
+        fv.H_24h_mean = derived["H_24h_mean"]
+        fv.tf_dp_ratio_24h = derived["tf_dp_ratio_24h"]
+        fv.tf_directional_ratio_6h = derived["tf_directional_ratio_6h"]
+        fv.abs_tf_24h_sum = derived["abs_tf_24h_sum"]
+        fv.price_slope_6h = derived["price_slope_6h"]
+        fv.sigma_rising_12h = derived["sigma_rising_12h"]
+        fv.sigma_change_rate_std_6h = derived["sigma_change_rate_std_6h"]
 
         avail.LV = fv.LV is not None
         avail.absorption_ratio = fv.absorption_ratio is not None
@@ -115,6 +127,14 @@ class FeatureCalculator:
         avail.sigma_p_d2 = fv.sigma_p_d2 is not None
         avail.H_change_rate_std_12h = fv.H_change_rate_std_12h is not None
         avail.OI_hurst = fv.OI_hurst is not None
+        avail.oi_change_rate_24h = fv.oi_change_rate_24h is not None
+        avail.H_24h_mean = fv.H_24h_mean is not None
+        avail.tf_dp_ratio_24h = fv.tf_dp_ratio_24h is not None
+        avail.tf_directional_ratio_6h = fv.tf_directional_ratio_6h is not None
+        avail.abs_tf_24h_sum = fv.abs_tf_24h_sum is not None
+        avail.price_slope_6h = fv.price_slope_6h is not None
+        avail.sigma_rising_12h = fv.sigma_rising_12h is not None
+        avail.sigma_change_rate_std_6h = fv.sigma_change_rate_std_6h is not None
 
         fv.availability = avail
         return fv

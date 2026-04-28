@@ -27,6 +27,15 @@ class FeatureAvailability:
     H_change_rate_std_12h: bool = False  # needs 13+ bars of H history
     OI_hurst: bool = False             # needs 48+ OI values
     delta_H: bool = False              # needs consecutive bars of H; WIKI_REQUIRED
+    # P1 features — doc §4.1/4.2/4.3/4.4
+    oi_change_rate_24h: bool = False   # WIKI_REQUIRED (OI collector); §4.1 Cond3, §4.3 Cond4
+    tf_dp_ratio_24h: bool = False      # WIKI_REQUIRED (TF collector); §4.1 Cond4
+    price_slope_6h: bool = False       # from closes history; §4.2 Cond1
+    tf_directional_ratio_6h: bool = False  # WIKI_REQUIRED (TF collector); §4.2 Cond2+direction
+    sigma_rising_12h: bool = False     # from sigma_p_history; §4.2 Cond3 sub-check
+    sigma_change_rate_std_6h: bool = False  # from sigma_p_history; §4.2 Cond3 std
+    H_24h_mean: bool = False           # WIKI_REQUIRED (H collector); §4.3 Cond2, §4.4 Cond2
+    abs_tf_24h_sum: bool = False       # WIKI_REQUIRED (TF collector); §4.3 Cond3, §4.4 Cond3
 
 
 @dataclass
@@ -59,5 +68,14 @@ class FeatureVector:
     H_change_rate_std_12h: Optional[float] = None
     OI_hurst: Optional[float] = None
     delta_H: Optional[float] = None   # |H_current - H_previous_bar|; doc §4.6 Cond4
+    # P1 features — doc §4.1/4.2/4.3/4.4
+    oi_change_rate_24h: Optional[float] = None  # (OI_now - OI_24h) / |OI_24h|; §4.1 Cond3
+    tf_dp_ratio_24h: Optional[float] = None     # sum|TF|_24h / sum|ΔP|_24h; §4.1 Cond4; WIKI_REQUIRED
+    price_slope_6h: Optional[float] = None      # |lin-reg slope over 6H| / mean_price; §4.2 Cond1
+    tf_directional_ratio_6h: Optional[float] = None  # signed [-1,1] TF direction ratio; §4.2 Cond2+dir; WIKI_REQUIRED
+    sigma_rising_12h: Optional[bool] = None     # True if sigma[-1] > sigma[-13]; §4.2 Cond3
+    sigma_change_rate_std_6h: Optional[float] = None  # std(Δσ) over 6H; §4.2 Cond3 stability
+    H_24h_mean: Optional[float] = None          # mean(H_history[-24:]); §4.3 Cond2, §4.4 Cond2; WIKI_REQUIRED
+    abs_tf_24h_sum: Optional[float] = None      # sum|TF| over 24 bars; §4.3 Cond3, §4.4 Cond3; WIKI_REQUIRED
     # Metadata
     availability: FeatureAvailability = field(default_factory=FeatureAvailability)
