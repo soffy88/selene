@@ -274,6 +274,28 @@ services:
 # H3-PENDING       resources:
 # H3-PENDING         limits: {cpus: '0.3', memory: 128M}
 
+  # ── sel Bar-Close Scheduler ──────────────────────────────────────────────
+  sel-bar-runner:
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/sel_bar_runner/Dockerfile
+    command: python -m services.sel_bar_runner.main
+    environment:
+      <<: *common_env
+      SERVICE_NAME: sel-bar-runner
+      SEL_SYMBOL:   ${SEL_SYMBOL:-BTCUSDT}
+      SEL_INST_ID:  ${SEL_INST_ID:-BTC-USDT-SWAP}
+    deploy:
+      resources:
+        limits: {cpus: '0.5', memory: 256M}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'from sel_engine.scheduler.health import check; exit(0 if check() else 1)'"]
+      interval: 5m
+      timeout: 30s
+      retries: 3
+      start_period: 75m  # first trigger ~1h after start; 15m tolerance
+
   # ── sel Collectors ───────────────────────────────────────────────────────
   sel-orderbook:
     <<: *defaults
