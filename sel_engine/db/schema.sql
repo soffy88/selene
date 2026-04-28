@@ -77,3 +77,30 @@ CREATE TABLE IF NOT EXISTS sel_orderbook_samples (
 );
 
 SELECT create_hypertable('sel_orderbook_samples', 'time_bucket', if_not_exists => TRUE);
+
+-- ── sel_state_sequence: one row per 1H bar — StateEngine pipeline output ──────
+-- EC-09 fix (Task 2.2). One row per (symbol, time). feature_vector lives in sel_features.
+CREATE TABLE IF NOT EXISTS sel_state_sequence (
+    time                TIMESTAMPTZ NOT NULL,
+    symbol              TEXT        NOT NULL,
+    state               TEXT,                              -- NULL when none_reason != NOT_APPLICABLE
+    none_reason         TEXT        NOT NULL DEFAULT 'not_applicable',
+    reason              TEXT        NOT NULL DEFAULT '',
+    cold_start          BOOLEAN     NOT NULL DEFAULT FALSE,
+    is_legal_transition BOOLEAN     NOT NULL DEFAULT TRUE,
+    transition_from     TEXT,
+    feature_quantiles   JSONB,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+SELECT create_hypertable(
+    'sel_state_sequence', 'time',
+    chunk_time_interval => INTERVAL '7 days',
+    if_not_exists => TRUE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sel_state_sequence_symbol_time
+    ON sel_state_sequence (symbol, time);
+
+CREATE INDEX IF NOT EXISTS sel_state_sequence_state_time
+    ON sel_state_sequence (state, time DESC);

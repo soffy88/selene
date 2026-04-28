@@ -1,12 +1,15 @@
-"""Persist FeatureVector to sel_features hypertable via upsert."""
+"""Persist FeatureVector and StateRecord to sel hypertables via upsert."""
 import dataclasses
 import json
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import asyncpg
 
 from sel_engine.features.schema import FeatureVector
+
+if TYPE_CHECKING:
+    from sel_engine.states.schema import StateRecord
 
 logger = logging.getLogger(__name__)
 
@@ -119,3 +122,40 @@ async def write_orderbook_sample(
     """
     async with pool.acquire() as conn:
         await conn.execute(sql, time_bucket, symbol, H_sample, top_5_bid, top_5_ask, spread_bps)
+
+
+_UPSERT_STATE_SQL = """
+INSERT INTO sel_state_sequence (
+    time, symbol, state, none_reason, reason,
+    cold_start, is_legal_transition, transition_from, feature_quantiles
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (symbol, time) DO UPDATE SET
+    state               = EXCLUDED.state,
+    none_reason         = EXCLUDED.none_reason,
+    reason              = EXCLUDED.reason,
+    cold_start          = EXCLUDED.cold_start,
+    is_legal_transition = EXCLUDED.is_legal_transition,
+    transition_from     = EXCLUDED.transition_from,
+    feature_quantiles   = EXCLUDED.feature_quantiles,
+    created_at          = NOW()
+"""
+
+
+async def write_state_record(pool: asyncpg.Pool, record: "StateRecord") -> None:
+    """Upsert one StateRecord row to sel_state_sequence."""
+    state_val = record.state.value if record.state is not None else None
+    from_val = record.transition_from.value if record.transition_from is not None else None
+    quantiles_json = json.dumps(record.feature_quantiles)
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            _UPSERT_STATE_SQL,
+            record.time, record.symbol,
+            state_val, record.none_reason.value, record.reason,
+            record.cold_start, record.is_legal_transition,
+            from_val, quantiles_json,
+        )
+    logger.debug(
+        "wrote sel_state_sequence: %s %s state=%s",
+        record.symbol, record.time.isoformat(), state_val,
+    )
