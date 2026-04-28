@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
-from .schema import StateLabel, StateRecord
+from .schema import StateLabel, StateNoneReason, StateRecord
 
 # ── Expected "healthy" rate ranges (fraction of active bars) ──────────────────
 # PLACEHOLDER — verify expected ranges with v1.0.md §10.5 when available
@@ -30,7 +30,9 @@ class HealthReport:
     period_end: datetime
     total_bars: int
     cold_start_bars: int
-    active_bars: int                       # non-cold-start, non-None state bars
+    missing_data_bars: int                 # WIKI_REQUIRED feature absent, post-warmup
+    no_match_bars: int                     # all data present but no condition matched
+    active_bars: int                       # bars with a confirmed state (not None)
     state_counts: dict[str, int]
     state_rates: dict[str, float]          # fraction of active_bars
     legal_transition_rate: float           # fraction of state-change events that are legal
@@ -82,6 +84,8 @@ class HealthMonitor:
                 period_end=end or _now,
                 total_bars=0,
                 cold_start_bars=0,
+                missing_data_bars=0,
+                no_match_bars=0,
                 active_bars=0,
                 state_counts={lbl.value: 0 for lbl in StateLabel},
                 state_rates={lbl.value: 0.0 for lbl in StateLabel},
@@ -97,8 +101,10 @@ class HealthMonitor:
         period_end = records[-1].time
         total_bars = len(records)
 
-        cold_start_bars = sum(1 for r in records if r.cold_start or r.state is None)
-        active_bars = total_bars - cold_start_bars
+        cold_start_bars = sum(1 for r in records if r.none_reason == StateNoneReason.COLD_START)
+        missing_data_bars = sum(1 for r in records if r.none_reason == StateNoneReason.MISSING_DATA)
+        no_match_bars = sum(1 for r in records if r.none_reason == StateNoneReason.NO_MATCH)
+        active_bars = total_bars - cold_start_bars - missing_data_bars - no_match_bars
 
         # State counts
         state_counts: dict[str, int] = {lbl.value: 0 for lbl in StateLabel}
@@ -145,6 +151,21 @@ class HealthMonitor:
         # Health warnings
         health_warnings: list[str] = []
         in_healthy_range = True
+
+        if active_bars < 720:
+            health_warnings.append(
+                f"[INSUFFICIENT_DATA: warmup] active_bars={active_bars} < 720"
+            )
+            in_healthy_range = False
+
+        if total_bars > 0:
+            missing_data_pct = missing_data_bars / total_bars
+            if missing_data_pct > 0.1:
+                health_warnings.append(
+                    f"[DEGRADED: collector_data_missing {missing_data_pct:.1%}]"
+                )
+                in_healthy_range = False
+
         for lbl_str, (lo, hi) in EXPECTED_RATE_RANGES.items():
             rate = state_rates.get(lbl_str, 0.0)
             if rate < lo:
@@ -163,6 +184,8 @@ class HealthMonitor:
             period_end=period_end,
             total_bars=total_bars,
             cold_start_bars=cold_start_bars,
+            missing_data_bars=missing_data_bars,
+            no_match_bars=no_match_bars,
             active_bars=active_bars,
             state_counts=state_counts,
             state_rates=state_rates,

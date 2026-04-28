@@ -16,7 +16,7 @@ from typing import Optional
 import pytest
 
 from sel_engine.features.schema import FeatureVector
-from sel_engine.states.schema import StateLabel, StateRecord
+from sel_engine.states.schema import StateLabel, StateNoneReason, StateRecord
 from sel_engine.states.transition import DwellFilter, CascadeCooling, LegalityChecker, DWELL_TIMES
 from sel_engine.states.health import HealthMonitor, EXPECTED_RATE_RANGES
 from sel_engine.states.engine import StateEngine
@@ -39,7 +39,10 @@ def _make_record(
     reason: str = "TEST",
     is_legal_transition: bool = True,
     transition_from: Optional[StateLabel] = None,
+    none_reason: StateNoneReason = StateNoneReason.NOT_APPLICABLE,
 ) -> StateRecord:
+    if cold_start and none_reason == StateNoneReason.NOT_APPLICABLE:
+        none_reason = StateNoneReason.COLD_START
     return StateRecord(
         time=time,
         symbol="BTCUSDT",
@@ -50,6 +53,7 @@ def _make_record(
         cold_start=cold_start,
         is_legal_transition=is_legal_transition,
         transition_from=transition_from,
+        none_reason=none_reason,
     )
 
 
