@@ -209,64 +209,90 @@ def check_surging(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
 
 def check_drifting_charged(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
     """
-    Quiet price, elevated derivatives positioning.
+    Quiet price surface but hidden directional positioning. doc §4.4.
 
-    σ(P)_24h quantile rank ≤ 0.50           # PLACEHOLDER — calibrate with v1.0.md when available
-    OI quantile rank ≥ 0.70                 # PLACEHOLDER — calibrate with v1.0.md when available (skipped if None)
-    |funding_rate| quantile rank ≥ 0.60     # PLACEHOLDER — calibrate with v1.0.md when available (skipped if None)
+    Cond1: σ(P)_24h ∈ [40th, 70th]  (moderate volatility band)
+    Cond2: H_24h_mean < 50th pct  (orderbook entropy below median)  [short-circuit if None]
+    Cond3: abs_tf_24h_sum ∈ [30th, 70th]  (moderate flow, neither dull nor extreme)  [short-circuit if None]
+    Cond4: OI_hurst > 0.6  (OI trending persistently — raw value threshold, doc §4.4)  [short-circuit if None]
+    All 4 required.
     """
+    # Cond1: moderate volatility band
     sigma_qr = qr.get("sigma_p_24h")
-    if sigma_qr is None or sigma_qr > 0.50:  # PLACEHOLDER — calibrate with v1.0.md when available
+    if sigma_qr is None or not (0.40 <= sigma_qr <= 0.70):
         return False, "", {}
 
-    oi_qr = qr.get("OI")
-    funding_qr = qr.get("abs_funding_rate")
-
-    # OI condition (skipped if unavailable)
-    if oi_qr is not None and oi_qr < 0.70:  # PLACEHOLDER — calibrate with v1.0.md when available
+    # Cond2: entropy below median — short-circuit when H collector absent
+    h24_qr = qr.get("H_24h_mean")
+    if h24_qr is None or h24_qr >= 0.50:
         return False, "", {}
 
-    # Funding condition (skipped if unavailable)
-    if funding_qr is not None and funding_qr < 0.60:  # PLACEHOLDER — calibrate with v1.0.md when available
+    # Cond3: moderate TF — short-circuit when TF collector absent
+    tf24_qr = qr.get("abs_tf_24h_sum")
+    if tf24_qr is None or not (0.30 <= tf24_qr <= 0.70):
         return False, "", {}
 
-    # Need at least one derivative condition to have triggered (even if relaxed)
-    # Both unavailable → can't confirm "charged" positioning
-    if oi_qr is None and funding_qr is None:
+    # Cond4: OI persistence (Hurst > 0.6, fixed threshold per doc §4.4)
+    if fv.OI_hurst is None or fv.OI_hurst <= 0.6:
         return False, "", {}
 
-    used: dict = {"sigma_p_24h": sigma_qr}
-    parts = [f"sigma_p@{sigma_qr:.2f}"]
-
-    if oi_qr is not None:
-        used["OI"] = oi_qr
-        parts.append(f"OI@{oi_qr:.2f}")
-    if funding_qr is not None:
-        used["abs_funding_rate"] = funding_qr
-        parts.append(f"|funding|@{funding_qr:.2f}")
-
-    reason = "DRIFTING_CHARGED:" + "+".join(parts)
+    used: dict = {
+        "sigma_p_24h": sigma_qr,
+        "H_24h_mean": h24_qr,
+        "abs_tf_24h_sum": tf24_qr,
+        "OI_hurst": fv.OI_hurst,
+    }
+    reason = (
+        f"DRIFTING_CHARGED:"
+        f"sigma@{sigma_qr:.2f}"
+        f"+H24h@{h24_qr:.2f}"
+        f"+tf24@{tf24_qr:.2f}"
+        f"+hurst={fv.OI_hurst:.3f}"
+    )
     return True, reason, used
 
 
 def check_drifting_calm(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
     """
-    Catch-all quiet state.
+    Quiet, directionless market — statistical near-equilibrium. doc §4.3.
 
-    σ(P)_24h quantile rank ≤ 0.50           # PLACEHOLDER — calibrate with v1.0.md when available
-    Falls through when all higher-priority states fail.
-    If σ(P)_24h is None, still triggers as the final fallback.
+    Cond1: σ(P)_24h ∈ [30th, 60th]  (volatility in middle band, not too low or high)
+    Cond2: H_24h_mean ∈ [40th, 80th]  (entropy in healthy middle range)  [short-circuit if None]
+    Cond3: abs_tf_24h_sum < 50th pct  (low net flow)  [short-circuit if None]
+    Cond4: |oi_change_rate_24h| < 50th pct  (OI barely changing)  [short-circuit if None]
+    All 4 required; no catch-all fallback — None state when data absent (doc §10.1 principle 3).
     """
+    # Cond1: volatility in middle band
     sigma_qr = qr.get("sigma_p_24h")
-
-    if sigma_qr is not None and sigma_qr > 0.50:  # PLACEHOLDER — calibrate with v1.0.md when available
+    if sigma_qr is None or not (0.30 <= sigma_qr <= 0.60):
         return False, "", {}
 
-    used: dict = {}
-    if sigma_qr is not None:
-        used["sigma_p_24h"] = sigma_qr
-        reason = f"DRIFTING_CALM:sigma_p@{sigma_qr:.2f}"
-    else:
-        reason = "DRIFTING_CALM:fallback(sigma_p_unavailable)"
+    # Cond2: entropy in healthy range — short-circuit when H collector absent
+    h24_qr = qr.get("H_24h_mean")
+    if h24_qr is None or not (0.40 <= h24_qr <= 0.80):
+        return False, "", {}
 
+    # Cond3: low net TF — short-circuit when TF collector absent
+    tf24_qr = qr.get("abs_tf_24h_sum")
+    if tf24_qr is None or tf24_qr >= 0.50:
+        return False, "", {}
+
+    # Cond4: OI barely changing — short-circuit when OI collector absent
+    abs_oi_cr_qr = qr.get("abs_oi_change_rate_24h")
+    if abs_oi_cr_qr is None or abs_oi_cr_qr >= 0.50:
+        return False, "", {}
+
+    used: dict = {
+        "sigma_p_24h": sigma_qr,
+        "H_24h_mean": h24_qr,
+        "abs_tf_24h_sum": tf24_qr,
+        "abs_oi_change_rate_24h": abs_oi_cr_qr,
+    }
+    reason = (
+        f"DRIFTING_CALM:"
+        f"sigma@{sigma_qr:.2f}"
+        f"+H24h@{h24_qr:.2f}"
+        f"+tf24@{tf24_qr:.2f}"
+        f"+oi_cr@{abs_oi_cr_qr:.2f}"
+    )
     return True, reason, used
