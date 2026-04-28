@@ -28,34 +28,33 @@ _ALL = set(StateLabel)
 
 LEGAL_TRANSITIONS: dict[Optional[StateLabel], set[StateLabel]] = {
     None: _ALL,  # cold start: any state is legal
-    StateLabel.COILING: {  # PLACEHOLDER — verify with v1.0.md section 7.1 when available
+    StateLabel.COILING: {  # doc §7.1
         StateLabel.SURGING_UP,
         StateLabel.SURGING_DOWN,
         StateLabel.CRITICAL,
         StateLabel.CASCADE,
-        StateLabel.DRIFTING_CALM,
+        # DRIFTING_CALM removed: doc §7.1 marks Coiling→Drifting-Calm as illegal
     },
-    StateLabel.SURGING_UP: {  # PLACEHOLDER — verify with v1.0.md section 7.1 when available
-        StateLabel.DRIFTING_CALM,
-        StateLabel.DRIFTING_CHARGED,
-        StateLabel.CRITICAL,
-        StateLabel.CASCADE,
-        StateLabel.COILING,
-    },
-    StateLabel.SURGING_DOWN: {  # PLACEHOLDER — verify with v1.0.md section 7.1 when available
+    StateLabel.SURGING_UP: {  # doc §7.1
         StateLabel.DRIFTING_CALM,
         StateLabel.DRIFTING_CHARGED,
         StateLabel.CRITICAL,
         StateLabel.CASCADE,
-        StateLabel.COILING,
+        # COILING removed: doc §7.1 marks Surging→Coiling as illegal
     },
-    StateLabel.DRIFTING_CALM: {  # PLACEHOLDER — verify with v1.0.md section 7.1 when available
+    StateLabel.SURGING_DOWN: {  # doc §7.1
+        StateLabel.DRIFTING_CALM,
+        StateLabel.DRIFTING_CHARGED,
+        StateLabel.CRITICAL,
+        StateLabel.CASCADE,
+        # COILING removed: doc §7.1 marks Surging→Coiling as illegal
+    },
+    StateLabel.DRIFTING_CALM: {  # doc §7.1
         StateLabel.COILING,
         StateLabel.CRITICAL,
         StateLabel.CASCADE,
-        StateLabel.SURGING_UP,
-        StateLabel.SURGING_DOWN,
         StateLabel.DRIFTING_CHARGED,
+        # SURGING_UP/DOWN removed: doc §7.1 marks Drifting-Calm→Surging as illegal
     },
     StateLabel.DRIFTING_CHARGED: {  # PLACEHOLDER — verify with v1.0.md section 7.1 when available
         StateLabel.SURGING_UP,
