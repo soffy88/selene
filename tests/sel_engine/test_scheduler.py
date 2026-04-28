@@ -162,3 +162,49 @@ async def test_scheduler_skips_incomplete_bar():
         await runner.run_bar(BAR_TIME)
 
     assert len(written_calls) == 0
+
+
+# ── Test 4: Postgres column case-folding — reader must use lowercase keys ─────
+
+@pytest.mark.asyncio
+async def test_read_H_history_uses_lowercase_key():
+    """
+    Postgres folds unquoted H to h. read_H_history must access r['h'], not r['H'].
+    Regression guard for the KeyError: 'H' bug (Task 2.2.3).
+    """
+    from sel_engine.db.reader import read_H_history
+
+    pool = MagicMock()
+    conn = AsyncMock()
+    conn.fetch = AsyncMock(return_value=[{"h": 0.73}])
+    pool.acquire = MagicMock(return_value=AsyncMock(
+        __aenter__=AsyncMock(return_value=conn),
+        __aexit__=AsyncMock(return_value=False),
+    ))
+
+    result = await read_H_history(
+        pool, "BTCUSDT", datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc), limit=1
+    )
+    assert result == [0.73], f"Expected [0.73], got {result}"
+
+
+@pytest.mark.asyncio
+async def test_read_tf_history_uses_lowercase_key():
+    """
+    Postgres folds unquoted TF to tf. _read_tf_history must access r['tf'], not r['TF'].
+    Regression guard for same column-case bug (Task 2.2.3).
+    """
+    pool = MagicMock()
+    conn = AsyncMock()
+    conn.fetch = AsyncMock(return_value=[{"tf": 123456789.0}])
+    pool.acquire = MagicMock(return_value=AsyncMock(
+        __aenter__=AsyncMock(return_value=conn),
+        __aexit__=AsyncMock(return_value=False),
+    ))
+
+    from sel_engine.scheduler.bar_close_runner import BarCloseRunner
+    runner = BarCloseRunner(symbol="BTCUSDT", pool=pool, redis=AsyncMock())
+    result = await runner._read_tf_history(
+        datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
+    )
+    assert result == [123456789.0], f"Expected [123456789.0], got {result}"

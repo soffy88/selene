@@ -89,7 +89,7 @@ async def read_H_history(
     """
     async with pool.acquire() as conn:
         rows = await conn.fetch(sql, symbol, end, limit)
-    return [float(r["H"]) for r in reversed(rows)]
+    return [float(r["h"]) for r in reversed(rows)]
 
 
 async def read_OI_history(

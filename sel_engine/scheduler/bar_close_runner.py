@@ -193,7 +193,7 @@ class BarCloseRunner:
             rows = await conn.fetch(_READ_TF_HISTORY_SQL, self.symbol, bar_open_time)
         if not rows:
             return None
-        return [float(r["TF"]) for r in reversed(rows)]
+        return [float(r["tf"]) for r in reversed(rows)]
 
     async def _read_h_samples(self, bar_ts_iso: str) -> Optional[list[float]]:
         """Read intra-bar H samples from Redis list written by orderbook_collector."""
