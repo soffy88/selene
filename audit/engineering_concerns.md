@@ -21,6 +21,31 @@
 
 **相关文件**：`docker-compose.yml`（`sel-orderbook`、`sel-trade-flow`、`sel-oi` service 定义）
 
+### EC-01 调查记录（Task 2.1，2026-04-28）
+
+**Healthcheck 命令**（`docker inspect selene-sel-orderbook-1 .Config.Healthcheck`）：
+```json
+{"Test":["CMD-SHELL","curl -fsS http://localhost:8000/health || exit 1"],
+ "Interval":30000000000,"Timeout":3000000000,"StartPeriod":10000000000,"Retries":3}
+```
+
+**Healthcheck 失败日志**（每 30s 一次，已连续 487 次，约 4H）：
+```
+ExitCode: 1
+Output: "curl: (7) Failed to connect to localhost port 8000 after 0 ms: Could not connect to server"
+```
+
+**根因确认**：`ghcr.io/helios-plat/helios/python-api-base:0.1.0` 基础镜像内置了 `curl -fsS http://localhost:8000/health` 的 HEALTHCHECK。三个 sel collector 的 Dockerfile 均未覆盖（`HEALTHCHECK NONE`），直接继承基础镜像的检查。Collector 进程是纯 Python 事件循环，不暴露任何 HTTP 端口，因此每次检查都立即返回 connection refused。
+
+**影响评估**：
+- 数据写入：✅ 不受影响（sel-orderbook 4H 内已写入 230 行，OI 47 行，均无中断）
+- 容器调度：✅ 稳定运行（`restart: unless-stopped` + 无 `condition: service_healthy` 依赖）——unhealthy 状态不触发 docker 重启
+- 上游影响：无（无其他 service 依赖 sel-* 容器的 `service_healthy` 条件）
+
+**推荐修复方案**（不实施，等决策）：在三个 sel collector 的 Dockerfile 中加一行 `HEALTHCHECK NONE` 覆盖基础镜像的 healthcheck，或添加符合实际的 healthcheck（如检查进程 PID 或 Redis key 写入时间）。
+
+**Status**：PENDING_DECISION。不阻塞 EC-04 + EC-09 部署（容器本身运行正常）。
+
 ---
 
 ## EC-02：`sel_orderbook_samples` 每 5-min Bucket 多行写入（B = 中优先度，数据冗余）
@@ -148,6 +173,38 @@
 **不处理后果**：Coiling §4.1 Cond4 在真实数据上可能始终不满足或始终满足。
 
 **相关文件**：`sel_engine/collectors/trade_flow_collector.py:75`
+
+### EC-08 Resolution Investigation（Task 2.1，2026-04-28）
+
+**OKX API documented behavior**（via web_fetch，`GET /api/v5/public/instruments?instType=SWAP&instId=BTC-USDT-SWAP`）：
+```json
+{"ctVal": "0.01", "lotSz": "0.01", "minSz": "0.01", "ctValCcy": "BTC"}
+```
+`ctValCcy=BTC`：sz 字段单位为 **BTC**（= num_contracts × ctVal = num_contracts × 0.01）。1 lot = 0.01 BTC，sz=0.87 = 87 contracts × 0.01 BTC。
+
+**Verdict**：✅ **CORRECT** — `notional = sz × px` 公式正确，sz 已经是 BTC 单位，无 100× 偏差。
+
+**Empirical comparison**（Redis 实测，5 分钟窗口，100+ trades）：
+
+| sz 样本 | 价格 (USDT) | notional (USDT) | lots 数 |
+|---------|-------------|-----------------|---------|
+| 0.01 | ~76,000 | ~760 | 1 |
+| 0.03 | ~76,000 | ~2,280 | 3 |
+| 0.87 | ~76,830 | ~66,842 | 87 |
+| 23.96 | ~76,000 | ~1,820,960 | 2396 |
+
+- sz 最小值为 0.01（= 1 lot × 0.01 BTC），与 OKX 规格完全吻合
+- 所有样本均为 0.01 的整数倍，符合 BTC 单位约束
+- 若 sz 为 lots，则最小 sz 应为 1（不是 0.01）——实测排除 lots 假设
+
+**Impact on sel_engine**：
+- `tf_dp_ratio_24h`：Coiling §4.1 Cond4（`sel_engine/states/conditions.py:116,135,142`）——分位数排名不受影响，绝对值正确
+- `abs_tf_24h_sum`：Drifting-Calm §4.3 Cond3 + Drifting-Charged §4.4 Cond3（`conditions.py:216,261`）——同上
+- 30 天 cold start 期间分位数窗口：不受污染，数据已正确
+
+**Recommended fix**：None — 公式无误，collector 代码无需修改。
+
+**Status**：RESOLVED（公式验证通过）。不阻塞 EC-04 + EC-09 部署。
 
 ---
 
