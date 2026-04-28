@@ -234,6 +234,8 @@ Output: "curl: (7) Failed to connect to localhost port 8000 after 0 ms: Could no
 | EC-12 | candles schema 错配：backfill.py + validate_e2e.py 使用 open_time（表实际为 time）| B（中） | backfill 和 e2e 验证脚本运行即失败 | backfill 功能完全失效；validate_e2e 无法运行 |
 | EC-13 | asyncpg pool 无 acquire/command timeout，长空闲后 pool.acquire() 可能无限挂起 | B（中） | 调度器在触发时静默挂起，无 log 无异常，直到 SIGTERM | cold start 期间触发即挂起 → bar 丢失 → cold start 延迟 |
 | EC-14 | funding_rate Redis 值为 JSON（`{"rate":0.0}`），flow.py 用 float() 直接解析 → ValueError | C（低） | funding_rate 始终为 None，不参与 WIKI_REQUIRED 检查 | funding_rate 特征永远缺失；warn 持续出现 |
+| EC-15 | paper_trading/db/trail_store.py 大小写访问：row["H/TF/OI/LV"] 与实际列名不符 | B（中，延迟触发） | cold start 期间 state=None → paper_trading 不写 trail → 不触发 | cold start 结束后首次非 None state 时 trail 写入崩溃 |
+| EC-16 | paper_interface/store.py schema 版本不匹配：SELECT H/TF/OI/LV FROM sel_state_sequence，这些列不存在 | A（高，延迟触发） | cold start 期间 paper_interface 不被调用 | cold start 结束后 paper_trading 读取状态时 SQL 级失败（"column H does not exist"） |
 
 ## EC-10：StateEngine 重启后内存状态丢失（C = 设计记录，低紧急度）
 
@@ -356,3 +358,49 @@ WARNING sel_engine.features.flow funding_rate redis read failed for BTCUSDT: cou
 **相关文件**：`sel_engine/features/flow.py::get_funding_rate_from_redis()`（不在当前修改范围内）
 
 **推荐修复方向**（等决策，属 sel_engine/features/ 禁区）：将解析改为 `json.loads(raw_value)["rate"]`，或要求 collector 写入纯数值格式。
+
+---
+
+## EC-15：paper_trading/db/trail_store.py 大小写列访问（B = 中优先度，延迟触发）
+
+**发现日期**：2026-04-28（Task 2.2.3 全代码 grep）
+
+**现象**：`paper_trading/db/trail_store.py:162-166` 使用 `row["H"]` / `row["TF"]` / `row["OI"]` / `row["LV"]` 读取 `sel_decision_trail` 表数据。`sel_decision_trail` 表创建时使用无引号大写列名（`H NUMERIC(10,8)`），PostgreSQL 自动折叠为小写 `h`，导致 `row["H"]` 会 KeyError。
+
+**为何 cold start 期间未触发**：`state=None`（cold_start=True）时，paper_trading 的决策层对所有 instrument 输出 `NO_ACTION`，不写 `sel_decision_trail` 记录，故读取路径未被调用。
+
+**触发条件**：cold start 结束（2026-05-28T11:00:00Z）后，首次 state ≠ None 时 paper_trading 写入并读取 trail 记录 → 崩溃。
+
+**相关文件**：`paper_trading/db/trail_store.py:162-166`，`sel_decision_trail` DDL
+
+**推荐修复方向**（冷启动完成前 1 周，约 2026-05-21）：将 `row["H"]`、`row["TF"]`、`row["OI"]`、`row["LV"]` 改为小写键，与 EC-15/16 一并做 schema 一致性审计。
+
+---
+
+## EC-16：paper_interface/store.py schema 版本不匹配（A = 高优先度，延迟触发）
+
+**发现日期**：2026-04-28（Task 2.2.3 全代码 grep）
+
+**现象**：`sel_engine/paper_interface/store.py:81-104` SQL 查询：
+```sql
+SELECT time, symbol, state, direction, is_cold_start, confidence, reason,
+       is_legal, transition_from, health_warning,
+       close_price, sigma_p_24h, H, TF, OI, funding_rate, LV, feature_completeness
+FROM sel_state_sequence
+```
+这些列（`H`, `TF`, `OI`, `LV`, `close_price`, `direction`, `confidence`, `is_cold_start`, `health_warning`, `is_legal`, `feature_completeness`）在当前 `sel_state_sequence` schema（migration 001）中**根本不存在**。当前 schema 只有：`time, symbol, state, none_reason, reason, cold_start, is_legal_transition, transition_from, feature_quantiles`。
+
+**根因**：`paper_interface/store.py` 是针对旧版 `sel_state_sequence` schema 开发的，Task 2.2 重建时 schema 已简化（特征数据分离到 `sel_features` 表），但 `paper_interface` 未跟进。这不是大小写问题，是两个 schema 版本之间的断层。
+
+**为何 cold start 期间未触发**：同 EC-15，cold start 期间 paper_trading 不读取状态数据。
+
+**触发条件**：cold start 结束后 paper_trading 调用 `StateStore.get_current()` 或 `get_history()` → SQL 级失败（`"column H does not exist"`）。
+
+**影响范围**：比 EC-15 严重——即便把大小写改对，列也不存在，需要重新设计读取逻辑（JOIN sel_features 或修改 sel_state_sequence schema）。
+
+**相关文件**：`sel_engine/paper_interface/store.py:81-104`，`sel_engine/db/migrations/001_create_sel_state_sequence.sql`
+
+**推荐修复方向**（冷启动完成前 1 周，约 2026-05-21）：
+- 方案 A：改 SQL，从 `sel_features` JOIN 所需字段
+- 方案 B：在 `sel_state_sequence` 加回 `close_price, sigma_p_24h, H, TF, OI, LV` 等列（反规范化，但下游兼容性好）
+- **建议先做完整 schema 一致性审计**（可能还有其他未发现的消费者）
