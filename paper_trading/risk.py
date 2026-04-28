@@ -30,6 +30,8 @@ class RiskCheckResult:
     force_action: Optional[DecisionAction]  # if not passed: the forced action (CLOSE or NO_ACTION)
     triggered_rule: Optional[str]           # e.g. "single_trade_max_loss", "cascade"
     details: str
+    rule_2_subtype: Optional[str] = None       # "missing_data" | "no_match" (signal_lag only)
+    none_reasons_in_lag: Optional[dict] = None  # {"missing_data": N, "no_match": N, ...} lag window dist
 
 
 @dataclass
@@ -44,6 +46,13 @@ class RiskEvent:
 # ---------------------------------------------------------------------------
 # RiskGate
 # ---------------------------------------------------------------------------
+
+def _classify_lag_subtype(none_reasons: Optional[dict]) -> str:
+    """Return 'missing_data' if any collector-fault bar in the lag window; else 'no_match'."""
+    if none_reasons and none_reasons.get("missing_data", 0) > 0:
+        return "missing_data"
+    return "no_match"
+
 
 class RiskGate:
     """Pre-execution risk checkpoint.
@@ -76,6 +85,7 @@ class RiskGate:
         position: Optional[Position],
         account: AccountState,
         last_state_update_time: Optional[datetime],
+        none_reasons_in_lag: Optional[dict] = None,
     ) -> RiskCheckResult:
         """Evaluate all risk rules in priority order.
 
@@ -93,15 +103,14 @@ class RiskGate:
             )
 
         # Rule 2: Signal lag > threshold → close (data integrity risk)
+        # none_reasons_in_lag distinguishes collector fault (missing_data) from genuine no-match.
+        # Candidate A (current): CLOSE in both cases; subtype tagged for diagnostics.
+        # See audit/engineering_concerns.md EC-07 for candidates A/B/C.
         if last_state_update_time is not None:
             lag_hours = (bar_time - last_state_update_time).total_seconds() / 3600
             if lag_hours > self.config.signal_lag_max_hours:
-                return self._fire(
-                    "signal_lag",
-                    f"State signal lag {lag_hours:.1f}H > {self.config.signal_lag_max_hours}H threshold",
-                    DecisionAction.CLOSE,
-                    bar_time,
-                )
+                subtype = _classify_lag_subtype(none_reasons_in_lag)
+                return self._fire_rule_2(lag_hours, subtype, none_reasons_in_lag, bar_time)
 
         # Rule 3: Single trade max loss (unrealized) — fires before drawdown / pause checks
         if position is not None:
@@ -183,6 +192,35 @@ class RiskGate:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _fire_rule_2(
+        self,
+        lag_hours: float,
+        subtype: str,
+        none_reasons_in_lag: Optional[dict],
+        bar_time: datetime,
+    ) -> RiskCheckResult:
+        details = (
+            f"State signal lag {lag_hours:.1f}H > {self.config.signal_lag_max_hours}H"
+            f" [subtype={subtype}]"
+        )
+        event = RiskEvent(
+            time=bar_time,
+            symbol=self.symbol,
+            rule="signal_lag",
+            details=details,
+            action_taken=DecisionAction.CLOSE.value,
+        )
+        self._risk_events.append(event)
+        logger.warning("RISK[signal_lag] %s → close", details)
+        return RiskCheckResult(
+            passed=False,
+            force_action=DecisionAction.CLOSE,
+            triggered_rule="signal_lag",
+            details=details,
+            rule_2_subtype=subtype,
+            none_reasons_in_lag=none_reasons_in_lag,
+        )
 
     def _fire(
         self,

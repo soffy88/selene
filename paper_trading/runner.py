@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections import deque
 from datetime import datetime
 from typing import Optional
 
@@ -38,6 +39,9 @@ class PaperTradingRunner:
         self.account = AccountManager(config.account.initial_nav_usdt, config.risk)
         self.trail_builder = DecisionTrailBuilder(symbol, config)
         self._last_state_time: Optional[datetime] = None
+        # Rolling window of (bar_time, none_reason) pairs for Rule 2 subtype classification.
+        # maxlen=720 covers 30 days at 1H bars — far beyond any realistic lag window.
+        self._recent_none_reasons: deque = deque(maxlen=720)
 
     # ------------------------------------------------------------------
     async def process_bar(
@@ -54,6 +58,7 @@ class PaperTradingRunner:
         state_out = await self.state_svc.process_bar(bar_time, close, pg, redis, oi)
         if state_out.state is not None:
             self._last_state_time = bar_time
+        self._recent_none_reasons.append((bar_time, state_out.none_reason))
         self.trail_builder.record_state(state_out.state)
 
         # 2. Update unrealized PnL
@@ -71,7 +76,12 @@ class PaperTradingRunner:
             none_reason=state_out.none_reason,
         )
 
-        # 4. Risk check
+        # 4. Risk check — compute none_reason distribution in lag window for Rule 2 diagnostics
+        none_reasons_in_lag: Optional[dict] = None
+        if self._last_state_time is not None:
+            none_reasons_in_lag = self._get_none_reasons_in_window(
+                self._last_state_time, bar_time
+            )
         risk_result = self.risk_gate.check(
             proposed_action=proposed_decision.action,
             current_state=state_out.state,
@@ -79,6 +89,7 @@ class PaperTradingRunner:
             position=self.positions.current,
             account=account_snapshot,
             last_state_update_time=self._last_state_time,
+            none_reasons_in_lag=none_reasons_in_lag,
         )
 
         final_action = risk_result.force_action or proposed_decision.action
@@ -132,3 +143,17 @@ class PaperTradingRunner:
             await TrailStore.insert(pg, trail)
 
         return trail
+
+    # ------------------------------------------------------------------
+    def _get_none_reasons_in_window(self, start: datetime, end: datetime) -> dict:
+        """Count none_reason occurrences for bars in (start, end].
+
+        Used to classify Rule 2 signal_lag events as MISSING_DATA vs NO_MATCH.
+        Only bars where none_reason is not None (i.e. state was None) are counted.
+        """
+        counts: dict = {"missing_data": 0, "no_match": 0, "cold_start": 0}
+        for bar_time, reason in self._recent_none_reasons:
+            if start < bar_time <= end and reason is not None:
+                if reason in counts:
+                    counts[reason] += 1
+        return counts

@@ -70,6 +70,10 @@ class DecisionTrail:
     # None-state metadata
     state_none_reason: Optional[str] = None  # StateNoneReason.value when state=None
 
+    # Rule 2 diagnostics (populated when signal_lag fires)
+    risk_rule_2_subtype: Optional[str] = None       # "missing_data" | "no_match"
+    state_none_reason_in_lag: Optional[dict] = None  # {"missing_data": N, "no_match": N, "cold_start": N}
+
 
 # ---------------------------------------------------------------------------
 # DecisionTrailBuilder
@@ -168,4 +172,6 @@ class DecisionTrailBuilder:
             realized_pnl_this_bar=realized_pnl,
             risk_check_passed=risk_result.passed,
             state_none_reason=state_output.none_reason,
+            risk_rule_2_subtype=risk_result.rule_2_subtype,
+            state_none_reason_in_lag=risk_result.none_reasons_in_lag,
         )
