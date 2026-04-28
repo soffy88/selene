@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional
 
 from sel_engine.features.schema import FeatureVector
-from .schema import StateLabel, StateRecord
+from .schema import StateLabel, StateNoneReason, StateRecord
 from .thresholds import RollingQuantileCalculator
 from .conditions import (
     check_cascade,
@@ -43,6 +43,27 @@ QUANTILE_FEATURES = [
 ]
 
 
+# Quantile features whose absence causes hard short-circuit in ≥1 condition.
+# Used by _none_reason_for_no_match to distinguish MISSING_DATA from NO_MATCH.
+_HARD_SHORT_CIRCUIT_QR: frozenset = frozenset({
+    "H_24h_mean",              # Coiling §4.1 Cond2, Drifting-Calm §4.3 Cond2, Drifting-Charged §4.4 Cond2
+    "abs_tf_24h_sum",          # Drifting-Calm §4.3 Cond3, Drifting-Charged §4.4 Cond3
+    "oi_change_rate_24h",      # Coiling §4.1 Cond3, Drifting-Calm §4.3 Cond4
+    "tf_dp_ratio_24h",         # Coiling §4.1 Cond4
+    "abs_oi_change_rate_24h",  # Drifting-Calm §4.3 Cond4
+})
+
+
+def _none_reason_for_no_match(qr: dict, fv: FeatureVector) -> StateNoneReason:
+    """Return MISSING_DATA if any WIKI_REQUIRED feature is absent, else NO_MATCH."""
+    if fv.tf_directional_ratio_6h is None:
+        return StateNoneReason.MISSING_DATA
+    for feat in _HARD_SHORT_CIRCUIT_QR:
+        if qr.get(feat) is None:
+            return StateNoneReason.MISSING_DATA
+    return StateNoneReason.NO_MATCH
+
+
 class StateRecognizer:
     """
     Identifies the current sel market state from a FeatureVector.
@@ -72,6 +93,7 @@ class StateRecognizer:
                 feature_quantiles=qr,
                 feature_vector=fv,
                 cold_start=True,
+                none_reason=StateNoneReason.COLD_START,
             )
 
         # Apply states in priority order (highest priority first)
@@ -104,6 +126,7 @@ class StateRecognizer:
                 feature_quantiles=used,
                 feature_vector=fv,
                 cold_start=False,
+                none_reason=StateNoneReason.NOT_APPLICABLE,
             )
 
         # No state matched — expected when WIKI_REQUIRED data (H, TF, OI) is not yet available.
@@ -116,6 +139,7 @@ class StateRecognizer:
             feature_quantiles=qr,
             feature_vector=fv,
             cold_start=False,
+            none_reason=_none_reason_for_no_match(qr, fv),
         )
 
     def _compute_quantile_ranks(self, fv: FeatureVector) -> dict:
@@ -176,8 +200,16 @@ def compute_state_distribution(state_records: list[StateRecord]) -> dict:
     Useful for verifying quantile history and state frequency.
     """
     total = len(state_records)
-    cold = sum(1 for r in state_records if r.cold_start or r.state is None)
-    non_cold = total - cold
+    cold_start_bars = sum(
+        1 for r in state_records if r.none_reason == StateNoneReason.COLD_START
+    )
+    missing_data_bars = sum(
+        1 for r in state_records if r.none_reason == StateNoneReason.MISSING_DATA
+    )
+    no_match_bars = sum(
+        1 for r in state_records if r.none_reason == StateNoneReason.NO_MATCH
+    )
+    active_bars = total - cold_start_bars - missing_data_bars - no_match_bars
 
     counts: dict[str, int] = {}
     for label in StateLabel:
@@ -189,11 +221,14 @@ def compute_state_distribution(state_records: list[StateRecord]) -> dict:
 
     rates: dict[str, float] = {}
     for label_str, n in counts.items():
-        rates[label_str] = n / non_cold if non_cold > 0 else 0.0
+        rates[label_str] = n / active_bars if active_bars > 0 else 0.0
 
     return {
         "total_bars": total,
-        "cold_start_bars": cold,
+        "cold_start_bars": cold_start_bars,
+        "missing_data_bars": missing_data_bars,
+        "no_match_bars": no_match_bars,
+        "active_bars": active_bars,
         "state_counts": counts,
         "state_rates": rates,
     }

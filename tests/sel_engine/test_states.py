@@ -8,7 +8,7 @@ from typing import Optional
 import pytest
 
 from sel_engine.features.schema import FeatureVector
-from sel_engine.states.schema import StateLabel, StateRecord
+from sel_engine.states.schema import StateLabel, StateNoneReason, StateRecord
 from sel_engine.states.thresholds import RollingQuantileCalculator
 from sel_engine.states.conditions import (
     check_cascade,
@@ -905,6 +905,7 @@ class TestComputeStateDistribution:
                 reason="TEST" if s else "COLD_START",
                 feature_quantiles={},
                 cold_start=(s is None),
+                none_reason=StateNoneReason.COLD_START if s is None else StateNoneReason.NOT_APPLICABLE,
             ))
             t += timedelta(hours=1)
         return records
