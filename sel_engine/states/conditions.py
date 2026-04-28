@@ -111,37 +111,40 @@ def check_coiling(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
     Market winding up energy. doc §4.1.
 
     Cond1: σ(P)_24h < 30th pct  (low volatility)
-    Cond2: H < 30th pct  (low entropy = concentrated orderbook structure)  [WIKI_REQUIRED, skip if None]
-    Cond3: OI change rate > 70th pct  [proxy: price_autocorr_24h ≥ 60th pct — PLACEHOLDER feature mismatch]
-    Cond4: |TF|/|ΔP| > 80th pct  [proxy: OI ≥ 50th pct — PLACEHOLDER feature mismatch]
-    All 4 required (Cond2 skipped when H unavailable).
+    Cond2: H < 30th pct  (low entropy = concentrated orderbook)  [skip if None; WIKI_REQUIRED]
+    Cond3: oi_change_rate_24h > 70th pct  (OI accumulating fast)  [short-circuit if None]
+    Cond4: tf_dp_ratio_24h > 80th pct  (high absorption ratio)   [short-circuit if None]
+    All 4 required; Cond2 relaxed when H unavailable; Cond3/4 require collector data.
     """
+    # Cond1: low volatility
     sigma_qr = qr.get("sigma_p_24h")
     if sigma_qr is None or sigma_qr > 0.30:
         return False, "", {}
 
-    # Cond2: H < 30th pct (doc §4.1: low entropy = concentrated orderbook)
+    # Cond2: low orderbook entropy (high H → disordered → NOT coiling)
     h_qr = qr.get("H")
-    if h_qr is not None and h_qr > 0.30:  # fails when H is high (disordered orderbook)
+    if h_qr is not None and h_qr > 0.30:
         return False, "", {}
 
-    autocorr_qr = qr.get("price_autocorr_24h")
-    if autocorr_qr is None or autocorr_qr < 0.60:  # PLACEHOLDER — proxy for OI change rate
+    # Cond3: OI accumulating — short-circuit when OI collector data absent
+    oi_cr_qr = qr.get("oi_change_rate_24h")
+    if oi_cr_qr is None or oi_cr_qr < 0.70:
         return False, "", {}
 
-    oi_qr = qr.get("OI")
-    if oi_qr is None or oi_qr < 0.50:  # PLACEHOLDER — proxy for |TF|/|ΔP|
+    # Cond4: high absorption (|TF| / |ΔP| ratio) — short-circuit when TF absent
+    tf_dp_qr = qr.get("tf_dp_ratio_24h")
+    if tf_dp_qr is None or tf_dp_qr < 0.80:
         return False, "", {}
 
     used: dict = {
         "sigma_p_24h": sigma_qr,
-        "price_autocorr_24h": autocorr_qr,
-        "OI": oi_qr,
+        "oi_change_rate_24h": oi_cr_qr,
+        "tf_dp_ratio_24h": tf_dp_qr,
     }
     parts = [
         f"sigma_p@{sigma_qr:.2f}",
-        f"autocorr_24h@{autocorr_qr:.2f}",
-        f"OI@{oi_qr:.2f}",
+        f"oi_cr@{oi_cr_qr:.2f}",
+        f"tf_dp@{tf_dp_qr:.2f}",
     ]
     if h_qr is not None:
         used["H"] = h_qr
