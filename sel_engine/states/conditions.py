@@ -50,53 +50,57 @@ def check_cascade(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
 
 def check_critical(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
     """
-    System approaching phase transition (physics of critical state diagrams).
+    System approaching phase transition (CSD). doc §4.5.
 
-    Condition 1: σ(P)_d2 quantile rank ≥ 0.80        # PLACEHOLDER — calibrate with v1.0.md when available
-    Condition 2: OI_hurst quantile rank ≥ 0.70        # PLACEHOLDER — calibrate with v1.0.md when available
-                 (skipped if OI_hurst is None)
-    Condition 3: LV quantile rank ≥ 0.70              # PLACEHOLDER — calibrate with v1.0.md when available
-                 OR price_autocorr_24h quantile rank ≤ 0.20  # PLACEHOLDER — calibrate with v1.0.md when available
-
-    If OI_hurst unavailable, relax to: cond1 + cond3.
+    Cond1: lag-1 autocorr rising — autocorr_12h > autocorr_24h > autocorr_48h
+    Cond2: σ(P) acceleration: sigma_p_d2 > 0 AND sigma_p_d2 > 80th pct
+    Cond3: H change rate std_12h > 80th pct  [WIKI_REQUIRED; skip if None]
+    Cond4: recovery time proxy — OI_hurst > 70th pct  [skip if None]
+    Trigger: Cond1 AND Cond2 AND (Cond3 OR Cond4)
     """
+    # Cond1: autocorr monotone rising (CSD core signal per doc §4.5)
+    ac12 = fv.price_autocorr_12h
+    ac24 = fv.price_autocorr_24h
+    ac48 = fv.price_autocorr_48h
+    if ac12 is None or ac24 is None or ac48 is None:
+        return False, "", {}
+    if not (ac12 > ac24 > ac48):
+        return False, "", {}
+
+    # Cond2: σ(P) second derivative > 0 AND > 80th pct
     sigma_d2_qr = qr.get("sigma_p_d2")
-    if sigma_d2_qr is None or sigma_d2_qr < 0.80:  # PLACEHOLDER — calibrate with v1.0.md when available
+    if sigma_d2_qr is None or sigma_d2_qr < 0.80:
+        return False, "", {}
+    if fv.sigma_p_d2 is None or fv.sigma_p_d2 <= 0:
         return False, "", {}
 
+    # Cond3: H erraticity > 80th pct (skip if H not running)
+    h_cr_std_qr = qr.get("H_change_rate_std_12h")
+    cond3 = h_cr_std_qr is not None and h_cr_std_qr >= 0.80
+
+    # Cond4: OI persistence proxy (recovery time lengthening)
     oi_hurst_qr = qr.get("OI_hurst")
-    lv_qr = qr.get("LV")
-    autocorr_24h_qr = qr.get("price_autocorr_24h")
+    cond4 = oi_hurst_qr is not None and oi_hurst_qr >= 0.70
 
-    # Condition 3: liquidity deteriorating OR autocorr breakdown
-    cond3_lv = lv_qr is not None and lv_qr >= 0.70          # PLACEHOLDER — calibrate with v1.0.md when available
-    cond3_ac = autocorr_24h_qr is not None and autocorr_24h_qr <= 0.20  # PLACEHOLDER — calibrate with v1.0.md when available
-    cond3 = cond3_lv or cond3_ac
-
-    # No sub-condition available at all for cond3 — cannot evaluate
-    if lv_qr is None and autocorr_24h_qr is None:
+    if not (cond3 or cond4):
         return False, "", {}
 
-    if not cond3:
-        return False, "", {}
-
-    # OI_hurst available → require it; unavailable → relax (cond1 + cond3 sufficient)
-    if oi_hurst_qr is not None and oi_hurst_qr < 0.70:  # PLACEHOLDER — calibrate with v1.0.md when available
-        return False, "", {}
-
-    used: dict = {"sigma_p_d2": sigma_d2_qr}
-    parts = [f"sigma_p_d2@{sigma_d2_qr:.2f}"]
-
-    if oi_hurst_qr is not None:
+    used: dict = {
+        "price_autocorr_12h": ac12,
+        "price_autocorr_24h": ac24,
+        "price_autocorr_48h": ac48,
+        "sigma_p_d2": sigma_d2_qr,
+    }
+    parts = [
+        f"autocorr({ac12:.3f}>{ac24:.3f}>{ac48:.3f})",
+        f"sigma_d2@{sigma_d2_qr:.2f}",
+    ]
+    if cond3 and h_cr_std_qr is not None:
+        used["H_change_rate_std_12h"] = h_cr_std_qr
+        parts.append(f"H_cr_std@{h_cr_std_qr:.2f}")
+    if cond4 and oi_hurst_qr is not None:
         used["OI_hurst"] = oi_hurst_qr
         parts.append(f"OI_hurst@{oi_hurst_qr:.2f}")
-
-    if cond3_lv and lv_qr is not None:
-        used["LV"] = lv_qr
-        parts.append(f"LV@{lv_qr:.2f}")
-    if cond3_ac and autocorr_24h_qr is not None:
-        used["price_autocorr_24h"] = autocorr_24h_qr
-        parts.append(f"autocorr_24h@{autocorr_24h_qr:.2f}")
 
     reason = "CRITICAL:" + "+".join(parts)
     return True, reason, used
