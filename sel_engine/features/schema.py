@@ -26,6 +26,7 @@ class FeatureAvailability:
     sigma_p_d2: bool = False          # needs 3+ sigma_p values in history
     H_change_rate_std_12h: bool = False  # needs 13+ bars of H history
     OI_hurst: bool = False             # needs 48+ OI values
+    delta_H: bool = False              # needs consecutive bars of H; WIKI_REQUIRED
 
 
 @dataclass
@@ -57,5 +58,6 @@ class FeatureVector:
     sigma_p_d2: Optional[float] = None
     H_change_rate_std_12h: Optional[float] = None
     OI_hurst: Optional[float] = None
+    delta_H: Optional[float] = None   # |H_current - H_previous_bar|; doc §4.6 Cond4
     # Metadata
     availability: FeatureAvailability = field(default_factory=FeatureAvailability)

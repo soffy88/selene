@@ -31,6 +31,8 @@ QUANTILE_FEATURES = [
     "price_autocorr_12h",
     "OI",
     "funding_rate",
+    "H_change_rate_std_12h",  # doc §4.5 Cond3 Critical
+    "delta_H",                 # doc §4.6 Cond4 Cascade: |ΔH| this bar
 ]
 
 

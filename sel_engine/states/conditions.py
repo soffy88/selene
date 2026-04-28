@@ -12,38 +12,39 @@ from sel_engine.features.schema import FeatureVector
 
 def check_cascade(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
     """
-    Market regime collapse.
+    Market regime collapse. doc §4.6.
 
-    Primary: σ(P)_24h quantile rank ≥ 0.97   # PLACEHOLDER — calibrate with v1.0.md when available
-    Secondary (at least one):
-      |ΔP/P| quantile rank ≥ 0.95             # PLACEHOLDER — calibrate with v1.0.md when available
-      LV quantile rank ≥ 0.95                 # PLACEHOLDER — calibrate with v1.0.md when available
-      |TF| quantile rank ≥ 0.95               # PLACEHOLDER — calibrate with v1.0.md when available
+    Cond1 (primary gate): |ΔP|/P > 97th pct  [abs_delta_p_pct]
+    Cond2: volume > 95th pct — volume not in FeatureVector; always False
+    Cond3: LV > 95th pct
+    Cond4: |ΔH| > 95th pct  [delta_H = |H_current - H_previous|]
+    Trigger: Cond1 AND (Cond3 OR Cond4)   (Cond2 permanently short-circuited)
     """
-    sigma_qr = qr.get("sigma_p_24h")
-    if sigma_qr is None or sigma_qr < 0.97:  # PLACEHOLDER — calibrate with v1.0.md when available
+    abs_dp_qr = qr.get("abs_delta_p_pct")
+    if abs_dp_qr is None or abs_dp_qr < 0.97:
         return False, "", {}
 
     secondary = []
-    abs_dp_qr = qr.get("abs_delta_p_pct")
-    lv_qr = qr.get("LV")
-    abs_tf_qr = qr.get("abs_TF")
 
-    if abs_dp_qr is not None and abs_dp_qr >= 0.95:  # PLACEHOLDER — calibrate with v1.0.md when available
-        secondary.append(f"|delta_p|@{abs_dp_qr:.2f}")
-    if lv_qr is not None and lv_qr >= 0.95:           # PLACEHOLDER — calibrate with v1.0.md when available
+    # Cond3: LV > 95th pct
+    lv_qr = qr.get("LV")
+    if lv_qr is not None and lv_qr >= 0.95:
         secondary.append(f"LV@{lv_qr:.2f}")
-    if abs_tf_qr is not None and abs_tf_qr >= 0.95:   # PLACEHOLDER — calibrate with v1.0.md when available
-        secondary.append(f"|TF|@{abs_tf_qr:.2f}")
+
+    # Cond4: |ΔH| > 95th pct (volume/Cond2 not implemented)
+    delta_h_qr = qr.get("delta_H")
+    if delta_h_qr is not None and delta_h_qr >= 0.95:
+        secondary.append(f"|dH|@{delta_h_qr:.2f}")
 
     if not secondary:
         return False, "", {}
 
-    reason = f"CASCADE:sigma_p@{sigma_qr:.2f}+" + "+".join(secondary)
-    used: dict = {"sigma_p_24h": sigma_qr}
-    for k in ("abs_delta_p_pct", "LV", "abs_TF"):
-        if qr.get(k) is not None:
-            used[k] = qr[k]
+    used: dict = {"abs_delta_p_pct": abs_dp_qr}
+    if lv_qr is not None:
+        used["LV"] = lv_qr
+    if delta_h_qr is not None:
+        used["delta_H"] = delta_h_qr
+    reason = f"CASCADE:|delta_p|@{abs_dp_qr:.2f}+" + "+".join(secondary)
     return True, reason, used
 
 

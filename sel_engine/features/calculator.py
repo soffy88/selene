@@ -55,6 +55,9 @@ class FeatureCalculator:
         if H_samples is not None:
             fv.H, fv.H_sample_count = compute_H_from_samples(H_samples)
             avail.H = fv.H is not None
+            if fv.H is not None and H_history and H_history[-1] is not None:
+                fv.delta_H = abs(fv.H - H_history[-1])
+                avail.delta_H = True
         # else H remains None per WIKI_REQUIRED in liquidity.py
 
         # --- Orderbook depth ---
