@@ -617,6 +617,12 @@ Step 8: OOS 测试（只跑一次！）
 
 **问题 1**：6 个状态（含 Drifting 细分）的触发率分布合理吗？
 
+**重要**：所有触发率分母为 `active_bars`（state 非 None 的 bar 数），
+不包括 cold_start_bars / missing_data_bars / no_match_bars。
+理由：健康度区间的隐含语义是「在系统能判定的 bar 里」，而非「在所有 bar 里」。
+如果 collector 故障导致大量 missing_data，分母用 total_bars 会让所有状态占比
+看起来都低于健康区间，触发误报。实现见 `sel_engine/states/recognizer.py::compute_state_distribution()`。
+
 健康分布：
 - Drifting-Calm: 30~50%
 - Drifting-Charged: 10~25%
@@ -626,6 +632,9 @@ Step 8: OOS 测试（只跑一次！）
 - Cascade: 0.1~1%
 
 **问题 2**：状态转移合法率多少？
+
+**分母**：转移合法率分母为「所有发生过的状态转移次数」（不含 None→X 或 X→None 的转移）。
+
 - 健康基线：> 80%
 - 警告：60~80%
 - 重做：< 60%

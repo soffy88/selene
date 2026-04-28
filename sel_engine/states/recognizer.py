@@ -43,8 +43,11 @@ QUANTILE_FEATURES = [
 ]
 
 
-# Quantile features whose absence causes hard short-circuit in ≥1 condition.
-# Used by _none_reason_for_no_match to distinguish MISSING_DATA from NO_MATCH.
+# WARNING: This frozenset MUST be kept in sync with all WIKI-required features.
+# When adding a new condition that reads a feature dependent on collector data
+# (orderbook / trade_flow / oi_persister), add the feature name here.
+# See EC-05 in audit/engineering_concerns.md for the design rationale.
+# See test_hard_short_circuit_qr_covers_all_wiki_required_features for enforcement.
 _HARD_SHORT_CIRCUIT_QR: frozenset = frozenset({
     "H_24h_mean",              # Coiling §4.1 Cond2, Drifting-Calm §4.3 Cond2, Drifting-Charged §4.4 Cond2
     "abs_tf_24h_sum",          # Drifting-Calm §4.3 Cond3, Drifting-Charged §4.4 Cond3

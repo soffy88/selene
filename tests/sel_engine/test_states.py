@@ -18,7 +18,7 @@ from sel_engine.states.conditions import (
     check_drifting_charged,
     check_drifting_calm,
 )
-from sel_engine.states.recognizer import StateRecognizer, compute_state_distribution
+from sel_engine.states.recognizer import StateRecognizer, compute_state_distribution, _HARD_SHORT_CIRCUIT_QR
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1078,3 +1078,98 @@ class TestStateNoneReason:
         ))
         if result.state is not None:
             assert result.none_reason == StateNoneReason.NOT_APPLICABLE
+
+
+# ── EC-05 defense tests ────────────────────────────────────────────────────────
+
+class TestHardShortCircuitQRCoverage:
+    """Defense tests for _HARD_SHORT_CIRCUIT_QR — prevent silent regression if
+    a new WIKI feature is added to conditions without updating the frozenset."""
+
+    # Authoritative list of WIKI-required features that cause hard short-circuit.
+    # fv_direct: checked directly on the FeatureVector (not via qr dict).
+    # qr_features: must be in _HARD_SHORT_CIRCUIT_QR.
+    _FV_DIRECT: frozenset = frozenset({"tf_directional_ratio_6h"})
+    _REQUIRED_QR_FEATURES: frozenset = frozenset({
+        "H_24h_mean",
+        "abs_tf_24h_sum",
+        "oi_change_rate_24h",
+        "tf_dp_ratio_24h",
+        "abs_oi_change_rate_24h",
+    })
+
+    def test_hard_short_circuit_qr_covers_all_wiki_required_features(self):
+        """Every WIKI_REQUIRED quantile feature must be in _HARD_SHORT_CIRCUIT_QR.
+
+        If this test fails, a new WIKI feature was added to conditions but
+        _HARD_SHORT_CIRCUIT_QR in recognizer.py was not updated — MISSING_DATA
+        would be silently misclassified as NO_MATCH.
+        """
+        missing = self._REQUIRED_QR_FEATURES - _HARD_SHORT_CIRCUIT_QR
+        assert not missing, (
+            f"The following WIKI_REQUIRED features are not in _HARD_SHORT_CIRCUIT_QR: {missing}. "
+            f"Add them to _HARD_SHORT_CIRCUIT_QR in sel_engine/states/recognizer.py. "
+            f"See EC-05 in audit/engineering_concerns.md."
+        )
+
+    def test_no_match_only_when_all_wiki_features_present(self):
+        """NO_MATCH is only returned when all WIKI_REQUIRED features are present.
+        Nulling any individual WIKI feature must flip none_reason to MISSING_DATA.
+        """
+        WINDOW = RollingQuantileCalculator.WINDOW
+        rec = StateRecognizer()
+        t = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        # Warm to post-warmup with all WIKI features present
+        for i in range(WINDOW):
+            rec.recognize(make_fv(
+                time=t + timedelta(hours=i),
+                close=50000.0 + i,
+                delta_p_pct=0.1,
+                sigma_p_24h=0.005,
+                H_24h_mean=0.5,
+                abs_tf_24h_sum=100.0,
+                oi_change_rate_24h=0.01,
+                tf_dp_ratio_24h=0.5,
+                tf_directional_ratio_6h=0.3,
+            ))
+
+        base_t = t + timedelta(hours=WINDOW)
+
+        # Baseline: all features present, unremarkable values → state should be None with NO_MATCH
+        baseline = rec.recognize(make_fv(
+            time=base_t,
+            close=50000.0,
+            delta_p_pct=0.01,
+            sigma_p_24h=0.005,
+            H_24h_mean=0.5,
+            abs_tf_24h_sum=50.0,
+            oi_change_rate_24h=0.001,
+            tf_dp_ratio_24h=0.5,
+            tf_directional_ratio_6h=0.1,
+        ))
+        # If no condition fires, must be NO_MATCH (not MISSING_DATA)
+        if baseline.state is None:
+            assert baseline.none_reason == StateNoneReason.NO_MATCH, (
+                f"Expected NO_MATCH with all WIKI features present, got {baseline.none_reason}"
+            )
+
+        # Now null each WIKI feature one at a time — each must produce MISSING_DATA
+        wiki_cases = [
+            ("H_24h_mean",           dict(H_24h_mean=None)),
+            ("abs_tf_24h_sum",       dict(abs_tf_24h_sum=None)),
+            ("oi_change_rate_24h",   dict(oi_change_rate_24h=None)),
+            ("tf_dp_ratio_24h",      dict(tf_dp_ratio_24h=None)),
+            ("tf_directional_ratio_6h", dict(tf_directional_ratio_6h=None)),
+        ]
+        full_kwargs = dict(
+            close=50000.0, delta_p_pct=0.01, sigma_p_24h=0.005,
+            H_24h_mean=0.5, abs_tf_24h_sum=50.0, oi_change_rate_24h=0.001,
+            tf_dp_ratio_24h=0.5, tf_directional_ratio_6h=0.1,
+        )
+        for feat_name, override in wiki_cases:
+            kwargs = {**full_kwargs, **override}
+            result = rec.recognize(make_fv(time=base_t + timedelta(hours=1), **kwargs))
+            if result.state is None:
+                assert result.none_reason == StateNoneReason.MISSING_DATA, (
+                    f"Setting {feat_name}=None should yield MISSING_DATA, got {result.none_reason}"
+                )

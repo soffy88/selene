@@ -89,19 +89,21 @@
 
 **相关文件**：`sel_engine/states/recognizer.py::_HARD_SHORT_CIRCUIT_QR`、`recognizer.py::_none_reason_for_no_match()`
 
+**Defense in depth**：Task 1.8.2 新增 `test_hard_short_circuit_qr_covers_all_wiki_required_features` 和 `test_no_match_only_when_all_wiki_features_present`，防止未来 PR 新增 WIKI 特征时忘记更新 frozenset 而导致静默错分。
+
 ---
 
-## EC-06：`state_rates` 分母选 `active_bars`（非 `total_bars`）未在 §10.5 文档化（C = 文档缺失）
+## EC-06：`state_rates` 分母选 `active_bars`（非 `total_bars`）未在 §10.5 文档化（**RESOLVED**）
 
-**现象**：`compute_state_distribution()` 和 `HealthMonitor.generate()` 中，`state_rates` 分母为 `active_bars`（即已确认状态的 bar 数），而非 `total_bars`。
+**决策日期**：2026-04-28  
+**Resolution**：Documentation update in `docs/sel-lang-v1.0.md §10.5` to explicitly state denominators — `active_bars` for state rates, `transition_count` for legality rate.  
+**Code change**：None（实现已正确，仅文档补全）。
 
-**设计意图**：速率表示「有状态时各状态的相对频率」，分母含 cold_start/missing_data/no_match bar 会稀释速率使其失去可比性。
+~~**现象**：`compute_state_distribution()` 和 `HealthMonitor.generate()` 中，`state_rates` 分母为 `active_bars`（即已确认状态的 bar 数），而非 `total_bars`。~~
 
-**文档缺口**：`v1.0.md §10.5` 中 EXPECTED_RATE_RANGES 表格给出了速率期望范围，但未说明「速率分母为 active_bars」。若后续校准工作以 `total_bars` 为分母计算期望范围，阈值会不匹配。
+~~**文档缺口**：`v1.0.md §10.5` 中 EXPECTED_RATE_RANGES 表格给出了速率期望范围，但未说明「速率分母为 active_bars」。~~
 
-**不处理后果**：校准人员若未查看代码，可能以 `total_bars` 为基准设置错误的期望范围（如 `Cascade: [0.001, 0.03]`，若用 `total_bars` 分母则需换算）。
-
-**相关文件**：`sel_engine/states/recognizer.py::compute_state_distribution()`、`sel_engine/states/health.py::HealthMonitor.generate()`
+**相关文件**：`docs/sel-lang-v1.0.md §10.5`（已补全说明）、`sel_engine/states/recognizer.py::compute_state_distribution()`
 
 ---
 
@@ -139,5 +141,5 @@
 | EC-03 | writer.py 缺 delta_H 字段 | B（中） | 状态引擎无影响 | Cascade 历史记录不完整 |
 | EC-04 | sel_features 无写入（bar-close 未启动） | **A（高）** | **端到端断路** | 状态历史无法积累，下游信号无数据 |
 | EC-05 | MISSING_DATA 后验检查而非三值返回 | C（设计记录） | 无 | 新增 WIKI 特征时需手动同步集合 |
-| EC-06 | state_rates 分母 active_bars 未文档化 | C（设计记录） | 无 | 校准时分母误用导致阈值错误 |
+| EC-06 | state_rates 分母 active_bars 未文档化 | ~~C（设计记录）~~ **RESOLVED** | §10.5 已补全分母说明 | — |
 | EC-07 | Rule 2 对 collector 故障 vs 无状态命中动作未区分 | ~~A（高，待决策）~~ **RESOLVED** | 候选 B 已实装（HOLD+alert for MISSING_DATA） | — |
