@@ -156,42 +156,54 @@ def check_coiling(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
 
 def check_surging(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
     """
-    Directional price movement with momentum.
+    Directional price movement with momentum. doc §4.2.
 
-    |ΔP/P| quantile rank ≥ 0.70            # PLACEHOLDER — calibrate with v1.0.md when available
-    σ(P)_24h quantile rank ≥ 0.60          # PLACEHOLDER — calibrate with v1.0.md when available
-    price_autocorr_12h quantile rank ≥ 0.60 # PLACEHOLDER — calibrate with v1.0.md when available
-
-    Returns SURGING_UP if ΔP/P > 0, SURGING_DOWN if ΔP/P < 0.
-    Direction determined from raw FeatureVector value (not quantile).
+    Cond1: price_slope_6h > 80th pct  (strong 6H linear price trend)
+    Cond2: |tf_directional_ratio_6h| > 70%  (TF is directionally aligned)  [short-circuit if None]
+    Cond3: σ(P) rising over 12H  [skip sub-check when history unavailable]
+           AND std(Δσ) over 6H < 50th pct  [skip sub-check when unavailable]
+    Direction: sign(tf_directional_ratio_6h).
+    Surging is NOT triggered when TF data is absent (Cond2 is hard requirement).
+    Sigma rising lag = 12H; default pending empirical tuning.
     """
-    abs_dp_qr = qr.get("abs_delta_p_pct")
-    if abs_dp_qr is None or abs_dp_qr < 0.70:  # PLACEHOLDER — calibrate with v1.0.md when available
+    # Cond1: 6H price regression slope above 80th pct
+    slope_qr = qr.get("price_slope_6h")
+    if slope_qr is None or slope_qr < 0.80:
         return False, "", {}
 
-    sigma_qr = qr.get("sigma_p_24h")
-    if sigma_qr is None or sigma_qr < 0.60:  # PLACEHOLDER — calibrate with v1.0.md when available
+    # Cond2: TF directionally aligned — hard short-circuit when TF absent
+    tf_dir = fv.tf_directional_ratio_6h
+    if tf_dir is None or abs(tf_dir) <= 0.70:
         return False, "", {}
 
-    autocorr_12h_qr = qr.get("price_autocorr_12h")
-    if autocorr_12h_qr is None or autocorr_12h_qr < 0.60:  # PLACEHOLDER — calibrate with v1.0.md when available
+    direction = "UP" if tf_dir > 0 else "DOWN"
+
+    # Cond3a: σ rising over 12H (skip if history insufficient)
+    sigma_rising = fv.sigma_rising_12h
+    if sigma_rising is not None and not sigma_rising:
         return False, "", {}
 
-    # Direction from the raw delta_p_pct value (positive = up, negative = down)
-    # When delta_p_pct is 0 or None, default to Surging_Up (edge case)
-    direction = "UP"
-    if fv.delta_p_pct is not None and fv.delta_p_pct < 0:
-        direction = "DOWN"
+    # Cond3b: σ change rate stable (skip if unavailable)
+    sigma_cr_std_qr = qr.get("sigma_change_rate_std_6h")
+    if sigma_cr_std_qr is not None and sigma_cr_std_qr >= 0.50:
+        return False, "", {}
 
-    used = {
-        "abs_delta_p_pct": abs_dp_qr,
-        "sigma_p_24h": sigma_qr,
-        "price_autocorr_12h": autocorr_12h_qr,
+    used: dict = {
+        "price_slope_6h": slope_qr,
+        "tf_directional_ratio_6h": abs(tf_dir),
     }
-    reason = (
-        f"SURGING_{direction}:|delta_p|@{abs_dp_qr:.2f}"
-        f"+sigma_p@{sigma_qr:.2f}+autocorr_12h@{autocorr_12h_qr:.2f}"
-    )
+    parts = [
+        f"slope_6h@{slope_qr:.2f}",
+        f"tf_dir@{abs(tf_dir):.2f}",
+    ]
+    if sigma_rising is not None:
+        used["sigma_rising_12h"] = float(sigma_rising)
+        parts.append(f"sigma_rising={sigma_rising}")
+    if sigma_cr_std_qr is not None:
+        used["sigma_change_rate_std_6h"] = sigma_cr_std_qr
+        parts.append(f"sigma_cr_std@{sigma_cr_std_qr:.2f}")
+
+    reason = f"SURGING_{direction}:" + "+".join(parts)
     return True, reason, used
 
 
