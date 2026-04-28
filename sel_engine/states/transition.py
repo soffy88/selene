@@ -179,13 +179,31 @@ class CascadeCooling:
             and record.time < self._cascade_end_time
         ):
             self.cooling_events += 1
-            held_state = last_confirmed if last_confirmed is not None else StateLabel.DRIFTING_CALM
+            # Per v1.0 §7.5: Critical suppression during cascade cooling enters
+            # "undefined" state, not DRIFTING_CALM. When no prior state exists,
+            # return state=None to avoid synthetic state pollution.
+            if last_confirmed is None:
+                return StateRecord(
+                    time=record.time,
+                    symbol=record.symbol,
+                    state=None,
+                    reason=(
+                        f"CASCADE_COOLING_SUPPRESSED_CRITICAL_NO_PRIOR"
+                        f"(cooling until {self._cascade_end_time.isoformat()})"
+                    ),
+                    feature_quantiles=record.feature_quantiles,
+                    feature_vector=record.feature_vector,
+                    cold_start=False,
+                    is_legal_transition=record.is_legal_transition,
+                    transition_from=record.transition_from,
+                    none_reason=StateNoneReason.NO_MATCH,
+                )
             return StateRecord(
                 time=record.time,
                 symbol=record.symbol,
-                state=held_state,
+                state=last_confirmed,
                 reason=(
-                    f"CASCADE_COOLING:{held_state.value}"
+                    f"CASCADE_COOLING_HOLD_PRIOR:{last_confirmed.value}"
                     f"(critical suppressed until {self._cascade_end_time.isoformat()})"
                 ),
                 feature_quantiles=record.feature_quantiles,

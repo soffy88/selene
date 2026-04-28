@@ -295,6 +295,35 @@ class TestCascadeCooling:
         assert r2.state != StateLabel.CRITICAL
         assert "CASCADE_COOLING" in r2.reason
 
+    def test_cascade_cooling_no_prior_returns_none(self):
+        """Per v1.0 §7.5: when last_confirmed is None (no prior confirmed state),
+        Critical suppression must return state=None, not DRIFTING_CALM.
+        """
+        cooling = CascadeCooling(cooldown_bars=6)
+        # Arm cooldown: first CASCADE ever, last_confirmed=None
+        cooling.apply(_make_record(StateLabel.CASCADE, time=_t(0)), None)
+        # CRITICAL candidate inside cooling window, still no prior confirmed state
+        result = cooling.apply(_make_record(StateLabel.CRITICAL, time=_t(1)), None)
+        assert result.state is None, (
+            f"Expected state=None when no prior confirmed state; got {result.state}. "
+            f"Returning DRIFTING_CALM would synthesise a false state — see v1.0 §7.5."
+        )
+        assert "CASCADE_COOLING" in result.reason
+        from sel_engine.states.schema import StateNoneReason
+        assert result.none_reason == StateNoneReason.NO_MATCH
+
+    def test_cascade_cooling_with_prior_holds_state(self):
+        """When last_confirmed is set, Critical suppression holds the prior state."""
+        cooling = CascadeCooling(cooldown_bars=6)
+        prior = StateLabel.SURGING_UP
+        # Arm cooling from a state that had a prior confirmed state
+        cooling.apply(_make_record(StateLabel.CASCADE, time=_t(0)), prior)
+        # CRITICAL inside cooling — should hold CASCADE (the last confirmed at that point)
+        result = cooling.apply(_make_record(StateLabel.CRITICAL, time=_t(2)), StateLabel.CASCADE)
+        assert result.state == StateLabel.CASCADE
+        assert result.state != StateLabel.CRITICAL
+        assert "CASCADE_COOLING" in result.reason
+
 
 # ── LegalityChecker ────────────────────────────────────────────────────────────
 
