@@ -10,8 +10,8 @@ Consult this file before starting Wave 3+ implementation to ensure no stub is mi
 | **liq_pulse** | `evaluate()` 布尔参数，默认 `False`。`True` → Step 4 ABORT | `v2_liquidations` 表 + 滚动 5 min 清算强度 > 95 分位触发 | Wave 3 |
 | **cross_spread_pct** | `evaluate()` 浮点参数，默认 `None`。`> 0.5%` → Step 5 ABORT | 多交易所 ticker collector（Binance / Bybit / OKX） → 实时价差计算 | Wave 3 后 |
 | **DB 写入** (`v2_cusum_events` / `v2_decision_trail`) | `evaluate()` 纯内存函数，不写任何 DB | 实时事件循环 + DB writer；每次 `evaluate()` 调用写 v2_cusum_events；ENTER 决策写 v2_decision_trail | Wave 3 |
-| **H1 Hawkes 参数** (`HawkesParams.from_h2_reference()`) | 从 `v2_strategy_params` 读取 Wave 1 H2 4H-bar MLE 拟合值（`mu_ref=0.093136 / alpha_ref=0.023899 / beta_ref=0.043163`）作为 cold-start 占位。H2 是 4H 尺度过程，与 H1 秒级 tracker 时间尺度不同。 | 7 天+ tick 数据积累后调用 `fit_gmm()` 在线估计真实 per-second 参数 | Wave 3 |
-| **CUSUM 阈值** (`CUSUMShort` threshold) | 7 天滚动 95 分位（`< 20` 峰值时 cold-start 默认 `h=2.0`） | Month 1 纸交易后基于真实数据校准 drift_k 和 threshold_quantile（§11.4） | Wave 3 后 |
+| **H1 Hawkes 参数** (`HawkesParams.from_h2_reference()`) | 从 `v2_strategy_params` 读取 Wave 1 H2 4H-bar MLE 拟合值（`mu_ref=0.093136 / alpha_ref=0.023899 / beta_ref=0.043163`）作为 cold-start 占位。H2 是 4H 尺度过程，与 H1 秒级 tracker 时间尺度不同。 | 7 天+ tick 数据积累后调用 `fit_gmm()` 在线估计真实 per-second 参数 | Wave 3 (实时事件循环接入时启用 fit_gmm，fallback 路径继续从 v2_strategy_params 读) |
+| **CUSUM 阈值** (`CUSUMShort` threshold) | 7 天滚动 95 分位（`< 20` 峰值时 cold-start 默认 `h=2.0`） | Month 1 纸交易后基于真实数据校准 drift_k 和 threshold_quantile（§11.4） | Wave 6 / Wave 7 (paper Month 3 / Month 6 评估后，按 v2.1 §11.4 / §13.1 节点) |
 
 ## 依赖关系
 

@@ -3,6 +3,12 @@ End-to-end integration test: CUSUMShort → HawkesIntensityTracker → Strategy2
 
 Uses synthetic 1-second tick z-score sequences to exercise the full chain
 without mocking any internal logic (only params_loader is mocked via conftest).
+
+STUB note: This e2e test passes OFI / liq_pulse / cross_spread / vocab as
+hardcoded scalar values to _run_chain(), bypassing real LOB / liquidation /
+cross-exchange feed inference. These tests verify routing logic only, NOT
+signal inference logic. Real OFI / vocab inference is Wave 3 STUB
+(see sel_v2/strategies/STUB_BOUNDARIES.md).
 """
 import pytest
 
