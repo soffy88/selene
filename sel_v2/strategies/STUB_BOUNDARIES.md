@@ -76,5 +76,20 @@ Update this file whenever a STUB is added or removed.
 ```
 
 ---
+
+## Wave 5 Observation Tool STUBs
+
+| STUB 项 | 工具 | 当前替代实现 | 真实实现需要 | 激活条件 |
+|---|---|---|---|---|
+| **B1 pymc/numpyro** | `bayesian_hmm.py` | 自实现 Baum-Welch EM（2-state frequentist HMM）| pymc 或 numpyro 安装 | 环境加 pymc 后 |
+| **B1 特征: entropy/OI** | `bayesian_hmm.py` | 仅 return + σ | LOB entropy、OI 数据 | LOB/OI collector 30 天后 |
+| **B2 Drifting-Charged** | `hmm_boundary_arbiter.py` | Drifting-Charged 永远不识别（OI/funding STUB）| helixa GRANT + OI 数据 | kanpan helixa_grants.sql |
+| **T2 因果关系** | `transfer_entropy_rolling.py` | funding_rate STUB → NO_DATA | funding/OFI/链上/跨所价差数据 | helixa GRANT + LOB |
+| **H3 liquidation 事件流** | `hawkes_cascade_warning.py` | bar-level proxy（价格方向+成交量）| v2_liquidations 表数据 | liquidation collector 接入 |
+| **H3 buy/sell 事件流** | `hawkes_cascade_warning.py` | bar-level proxy | tick-level LOB 买卖事件流 | LOB collector 30 天后 |
+| **周报 DB 查询** | `reports/scheduler.py` | 静态 stub 数据（Drifting_Calm 98%）| v2_state_history / v2_cusum_events / v2_strategy_trades 查询 | paper trading 启动后 |
+| **ToolEvaluator DB** | `evaluation/tool_evaluator.py` | 空列表（无 DB）| v2_inverse_vocab_events + v2_state_history | paper trading Month 3 评估 |
+
+---
 *维护责任: 每次新增 STUB 必须在此文件登记*
-*最后更新: Wave 4 实施*
+*最后更新: Wave 5 实施*
