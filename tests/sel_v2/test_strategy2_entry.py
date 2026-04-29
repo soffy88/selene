@@ -23,10 +23,9 @@ def _make_trigger(triggered=True, direction="LONG", coeff=1.5, threshold=2.0):
     )
 
 
-def _make_filter_with_warm_hawkes(lam_high=1.0, lam_low=0.001):
+def _make_filter_with_warm_hawkes(lam_high=1.0):
     """Create a Strategy2EntryFilter with a warm (> 20 obs) threshold."""
     f = Strategy2EntryFilter()
-    # Seed threshold with 25 high-intensity observations
     t_base = 1_000_000.0
     for i in range(25):
         f.hawkes_threshold.add(t_base + i * 10, lam_high)
@@ -47,9 +46,6 @@ def test_no_cusum_trigger_returns_observe():
 
 def test_h1_gate_blocks_low_intensity():
     f, t_warm = _make_filter_with_warm_hawkes(lam_high=1.0)
-    # Hawkes tracker has no events → intensity = mu (very low ~1e-5)
-    # Threshold is 70th pct of 25 observations at 1.0 → threshold ≈ 1.0
-    # So low mu will fail
     trigger = _make_trigger(triggered=True, direction="LONG")
     d = f.evaluate(t=t_warm + 1, cusum_trigger=trigger, state_4h="Coiling")
     assert d.action == "OBSERVE"
@@ -59,27 +55,21 @@ def test_h1_gate_blocks_low_intensity():
 
 def test_h1_gate_passes_high_intensity():
     f = Strategy2EntryFilter()
-    # Override tracker with very high intensity params
     f.hawkes_tracker = HawkesIntensityTracker(
         HawkesParams(mu=100.0, alpha=0.3, beta=0.5)
     )
-    # Threshold is cold (None) → pass-through
     trigger = _make_trigger(triggered=True, direction="LONG")
     d = f.evaluate(t=1e6, cusum_trigger=trigger, state_4h="Coiling",
-                   inverse_vocab=["Sweep"])
-    # Should pass H1 (cold threshold → pass-through) and proceed
+                   inverse_vocab=["Sweep"], ofi_persistent_same_direction=True)
     assert d.hawkes_passed is True or d.step_reached >= 2
 
 
 def test_h1_gate_pass_through_when_cold():
     """Cold threshold (< 20 obs) should not block."""
     f = Strategy2EntryFilter()
-    # Hawkes tracker: mu very low but threshold is cold
     trigger = _make_trigger(triggered=True, direction="LONG")
     d = f.evaluate(t=1e6, cusum_trigger=trigger, state_4h="Coiling",
-                   inverse_vocab=["Sweep"])
-    # Cold threshold → pass-through → Step 1b passes
-    # Next step is Step 3 (vocab), with ["Sweep"] only (no Absorption) → Type B entry
+                   inverse_vocab=["Sweep"], ofi_persistent_same_direction=True)
     assert d.hawkes_passed is True
     assert d.step_reached >= 3
 
@@ -101,7 +91,7 @@ def test_critical_state_allowed():
     f = Strategy2EntryFilter()
     trigger = _make_trigger(triggered=True, direction="LONG")
     d = f.evaluate(t=1e6, cusum_trigger=trigger, state_4h="Critical",
-                   inverse_vocab=["Sweep"])
+                   inverse_vocab=["Sweep"], ofi_persistent_same_direction=True)
     assert d.action != "ABORT" or "Cascade" not in d.reason
 
 
@@ -111,27 +101,27 @@ def test_empty_vocab_aborts():
     f = Strategy2EntryFilter()
     trigger = _make_trigger(triggered=True, direction="LONG")
     d = f.evaluate(t=1e6, cusum_trigger=trigger, state_4h="Coiling",
-                   inverse_vocab=[])
+                   inverse_vocab=[], ofi_persistent_same_direction=True)
     assert d.action == "ABORT"
     assert d.step_reached == 3
 
 
 def test_type_a_reversal_inverts_direction():
-    """Absorption + Sweep → Type A → direction inverted."""
+    """Absorption + Sweep → Type A → direction inverted (OFI not required)."""
     f = Strategy2EntryFilter()
     trigger = _make_trigger(triggered=True, direction="LONG")
     d = f.evaluate(t=1e6, cusum_trigger=trigger, state_4h="Coiling",
                    inverse_vocab=["Absorption", "Sweep"])
-    # Type A reversal: CUSUM=LONG → enter SHORT
     assert d.action == "ENTER_SHORT"
 
 
 def test_type_b_momentum_same_direction():
-    """No Absorption → Type B → direction same as CUSUM."""
+    """No Absorption + OFI confirmed → Type B → direction same as CUSUM."""
     f = Strategy2EntryFilter()
     trigger = _make_trigger(triggered=True, direction="LONG")
     d = f.evaluate(t=1e6, cusum_trigger=trigger, state_4h="Coiling",
-                   inverse_vocab=["Sweep"])
+                   inverse_vocab=["Sweep"],
+                   ofi_persistent_same_direction=True)
     assert d.action == "ENTER_LONG"
 
 
@@ -139,8 +129,31 @@ def test_type_b_short_momentum():
     f = Strategy2EntryFilter()
     trigger = _make_trigger(triggered=True, direction="SHORT")
     d = f.evaluate(t=1e6, cusum_trigger=trigger, state_4h="Drifting-Charged",
-                   inverse_vocab=["Sweep"])
+                   inverse_vocab=["Sweep"],
+                   ofi_persistent_same_direction=True)
     assert d.action == "ENTER_SHORT"
+
+
+def test_type_b_aborts_when_ofi_unknown():
+    """ofi_persistent_same_direction=None must abort (Type B cannot trigger)."""
+    f = Strategy2EntryFilter()
+    trigger = _make_trigger(triggered=True, direction="LONG")
+    d = f.evaluate(t=1e6, cusum_trigger=trigger, state_4h="Coiling",
+                   inverse_vocab=["Sweep"],
+                   ofi_persistent_same_direction=None)
+    assert d.action == "ABORT"
+    assert d.step_reached == 3
+
+
+def test_type_b_aborts_when_ofi_false():
+    """ofi_persistent_same_direction=False must abort (OFI not confirmed)."""
+    f = Strategy2EntryFilter()
+    trigger = _make_trigger(triggered=True, direction="LONG")
+    d = f.evaluate(t=1e6, cusum_trigger=trigger, state_4h="Coiling",
+                   inverse_vocab=["Sweep"],
+                   ofi_persistent_same_direction=False)
+    assert d.action == "ABORT"
+    assert d.step_reached == 3
 
 
 # ── Step 4: Liquidation pulse ──────────────────────────────────────────────────
@@ -149,7 +162,9 @@ def test_liq_pulse_aborts():
     f = Strategy2EntryFilter()
     trigger = _make_trigger(triggered=True, direction="LONG")
     d = f.evaluate(t=1e6, cusum_trigger=trigger, state_4h="Coiling",
-                   inverse_vocab=["Sweep"], liq_pulse=True)
+                   inverse_vocab=["Sweep"],
+                   ofi_persistent_same_direction=True,
+                   liq_pulse=True)
     assert d.action == "ABORT"
     assert d.step_reached == 4
 
@@ -160,7 +175,9 @@ def test_high_spread_aborts():
     f = Strategy2EntryFilter()
     trigger = _make_trigger(triggered=True, direction="LONG")
     d = f.evaluate(t=1e6, cusum_trigger=trigger, state_4h="Coiling",
-                   inverse_vocab=["Sweep"], cross_spread_pct=0.6)
+                   inverse_vocab=["Sweep"],
+                   ofi_persistent_same_direction=True,
+                   cross_spread_pct=0.6)
     assert d.action == "ABORT"
     assert d.step_reached == 5
 
@@ -169,7 +186,9 @@ def test_low_spread_passes():
     f = Strategy2EntryFilter()
     trigger = _make_trigger(triggered=True, direction="LONG")
     d = f.evaluate(t=1e6, cusum_trigger=trigger, state_4h="Coiling",
-                   inverse_vocab=["Sweep"], cross_spread_pct=0.05)
+                   inverse_vocab=["Sweep"],
+                   ofi_persistent_same_direction=True,
+                   cross_spread_pct=0.05)
     assert d.action == "ENTER_LONG"
 
 
@@ -179,17 +198,17 @@ def test_leverage_default_3x():
     f = Strategy2EntryFilter()
     trigger = _make_trigger(triggered=True, direction="LONG")
     d = f.evaluate(t=1e6, cusum_trigger=trigger, state_4h="Coiling",
-                   inverse_vocab=["Sweep"])
+                   inverse_vocab=["Sweep"],
+                   ofi_persistent_same_direction=True)
     assert d.suggested_leverage == 3.0
 
 
 def test_leverage_5x_on_high_confidence():
-    """2+ vocab tags → 5x leverage."""
+    """2+ vocab tags → 5x leverage (Type A entry, OFI not needed)."""
     f = Strategy2EntryFilter()
     trigger = _make_trigger(triggered=True, direction="LONG")
     d = f.evaluate(t=1e6, cusum_trigger=trigger, state_4h="Coiling",
                    inverse_vocab=["Absorption", "Sweep"])
-    # Type A entry (Absorption + Sweep) → suggested_leverage = 5x
     assert d.suggested_leverage == 5.0
 
 
@@ -199,7 +218,6 @@ def test_full_happy_path_long():
     """Simulate a clean LONG entry: CUSUM trigger + cold H1 + Type B + no blocks."""
     f = Strategy2EntryFilter()
     cusum = CUSUMShort(drift_k=0.5)
-    # Build up CUSUM to trigger
     r = None
     for _ in range(5):
         r = cusum.update(2.0)
@@ -210,6 +228,7 @@ def test_full_happy_path_long():
         cusum_trigger=r,
         state_4h="Surging",
         inverse_vocab=["Sweep"],
+        ofi_persistent_same_direction=True,
     )
     assert d.action == "ENTER_LONG"
     assert d.step_reached == 6

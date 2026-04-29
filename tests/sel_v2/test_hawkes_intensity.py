@@ -1,6 +1,7 @@
 """Unit tests for sel_v2.strategies.hawkes_intensity (H1)."""
 import math
 import time
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -10,6 +11,11 @@ from sel_v2.strategies.hawkes_intensity import (
     HawkesParams,
     RollingIntensityThreshold,
 )
+
+# These are the Wave-1 H2 calibration values injected via conftest mock.
+_MOCK_MU    = 0.093136
+_MOCK_ALPHA = 0.023899
+_MOCK_BETA  = 0.043163
 
 
 # ── HawkesParams ──────────────────────────────────────────────────────────────
@@ -25,11 +31,26 @@ def test_branching_ratio_zero_beta():
 
 
 def test_from_h2_reference():
+    """
+    from_h2_reference() must read from v2_strategy_params (mocked via conftest).
+    Verify returned params match the mocked DB values exactly.
+    """
     p = HawkesParams.from_h2_reference()
-    assert p.mu > 0
-    assert p.alpha > 0
-    assert p.beta > 0
-    assert p.branching_ratio < 1.0  # sub-critical
+    assert p.mu    == pytest.approx(_MOCK_MU,    rel=1e-6)
+    assert p.alpha == pytest.approx(_MOCK_ALPHA, rel=1e-6)
+    assert p.beta  == pytest.approx(_MOCK_BETA,  rel=1e-6)
+    # Branching ratio from calibrated values is sub-critical (eta ≈ 0.55)
+    assert 0.0 < p.branching_ratio < 1.0
+
+
+def test_from_h2_reference_raises_on_missing_params():
+    """from_h2_reference() must raise RuntimeError when DB row is absent."""
+    with patch(
+        "sel_v2.strategies.params_loader.load_strategy_params",
+        side_effect=RuntimeError("v2_strategy_params: missing params"),
+    ):
+        with pytest.raises(RuntimeError, match="v2_strategy_params"):
+            HawkesParams.from_h2_reference()
 
 
 # ── HawkesIntensityTracker ────────────────────────────────────────────────────
@@ -54,9 +75,9 @@ def test_intensity_decays_to_baseline():
     tracker = HawkesIntensityTracker(p)
     tracker.add_event(0.0)
     lam_right = tracker.intensity(0.01)
-    lam_later = tracker.intensity(100.0)   # far in the future
+    lam_later = tracker.intensity(100.0)
     assert lam_right > lam_later
-    assert abs(lam_later - p.mu) < 1e-6   # converges to baseline
+    assert abs(lam_later - p.mu) < 1e-6
 
 
 def test_intensity_monotone_decaying_after_last_event():
@@ -97,11 +118,9 @@ def test_reset_clears_state():
 def test_multiple_events_superposition():
     p = HawkesParams(mu=0.1, alpha=0.5, beta=1.0)
     tracker = HawkesIntensityTracker(p)
-    # Add 3 events at t=0,1,2 and query at t=2
     tracker.add_event(0.0)
     tracker.add_event(1.0)
     lam_at_2 = tracker.add_event(2.0)
-    # Manual: A at t=2 = e^{-1}*(1+e^{-1}*(1+1)) = e^{-1}*(1 + e^{-1}*2)
     e1 = math.exp(-1.0)
     A_expected = e1 * (1.0 + e1 * (1.0 + 1.0))
     lam_expected = p.mu + p.alpha * A_expected
@@ -116,29 +135,34 @@ def test_update_params_preserves_consistency():
     tracker.add_event(2.0)
     p2 = HawkesParams(mu=0.2, alpha=0.6, beta=1.0)
     tracker.update_params(p2)
-    # After update, intensity should use new params; just check it doesn't crash
-    # and is > mu
     lam = tracker.intensity(3.0)
     assert lam >= p2.mu
+
+
+def test_default_constructor_uses_h2_reference():
+    """HawkesIntensityTracker() with no args must use from_h2_reference() values."""
+    tracker = HawkesIntensityTracker()
+    assert tracker.params.mu    == pytest.approx(_MOCK_MU,    rel=1e-6)
+    assert tracker.params.alpha == pytest.approx(_MOCK_ALPHA, rel=1e-6)
+    assert tracker.params.beta  == pytest.approx(_MOCK_BETA,  rel=1e-6)
 
 
 # ── GMM estimation ────────────────────────────────────────────────────────────
 
 def test_fit_gmm_insufficient_data_fallback():
+    # fit_gmm falls back to from_h2_reference() when N < 10
     params = HawkesIntensityTracker.fit_gmm(np.array([1.0, 2.0]), T=10.0)
-    # Should return H2 reference (fallback)
     assert params.mu > 0 and params.alpha > 0 and params.beta > 0
 
 
 def test_fit_gmm_returns_valid_params():
     rng = np.random.default_rng(42)
-    # Simulate event times from Poisson with rate 0.5/sec over 1 hour
     event_times = np.sort(rng.uniform(0, 3600, 500))
     params = HawkesIntensityTracker.fit_gmm(event_times, T=3600.0)
     assert params.mu > 0
     assert params.alpha > 0
     assert params.beta > 0
-    assert 0.0 < params.branching_ratio < 2.0  # reasonable range
+    assert 0.0 < params.branching_ratio < 2.0
 
 
 def test_fit_gmm_estimated_intensity_positive():
@@ -161,10 +185,8 @@ def test_threshold_none_when_cold():
 
 def test_threshold_above_low_intensity():
     th = RollingIntensityThreshold(window_seconds=3600, quantile=0.70)
-    # Add 25 observations with value ~1.0
     for i in range(25):
         th.add(float(i * 10), 1.0)
-    # A value of 2.0 should be above 70th pct of [1.0, ..., 1.0]
     assert th.above_threshold(250.0, 2.0)
 
 
@@ -172,13 +194,11 @@ def test_threshold_below_high_intensity():
     th = RollingIntensityThreshold(window_seconds=3600, quantile=0.70)
     for i in range(25):
         th.add(float(i * 10), 5.0)
-    # A value of 0.1 should be below threshold
     assert not th.above_threshold(250.0, 0.1)
 
 
 def test_threshold_pass_through_when_cold():
     th = RollingIntensityThreshold(window_seconds=3600, quantile=0.70)
-    # Only 5 observations — should pass through (return True)
     for i in range(5):
         th.add(float(i), 10.0)
     assert th.above_threshold(10.0, 0.001) is True
@@ -187,10 +207,9 @@ def test_threshold_pass_through_when_cold():
 def test_threshold_evicts_old_observations():
     th = RollingIntensityThreshold(window_seconds=100.0, quantile=0.70)
     for i in range(25):
-        th.add(float(i), 1.0)       # old observations at t=0..24
+        th.add(float(i), 1.0)
     for i in range(25):
-        th.add(200.0 + float(i), 5.0)  # new observations at t=200..224
-    # Old observations (t < 124) should be evicted; threshold based on 5.0 values
+        th.add(200.0 + float(i), 5.0)
     thr = th.threshold(225.0)
     assert thr is not None
     assert abs(thr - 5.0) < 0.01

@@ -32,15 +32,6 @@ from typing import Deque, List, Optional, Tuple
 
 import numpy as np
 
-# Default per-second Hawkes parameters for H1 tick-level process.
-# Derived from H2 Wave-1 branching ratio (η=0.55) at a physically meaningful
-# tick timescale (β ~5s half-life, typical BTC microstructure).
-# H2 4H-bar parameters cannot be linearly rescaled to per-second (different process).
-# Replace with fit_gmm() output once tick data accumulates.
-H2_MU_REF: float = 1.0          # placeholder baseline: ~1 event/sec (BTC 24/7)
-H2_ALPHA_REF: float = 0.11      # self-excitation: η*β = 0.55 * 0.2
-H2_BETA_REF: float = 0.2        # decay rate: ~5s characteristic time
-
 # H1 threshold quantile per v2.1 §5.1 (placeholder — calibrate after paper data)
 DEFAULT_THRESHOLD_QUANTILE: float = 0.70
 # Rolling window for threshold computation: 7 days in seconds
@@ -58,9 +49,33 @@ class HawkesParams:
         return self.alpha / self.beta if self.beta > 0 else float("inf")
 
     @classmethod
-    def from_h2_reference(cls) -> "HawkesParams":
-        """Initial params from Wave-1 H2 offline calibration, rescaled to per-second."""
-        return cls(mu=H2_MU_REF, alpha=H2_ALPHA_REF, beta=H2_BETA_REF)
+    def from_h2_reference(cls, db_url: Optional[str] = None) -> "HawkesParams":
+        """
+        Load Wave 1 H2 offline calibration results from v2_strategy_params as
+        the H1 cold-start parameters.
+
+        IMPORTANT — scale mismatch:
+          H2 parameters (mu, alpha, beta) are fitted to the 4H-bar Hawkes process
+          (one time unit = one 4H bar, event = |return| > 1σ).
+          H1 is a per-second tick-arrival process — a fundamentally different process
+          at a different timescale.  Using H2 parameters as H1 cold-start is a
+          deliberate PLACEHOLDER only.  Once 7+ days of tick data accumulate,
+          fit_gmm() should replace these with on-line estimates.
+
+        Raises RuntimeError if the required rows are absent from v2_strategy_params
+        (i.e. Wave 1 calibration has not been run).  Silent fallback is not allowed.
+        """
+        from sel_v2.strategies.params_loader import load_strategy_params
+        params = load_strategy_params(
+            strategy="h2",
+            param_names=["mu_ref", "alpha_ref", "beta_ref"],
+            db_url=db_url,
+        )
+        return cls(
+            mu=params["mu_ref"],
+            alpha=params["alpha_ref"],
+            beta=params["beta_ref"],
+        )
 
 
 @dataclass
@@ -123,11 +138,9 @@ class HawkesIntensityTracker:
     def update_params(self, params: HawkesParams) -> None:
         """Hot-swap parameters after re-estimation. Recomputes A from history."""
         self.params = params
-        # Rebuild A from recent event history
         self._A = 0.0
         if not self._event_history:
             return
-        # Recompute: A_n = exp(-β*Δt)*(1 + A_{n-1})
         ts = [obs.timestamp for obs in self._event_history]
         beta = params.beta
         a = 0.0
@@ -145,7 +158,7 @@ class HawkesIntensityTracker:
     def fit_gmm(
         event_times: np.ndarray,
         T: float,
-        beta_init: float = H2_BETA_REF,
+        beta_init: float = 0.2,
         n_lags: int = 3,
     ) -> HawkesParams:
         """
@@ -166,21 +179,14 @@ class HawkesIntensityTracker:
 
         lam_bar = N / T
 
-        # Estimate β from lag-1 inter-arrival autocovariance
         if N >= 2:
             deltas = np.diff(event_times)
             mean_delta = float(np.mean(deltas))
-            # For exponential Hawkes, E[δ] ≈ 1/λ̄ in the sub-critical regime.
-            # Autocorrelation of inter-arrivals: r_1 ≈ (α/β)^2 / (2 - (α/β)^2)
-            # We estimate β ≈ 1 / mean_delta as a moment estimator.
             beta_est = 1.0 / max(mean_delta, 1e-10)
         else:
             beta_est = beta_init
 
-        # Estimate branching ratio η from variance / mean ratio
-        # Var[N(0,T)] / E[N(0,T)] = 1 + 2η/(1-η) → η = (v-1)/(v+1) where v = Var/Mean
         if N >= 20 and T > 0:
-            # Break T into chunks to estimate variance of counts
             chunk_size = T / max(int(N / 5), 2)
             n_chunks = int(T / chunk_size)
             counts = np.array([
@@ -193,11 +199,10 @@ class HawkesIntensityTracker:
                 v = var_c / mean_c
                 eta_est = max(0.0, min((v - 1.0) / (v + 1.0), 0.99))
             else:
-                eta_est = H2_ALPHA_REF / (H2_BETA_REF + 1e-30)
+                eta_est = 0.55  # sub-critical fallback matching H2 branching ratio
         else:
-            eta_est = H2_ALPHA_REF / (H2_BETA_REF + 1e-30)
+            eta_est = 0.55
 
-        # Recover μ and α
         alpha_est = eta_est * beta_est
         mu_est = lam_bar * (1.0 - eta_est)
         mu_est = max(mu_est, 1e-10)
@@ -222,7 +227,6 @@ class RollingIntensityThreshold:
     ) -> None:
         self.window_seconds = window_seconds
         self.quantile = quantile
-        # Circular buffer of (timestamp, value) pairs
         self._buffer: Deque[Tuple[float, float]] = deque()
 
     def add(self, t: float, intensity: float) -> None:

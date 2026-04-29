@@ -16,6 +16,7 @@ Decision tree (v2.1):
 
 Steps 3–5 are marked STUB — full implementation requires LOB + liquidation
 feeds which are not yet flowing (v2_liquidations = 0 rows).
+See sel_v2/strategies/STUB_BOUNDARIES.md for the complete stub registry.
 """
 from __future__ import annotations
 
@@ -69,6 +70,7 @@ class Strategy2EntryFilter:
         cusum_trigger: CUSUMTrigger,
         state_4h: Optional[str],
         inverse_vocab: Optional[list[str]] = None,
+        ofi_persistent_same_direction: Optional[bool] = None,
         liq_pulse: bool = False,
         cross_spread_pct: Optional[float] = None,
         subaccount_nav_usdt: float = 10_000.0,
@@ -77,13 +79,24 @@ class Strategy2EntryFilter:
         Evaluate one tick event through the full Strategy 2 entry decision tree.
 
         Args:
-            t:                  Unix timestamp (seconds)
-            cusum_trigger:      Output from CUSUMShort.update()
-            state_4h:           Current 4H market state label (or None)
-            inverse_vocab:      Active inverse vocab tags (Absorption, Sweep, Crowding, …)
-            liq_pulse:          True if liquidation pulse detected in last 5 min
-            cross_spread_pct:   Cross-exchange price spread % (None = unknown)
-            subaccount_nav_usdt: Sub-account 2 NAV for position sizing
+            t:                              Unix timestamp (seconds)
+            cusum_trigger:                  Output from CUSUMShort.update()
+            state_4h:                       Current 4H market state label (or None)
+            inverse_vocab:                  Active inverse vocab tags
+                                            (Absorption, Sweep, Crowding, …)
+            ofi_persistent_same_direction:  True if OFI has been persistently
+                                            same-direction as CUSUM for the last
+                                            ~60 s (placeholder window).
+                                            None = LOB collector not yet flowing
+                                            (STUB — see STUB_BOUNDARIES.md).
+                                            None causes Type B to never trigger,
+                                            consistent with v2.0 §14.2
+                                            "类型未明 → 不做赌一把的中间态入场".
+            liq_pulse:                      True if liquidation pulse detected
+                                            in last 5 min (STUB).
+            cross_spread_pct:               Cross-exchange price spread %
+                                            (None = unknown, STUB).
+            subaccount_nav_usdt:            Sub-account 2 NAV for position sizing.
         """
 
         # Step 1a: CUSUM-Short trigger
@@ -136,7 +149,7 @@ class Strategy2EntryFilter:
 
         # Step 3: Inverse vocab classification (STUB — LOB data not yet flowing)
         vocab = set(inverse_vocab or [])
-        entry_type = _classify_entry_type(direction, vocab)
+        entry_type = _classify_entry_type(direction, vocab, ofi_persistent_same_direction)
         if entry_type is None:
             return EntryDecision(
                 action="ABORT",
@@ -221,39 +234,44 @@ class Strategy2EntryFilter:
 def _classify_entry_type(
     cusum_direction: Optional[str],
     vocab: set[str],
+    ofi_persistent_same_direction: Optional[bool],
 ) -> Optional[Literal["A", "B"]]:
     """
     Classify entry as Type A (reversal) or Type B (momentum).
 
-    STUB: Full implementation requires real-time Sweep/Absorption signals
-    from LOB collector. When vocab is empty (no LOB data), returns None
-    (abort) per §14.2: "不做赌一把的中间态入场".
-
     Type A (mean-reversion):
-      CUSUM up + Absorption + Sweep same direction
+      "Absorption" in vocab AND "Sweep" in vocab.
+      Does NOT require OFI — absorption+sweep signal is sufficient.
 
     Type B (momentum):
-      CUSUM up + OFI persistent same direction + no Absorption
+      ofi_persistent_same_direction is True
+      AND "Absorption" not in vocab
+      AND vocab is not empty.
 
-    Empty vocab → abort.
+    All other cases → None (abort).
+
+    STUB note: Type B requires ofi_persistent_same_direction from a real-time
+    LOB collector (not yet flowing in Wave 2).  When this parameter is None,
+    Type B never triggers, consistent with v2.0 §14.2
+    "类型未明 → 不做赌一把的中间态入场" (no mid-state gamble entries).
+    ofi_persistent_same_direction=False also blocks Type B.
     """
-    if not vocab:
-        # No LOB signals available — per spec, abort rather than guess
-        return None
-
     has_absorption = "Absorption" in vocab
     has_sweep = "Sweep" in vocab
-    has_crowding = "Crowding" in vocab
 
-    # Type A: reversal signals present
+    # Type A: reversal signals present (LOB-derived vocab, not OFI-gated)
     if has_absorption and has_sweep:
         return "A"
 
-    # Type B: momentum, no absorption
-    if not has_absorption:
+    # Type B: momentum — requires confirmed OFI persistence and no Absorption
+    if (
+        ofi_persistent_same_direction is True
+        and not has_absorption
+        and len(vocab) > 0
+    ):
         return "B"
 
-    # Ambiguous
+    # Ambiguous / data not available → abort per §14.2
     return None
 
 
