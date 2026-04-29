@@ -275,3 +275,189 @@ class DBWriter:
             return
         await self._conn.execute("TRUNCATE v2_state_history")
         logger.info("DBWriter: v2_state_history truncated")
+
+    # ── v2_trades (Wave 4) ─────────────────────────────────────────────────────
+
+    async def write_trade_entry(
+        self,
+        trade_id: str,
+        strategy: str,
+        sub_account: str,
+        entry_time: datetime,
+        entry_price: float,
+        direction: str,
+        size: float,
+        leverage: float,
+        instrument: str,
+        entry_state: str,
+        entry_cusum_id: Optional[str] = None,
+        entry_vocab: Optional[list] = None,
+        entry_confidence: Optional[float] = None,
+    ) -> bool:
+        """Insert a new open trade into v2_trades."""
+        if self._conn is None:
+            logger.warning("DBWriter.write_trade_entry: not connected, skipping")
+            return False
+        try:
+            await self._conn.execute(
+                """
+                INSERT INTO v2_trades
+                    (id, strategy, sub_account, entry_time, entry_price,
+                     direction, size, leverage, instrument, entry_state,
+                     entry_cusum_id, entry_vocab, entry_confidence)
+                VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                        $11::uuid, $12::jsonb, $13)
+                """,
+                trade_id,
+                strategy,
+                sub_account,
+                entry_time,
+                entry_price,
+                direction,
+                size,
+                leverage,
+                instrument,
+                entry_state,
+                entry_cusum_id,
+                json.dumps(entry_vocab) if entry_vocab is not None else None,
+                entry_confidence,
+            )
+            return True
+        except Exception as exc:
+            logger.warning("DBWriter.write_trade_entry failed: %s", exc)
+            return False
+
+    async def write_trade_exit(
+        self,
+        trade_id: str,
+        exit_time: datetime,
+        exit_price: float,
+        exit_reason: str,
+        pnl_usdt: float,
+        pnl_pct: float,
+        fees_paid: float = 0.0,
+    ) -> bool:
+        """Update an existing v2_trades row with exit details."""
+        if self._conn is None:
+            logger.warning("DBWriter.write_trade_exit: not connected, skipping")
+            return False
+        try:
+            await self._conn.execute(
+                """
+                UPDATE v2_trades
+                SET exit_time=$2, exit_price=$3, exit_reason=$4,
+                    pnl_usdt=$5, pnl_pct=$6, fees_paid=$7
+                WHERE id=$1::uuid
+                """,
+                trade_id,
+                exit_time,
+                exit_price,
+                exit_reason,
+                pnl_usdt,
+                pnl_pct,
+                fees_paid,
+            )
+            return True
+        except Exception as exc:
+            logger.warning("DBWriter.write_trade_exit failed: %s", exc)
+            return False
+
+    # ── v2_strategy_phase_history (Wave 4) ─────────────────────────────────────
+
+    async def write_phase_history(
+        self,
+        timestamp: datetime,
+        strategy: str,
+        from_phase: Optional[str],
+        to_phase: str,
+        rolling_w: Optional[float] = None,
+        rolling_r: Optional[float] = None,
+        sample_size: Optional[int] = None,
+        kelly_fraction_estimated: Optional[float] = None,
+        kelly_cap_lower: Optional[float] = None,
+        kelly_cap_upper: Optional[float] = None,
+        decision_id: Optional[str] = None,
+    ) -> bool:
+        """Record a Kelly phase transition or diagnostic snapshot."""
+        if self._conn is None:
+            logger.warning("DBWriter.write_phase_history: not connected, skipping")
+            return False
+        try:
+            await self._conn.execute(
+                """
+                INSERT INTO v2_strategy_phase_history
+                    (timestamp, strategy, from_phase, to_phase,
+                     rolling_w, rolling_r, sample_size, kelly_fraction_estimated,
+                     kelly_cap_lower, kelly_cap_upper, decision_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::uuid)
+                """,
+                timestamp,
+                strategy,
+                from_phase,
+                to_phase,
+                rolling_w,
+                rolling_r,
+                sample_size,
+                kelly_fraction_estimated,
+                kelly_cap_lower,
+                kelly_cap_upper,
+                decision_id,
+            )
+            return True
+        except Exception as exc:
+            logger.warning("DBWriter.write_phase_history failed: %s", exc)
+            return False
+
+    # ── v2_decision_trail — Strategy 1 (Wave 4) ────────────────────────────────
+
+    async def write_strategy1_decision(
+        self,
+        timestamp: datetime,
+        action: str,
+        reason: str,
+        state_4h: Optional[str],
+        direction: Optional[str],
+        cusum_positive: float,
+        cusum_threshold: float,
+        step_reached: int,
+        funding_pctile: Optional[float] = None,
+        oi_direction_against: bool = False,
+        metadata: Optional[dict] = None,
+    ) -> bool:
+        """Write Strategy 1 evaluate() result to v2_decision_trail."""
+        if self._conn is None:
+            logger.warning("DBWriter.write_strategy1_decision: not connected, skipping")
+            return False
+        try:
+            extra = {
+                "state_4h": state_4h,
+                "direction": direction,
+                "cusum_positive": cusum_positive,
+                "cusum_threshold": cusum_threshold,
+                "step_reached": step_reached,
+                "funding_pctile": funding_pctile,
+                "oi_direction_against": oi_direction_against,
+            }
+            if metadata:
+                extra.update(metadata)
+
+            await self._conn.execute(
+                """
+                INSERT INTO v2_decision_trail
+                    (timestamp, decision_type, trigger_source, target_component,
+                     decision_basis, wiki_decision, created_by, tool_evaluation)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+                """,
+                timestamp,
+                action,
+                "strategy1_evaluate",
+                "strategy1_entry",
+                reason,
+                "AUTO",
+                "sel_v2_strategy1",
+                json.dumps(extra),
+            )
+            return True
+        except Exception as exc:
+            logger.warning("DBWriter.write_strategy1_decision failed: %s", exc)
+            return False
