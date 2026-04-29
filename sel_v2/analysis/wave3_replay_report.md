@@ -1,7 +1,7 @@
 # Wave 3 Offline Replay Report
 
-**Generated**: 2026-04-29 07:23 UTC  
-**Elapsed**: 268.7 s  
+**Generated**: 2026-04-29 09:59 UTC  
+**Elapsed**: 274.5 s  
 
 ## 1. Replay Time Range
 
@@ -14,26 +14,26 @@
 
 | State | Bars | % | Target (§16.2) |
 |---|---|---|---|
-| Coiling | 2058 | 40.4% | 20-30% |
-| Surging | 1740 | 34.2% | 10-20% |
-| Drifting_Calm | 1292 | 25.4% | 40-60% |
+| Coiling | 0 | 0.0% | 20-30% |
+| Surging | 0 | 0.0% | 10-20% |
+| Drifting_Calm | 4995 | 98.0% | 40-60% |
 | Drifting_Charged | 0 | 0.0% | — |
-| Critical | 5 | 0.1% | 1-5% |
+| Critical | 100 | 2.0% | 1-5% |
 | Cascade | 0 | 0.0% | <1% |
 
 ## 3. Transition Vocabulary Distribution
 
 | Transition | Count |
 |---|---|
-| Release | 2 |
-| Exhaustion | 15 |
+| Release | 0 |
+| Exhaustion | 0 |
 | Decay | 0 |
-| Charging | 41 |
-| Stress | 2 |
+| Charging | 0 |
+| Stress | 1 |
 | Trigger | 0 |
 | Reset | 0 |
 
-**Illegal transitions**: 56
+**Illegal transitions**: 1
 
 ## 4. Critical Main Condition Statistics
 
@@ -88,10 +88,9 @@ Coiling and Surging may be under-counted because σ alone triggers without OI/OF
 
 ## 9. Health Alerts (§16.2 targets)
 
-- ⚠️ Coiling=40.4% (target 20-30%). LOB/OI STUB may cause undercounting.
-- ⚠️ Drifting-Calm=25.4% (target 40-60%).
-- ⚠️ Surging=34.2% (target 10-20%). OFI STUB affects entry confirmation.
-- ⚠️ Critical=0.1% (target 1-5%). Entropy STUB forces Path 2 only.
+- ⚠️ Coiling=0.0% (target 20-30%). LOB/OI STUB may cause undercounting.
+- ⚠️ Drifting-Calm=98.0% (target 40-60%).
+- ⚠️ Surging=0.0% (target 10-20%). OFI STUB affects entry confirmation.
 
 ## Limitations
 

@@ -183,7 +183,11 @@ def check_surging(features: BarFeatures) -> ConditionResult:
       - OFI cumulative direction 90th pctile (STUB)
       - OI acceleration (STUB)
 
-    Also valid for lower-bar Surging continuation once already Surging.
+    Conservative principle (v2.1 §2.1): price_breakout + σ are necessary but not
+    sufficient. At least one of the two STUB flow signals (OFI or OI acceleration)
+    must be non-None (and True) to return met=True. If both STUBs are None →
+    met=None (state unidentifiable; prevents Drifting_Calm → Surging bypass of the
+    Coiling/Drifting-Charged intermediate state required by §6 transition graph).
     """
     # Price breakout
     has_breakout: Optional[bool] = None
@@ -203,6 +207,31 @@ def check_surging(features: BarFeatures) -> ConditionResult:
     # OI acceleration (STUB)
     oi_accel: Optional[bool] = features.oi_acceleration
 
+    # Necessary conditions: price breakout and σ jump must both be True
+    if has_breakout is False or sigma_jump is False:
+        fc = []
+        if has_breakout is False:
+            fc.append("price_breakout")
+        if sigma_jump is False:
+            fc.append("sigma_jump_70")
+        return _result(
+            met=False,
+            none_conditions=[],
+            false_conditions=fc,
+            details={"sigma_pctile": features.sigma_pctile,
+                     "price_breakout_up": features.price_breakout_up,
+                     "price_breakout_down": features.price_breakout_down},
+        )
+
+    flow_signals = [ofi_pctile_high, oi_accel]
+    if all(v is None for v in flow_signals):
+        return _result(
+            met=None,
+            none_conditions=["ofi_90pct", "oi_acceleration"],
+            false_conditions=[],
+            details={"sigma_pctile": features.sigma_pctile, "flow": None},
+        )
+
     conditions = [
         ("price_breakout", has_breakout),
         ("sigma_jump_70", sigma_jump),
@@ -219,12 +248,24 @@ def check_coiling(features: BarFeatures) -> ConditionResult:
     Coiling: narrow range, energy accumulating.
 
     Conditions:
-      - σ < 30th pctile (computable)
+      - σ < 30th pctile (computable, necessary)
       - LOB entropy < 30th pctile (STUB)
       - OI change rate > 0 (STUB)
       - |funding| < 80th pctile (STUB)
+
+    Conservative principle (v2.1 §2.1): σ is necessary but not sufficient.
+    At least one of the three STUB accumulation signals must be non-None (and True)
+    to return met=True. If σ<30th but all three STUBs are None → met=None
+    (state unidentifiable; arbitration falls back to Drifting-Calm).
     """
     sigma_low: Optional[bool] = features.sigma_pctile < 0.30
+    if sigma_low is False:
+        return _result(
+            met=False,
+            none_conditions=[],
+            false_conditions=["sigma_lt_30pct"],
+            details={"sigma_pctile": features.sigma_pctile},
+        )
 
     entropy_low: Optional[bool]
     if features.entropy_pctile is None:
@@ -243,6 +284,15 @@ def check_coiling(features: BarFeatures) -> ConditionResult:
         funding_neutral = None
     else:
         funding_neutral = features.funding_pctile < 0.80
+
+    stub_signals = [entropy_low, oi_positive, funding_neutral]
+    if all(v is None for v in stub_signals):
+        return _result(
+            met=None,
+            none_conditions=["entropy_lt_30pct", "oi_positive", "funding_neutral"],
+            false_conditions=[],
+            details={"sigma_pctile": features.sigma_pctile, "accumulation": None},
+        )
 
     conditions = [
         ("sigma_lt_30pct", sigma_low),

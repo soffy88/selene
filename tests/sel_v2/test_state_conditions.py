@@ -103,13 +103,20 @@ def test_critical_all_stub_after_sigma_fail_is_false():
 
 # ── Surging ───────────────────────────────────────────────────────────────────
 
-def test_surging_price_breakout_and_sigma_jump():
+def test_surging_price_breakout_and_sigma_jump_stubs_none():
     f = _feat(price_breakout_up=True, sigma_pctile=0.75)
     res = check_surging(f)
-    # price_breakout=True, sigma_jump=True, ofi=None, oi=None → met=True (stubs don't block)
-    assert res.met is True
+    # price+σ True but ofi=None, oi=None (both STUB) → met=None (conservative)
+    assert res.met is None
     assert "ofi_90pct" in res.none_conditions
     assert "oi_acceleration" in res.none_conditions
+
+
+def test_surging_fires_when_flow_available():
+    f = _feat(price_breakout_up=True, sigma_pctile=0.75, oi_acceleration=True)
+    res = check_surging(f)
+    # price+σ True, oi_accel=True → met=True
+    assert res.met is True
 
 
 def test_surging_no_breakout_false():
@@ -127,12 +134,19 @@ def test_surging_sigma_too_low():
 
 # ── Coiling ───────────────────────────────────────────────────────────────────
 
-def test_coiling_sigma_low_others_stub():
+def test_coiling_sigma_low_all_stubs_none():
     f = _feat(sigma_pctile=0.20)
     res = check_coiling(f)
-    # sigma_low=True, entropy=None, oi=None, funding=None → met=True (stubs don't block)
-    assert res.met is True
+    # sigma_low=True but entropy=None, oi=None, funding=None → met=None (conservative)
+    assert res.met is None
     assert len(res.none_conditions) == 3
+
+
+def test_coiling_fires_when_accumulation_available():
+    f = _feat(sigma_pctile=0.20, oi_change_rate=0.01)
+    res = check_coiling(f)
+    # sigma_low=True, oi_positive=True, others STUB → met=True
+    assert res.met is True
 
 
 def test_coiling_sigma_high_false():

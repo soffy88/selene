@@ -89,8 +89,10 @@ def test_coiling_legal_exits():
     exits = {to: vocab for to, vocab in get_legal_exits(StateLabel.COILING)}
     assert StateLabel.SURGING in exits
     assert StateLabel.CRITICAL in exits
+    assert StateLabel.DRIFTING_CALM in exits
     assert exits[StateLabel.SURGING] == "Release"
     assert exits[StateLabel.CRITICAL] == "Stress"
+    assert exits[StateLabel.DRIFTING_CALM] == "Decay"
 
 
 def test_critical_legal_exits():
@@ -109,9 +111,9 @@ def test_cascade_legal_exits():
 
 # ── All legal transitions covered ─────────────────────────────────────────────
 
-def test_all_7_vocabulary_words_appear():
+def test_all_vocabulary_words_appear():
     all_vocabs = set(_LEGAL_TRANSITIONS.values())
-    expected = {"Release", "Exhaustion", "Decay", "Charging", "Stress", "Trigger", "Reset"}
+    expected = {"Release", "Exhaustion", "Decay", "Charging", "Stress", "Trigger", "Reset", "Recoil"}
     assert all_vocabs == expected
 
 
