@@ -25,6 +25,8 @@ _TS = datetime(2025, 1, 1, tzinfo=timezone.utc)
     (StateLabel.SURGING, StateLabel.DRIFTING_CALM, "Exhaustion"),
     (StateLabel.SURGING, StateLabel.DRIFTING_CHARGED, "Exhaustion"),
     (StateLabel.DRIFTING_CHARGED, StateLabel.DRIFTING_CALM, "Decay"),
+    (StateLabel.COILING, StateLabel.DRIFTING_CALM, "Decay"),
+    (StateLabel.CRITICAL, StateLabel.DRIFTING_CALM, "Decay"),
     (StateLabel.DRIFTING_CALM, StateLabel.DRIFTING_CHARGED, "Charging"),
     (StateLabel.DRIFTING_CALM, StateLabel.COILING, "Charging"),
     (StateLabel.DRIFTING_CHARGED, StateLabel.COILING, "Charging"),
@@ -32,6 +34,7 @@ _TS = datetime(2025, 1, 1, tzinfo=timezone.utc)
     (StateLabel.DRIFTING_CHARGED, StateLabel.CRITICAL, "Stress"),
     (StateLabel.COILING, StateLabel.CRITICAL, "Stress"),
     (StateLabel.SURGING, StateLabel.CRITICAL, "Stress"),
+    (StateLabel.SURGING, StateLabel.COILING, "Recoil"),
     (StateLabel.CRITICAL, StateLabel.CASCADE, "Trigger"),
     (StateLabel.CASCADE, StateLabel.DRIFTING_CALM, "Reset"),
 ])
@@ -66,10 +69,9 @@ def test_first_assignment_no_vocab():
     (StateLabel.COILING, StateLabel.CASCADE),
     (StateLabel.SURGING, StateLabel.CASCADE),
     (StateLabel.DRIFTING_CHARGED, StateLabel.CASCADE),
-    # Skip Critical — must go via Stress
+    # Skip Critical — must go via Stress; Critical exits only to Cascade or DCalm
     (StateLabel.CRITICAL, StateLabel.COILING),
     (StateLabel.CRITICAL, StateLabel.SURGING),
-    (StateLabel.CRITICAL, StateLabel.DRIFTING_CALM),
     (StateLabel.CRITICAL, StateLabel.DRIFTING_CHARGED),
     # Cascade can only → Drifting-Calm
     (StateLabel.CASCADE, StateLabel.COILING),
@@ -98,8 +100,9 @@ def test_coiling_legal_exits():
 def test_critical_legal_exits():
     exits = {to: vocab for to, vocab in get_legal_exits(StateLabel.CRITICAL)}
     assert StateLabel.CASCADE in exits
+    assert StateLabel.DRIFTING_CALM in exits
     assert exits[StateLabel.CASCADE] == "Trigger"
-    # Critical → Cascade only (no other exits from Critical per legal transitions)
+    assert exits[StateLabel.DRIFTING_CALM] == "Decay"   # soft-landing (v2.0 §5.6)
 
 
 def test_cascade_legal_exits():

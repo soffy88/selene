@@ -36,6 +36,7 @@ _LEGAL_TRANSITIONS: dict[tuple[StateLabel, StateLabel], str] = {
     # Decay
     (StateLabel.DRIFTING_CHARGED, StateLabel.DRIFTING_CALM): "Decay",
     (StateLabel.COILING,          StateLabel.DRIFTING_CALM): "Decay",    # Coiling dissolves without breakout
+    (StateLabel.CRITICAL,         StateLabel.DRIFTING_CALM): "Decay",    # Critical soft-landing (v2.0 §5.6)
 
     # Charging — multiple paths
     (StateLabel.DRIFTING_CALM, StateLabel.DRIFTING_CHARGED): "Charging",

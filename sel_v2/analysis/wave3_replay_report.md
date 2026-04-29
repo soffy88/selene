@@ -1,7 +1,7 @@
 # Wave 3 Offline Replay Report
 
-**Generated**: 2026-04-29 09:59 UTC  
-**Elapsed**: 274.5 s  
+**Generated**: 2026-04-29 10:14 UTC  
+**Elapsed**: 275.4 s  
 
 ## 1. Replay Time Range
 
@@ -27,13 +27,13 @@
 |---|---|
 | Release | 0 |
 | Exhaustion | 0 |
-| Decay | 0 |
+| Decay | 1 |
 | Charging | 0 |
 | Stress | 1 |
 | Trigger | 0 |
 | Reset | 0 |
 
-**Illegal transitions**: 1
+**Illegal transitions**: 0
 
 ## 4. Critical Main Condition Statistics
 
