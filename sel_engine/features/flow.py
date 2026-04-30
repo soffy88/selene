@@ -1,4 +1,5 @@
 """Flow layer: TF (taker flow), OI (open interest), funding_rate."""
+import json
 import logging
 from typing import Optional
 
@@ -26,7 +27,12 @@ async def get_funding_rate_from_redis(
         raw = await redis.hget(REDIS_FUNDING_KEY_PREFIX, symbol)
         if raw is None:
             return None
-        return float(raw)
+        decoded = raw.decode() if isinstance(raw, bytes) else raw
+        try:
+            parsed = json.loads(decoded)
+            return float(parsed["rate"]) if isinstance(parsed, dict) else float(parsed)
+        except (json.JSONDecodeError, KeyError, TypeError):
+            return float(decoded)
     except Exception as exc:
         logger.warning("funding_rate redis read failed for %s: %s", symbol, exc)
         return None
