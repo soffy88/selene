@@ -1,0 +1,73 @@
+# selene 健康度监控规则
+# 命中规则 → 写 system.alerts stream → helios-alert-notifier 推 Telegram
+
+meta:
+  version: "1.0"
+  check_interval_seconds: 60
+  alert_dedup_minutes: 30  # 同一规则 30min 内不重复告警
+
+rules:
+  - id: candles_stale
+    severity: CRITICAL
+    description: "K线数据滞后超过 90 分钟"
+    check: redis_stream_freshness
+    stream: "market.candles"
+    db: 3
+    max_age_minutes: 90
+
+  - id: signals_stalled
+    severity: CRITICAL
+    description: "信号生成停止超过 4 小时"
+    check: data_freshness
+    table: signals
+    time_column: created_at
+    max_age_minutes: 240
+
+  - id: sel_features_stalled
+    severity: WARNING
+    description: "sel 特征累积停止超过 4 小时"
+    check: data_freshness
+    table: sel_features
+    time_column: time
+    max_age_minutes: 240
+
+  - id: sel_bar_runner_failing
+    severity: CRITICAL
+    description: "sel-bar-runner 连续失败"
+    check: redis_value
+    key: "sel:scheduler:consecutive_failures"
+    db: 3
+    operator: ">"
+    threshold: 0
+
+  - id: container_unhealthy
+    severity: WARNING
+    description: "selene 容器 unhealthy"
+    check: docker_health
+    pattern: "^selene-"
+    state: unhealthy
+
+  - id: container_restarting
+    severity: CRITICAL
+    description: "selene 容器持续重启"
+    check: docker_health
+    pattern: "^selene-"
+    state: restarting
+
+  - id: redis_hash_oversize
+    severity: WARNING
+    description: "Redis hash 过大"
+    check: redis_memory
+    db: 3
+    pattern: "cw4:*"
+    max_bytes: 10485760  # 10MB
+
+  - id: drawdown_exceeded
+    severity: CRITICAL
+    description: "组合回撤超过 10%"
+    check: redis_value
+    key: "cw4:portfolio:state"
+    db: 3
+    json_field: "current_drawdown"
+    operator: ">"
+    threshold: 0.10

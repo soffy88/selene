@@ -411,6 +411,24 @@ services:
       resources:
         limits: {cpus: '0.1', memory: 64M}
 
+  # ── Healthcheck ───────────────────────────────────────────────────────────
+  healthcheck-service:
+    build:
+      context: .
+      dockerfile: services/healthcheck/Dockerfile
+    container_name: selene-healthcheck-1
+    restart: unless-stopped
+    environment:
+      REDIS_URL: ${REDIS_URL}
+      TIMESCALE_URL: ${TIMESCALE_URL}
+      RULES_PATH: /app/configs/healthcheck-rules.yaml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [helios-net]
+    deploy:
+      resources:
+        limits: {cpus: '0.1', memory: 128M}
+
 networks:
   helios-net:
     external: true
