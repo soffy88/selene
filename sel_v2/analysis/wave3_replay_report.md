@@ -1,20 +1,20 @@
 # Wave 3 Offline Replay Report
 
-**Generated**: 2026-04-30 02:05 UTC  
-**Elapsed**: 273.6 s  
+**Generated**: 2026-04-30 03:22 UTC  
+**Elapsed**: 283.4 s  
 
 ## 1. Replay Time Range
 
 - Start: 2024-01-01 00:00:00+00:00
-- End:   2026-04-29 00:00:00+00:00
-- Total bars: 5095
-- Written to v2_state_history: 5095
+- End:   2026-04-29 04:00:00+00:00
+- Total bars: 5096
+- Written to v2_state_history: 5096
 
 ## 2. State Distribution
 
 | State | Bars | % | Target (§16.2) |
 |---|---|---|---|
-| Coiling | 10 | 0.2% | 20-30% |
+| Coiling | 11 | 0.2% | 20-30% |
 | Surging | 0 | 0.0% | 10-20% |
 | Drifting_Calm | 4985 | 97.8% | 40-60% |
 | Drifting_Charged | 0 | 0.0% | — |
@@ -55,7 +55,7 @@ All Critical entries via Path 2 (A_partial + B + C).
 ## 5. Cold Start Period
 
 - Cold-start bars (≤ 180 bar warmup): 180
-- Normal bars: 4915
+- Normal bars: 4916
 
 ## 6. STUB Impact
 
@@ -76,7 +76,7 @@ Coiling and Surging may be under-counted because σ alone triggers without OI/OF
 
 | | Wave 1 full-fit η | Wave 3 rolling mean |
 |---|---|---|
-| η = α/β | 0.5537 | 0.5239 |
+| η = α/β | 0.5537 | 0.5238 |
 | Critical threshold | 0.85 | 0.85 |
 
 ## 8. TDA L^1 vs Wave 1 Calibration
