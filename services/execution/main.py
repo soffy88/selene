@@ -259,6 +259,15 @@ async def monitoring_loop():
 
 async def _close_position(fsm: OrderFSM, exit_price: float, reason: str):
     r = await get_redis(); rec = fsm.record
+
+    if EXEC_MODE == "PAPER":
+        pnl = fsm.calc_realized_pnl(exit_price)
+        fsm.transition(OrderState.CLOSED, note=reason); rec.close_reason = reason
+        await _pub(r, fsm, "closed"); await _audit(fsm, "POSITION_CLOSED")
+        await _persist_order(rec)
+        logger.info(f"[PAPER] Position CLOSED {rec.symbol} pnl={pnl:+.4f} reason={reason} exit={exit_price}")
+        return
+
     try:
         adp = get_adapter(rec.exchange or PRIMARY_EXCHANGE)
         close_side = "SELL" if rec.side=="BUY" else "BUY"
