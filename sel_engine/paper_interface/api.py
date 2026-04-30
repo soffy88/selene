@@ -38,6 +38,8 @@ if _FASTAPI_AVAILABLE:
             "TIMESCALE_URL",
             "postgresql://cw4:changeme@timescaledb:5432/cw4",
         )
+        # asyncpg doesn't understand SQLAlchemy's postgresql+asyncpg:// scheme
+        url = url.replace("postgresql+asyncpg://", "postgresql://")
         pool = await asyncpg.create_pool(url, min_size=1, max_size=3)
         try:
             yield pool
@@ -83,7 +85,7 @@ if _FASTAPI_AVAILABLE:
         url = os.environ.get(
             "TIMESCALE_URL",
             "postgresql://cw4:changeme@timescaledb:5432/cw4",
-        )
+        ).replace("postgresql+asyncpg://", "postgresql://")
         try:
             pool = await asyncpg.create_pool(url, min_size=1, max_size=1)
             store = StateStore()
@@ -120,7 +122,7 @@ if _FASTAPI_AVAILABLE:
         url = os.environ.get(
             "TIMESCALE_URL",
             "postgresql://cw4:changeme@timescaledb:5432/cw4",
-        )
+        ).replace("postgresql+asyncpg://", "postgresql://")
         now = datetime.now(tz=timezone.utc)
         start = now - timedelta(hours=hours)
         try:
@@ -162,7 +164,7 @@ if _FASTAPI_AVAILABLE:
         url = os.environ.get(
             "TIMESCALE_URL",
             "postgresql://cw4:changeme@timescaledb:5432/cw4",
-        )
+        ).replace("postgresql+asyncpg://", "postgresql://")
         now = datetime.now(tz=timezone.utc)
         start = now - timedelta(hours=720)
         try:
