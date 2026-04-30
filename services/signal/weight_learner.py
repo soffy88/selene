@@ -195,7 +195,7 @@ class WeightLearner:
                     SELECT
                         a.payload,
                         o.realized_pnl,
-                        COALESCE(o.filled_price, o.entry_price) AS entry_price,
+                        COALESCE(o.filled_price, o.limit_price) AS entry_price,
                         COALESCE(o.filled_qty,   o.quantity)    AS qty
                     FROM audit_log a
                     JOIN orders o
