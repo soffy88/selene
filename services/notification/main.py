@@ -9,7 +9,7 @@ from datetime import datetime
 
 from fastapi import FastAPI
 
-from shared.db.connections import get_redis, redis_health, init_redis
+from shared.db.connections import get_redis, redis_health
 from services.notification.hub import NotificationHub, TelegramChannel, DingTalkChannel
 
 logger = logging.getLogger(__name__)
