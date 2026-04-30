@@ -185,6 +185,12 @@ services:
       FEISHU_WEBHOOK:       ${FEISHU_WEBHOOK:-}
       DINGTALK_WEBHOOK_URL: ${DINGTALK_WEBHOOK_URL:-}
     ports: ['8006:8006']
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8006/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     deploy:
       resources:
         limits: {cpus: '0.2', memory: 128M}
@@ -308,6 +314,9 @@ services:
       SERVICE_NAME: sel-orderbook
       SEL_SYMBOL:   ${SEL_SYMBOL:-BTCUSDT}
       SEL_INST_ID:  ${SEL_INST_ID:-BTC-USDT-SWAP}
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+      interval: 60s
     deploy:
       resources:
         limits: {cpus: '0.2', memory: 128M}
@@ -323,6 +332,9 @@ services:
       SERVICE_NAME: sel-trade-flow
       SEL_SYMBOL:   ${SEL_SYMBOL:-BTCUSDT}
       SEL_INST_ID:  ${SEL_INST_ID:-BTC-USDT-SWAP}
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+      interval: 60s
     deploy:
       resources:
         limits: {cpus: '0.2', memory: 128M}
@@ -338,6 +350,9 @@ services:
       SERVICE_NAME: sel-oi
       SEL_SYMBOL:   ${SEL_SYMBOL:-BTCUSDT}
       SEL_INST_ID:  ${SEL_INST_ID:-BTC-USDT-SWAP}
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+      interval: 60s
     deploy:
       resources:
         limits: {cpus: '0.1', memory: 64M}
@@ -421,6 +436,7 @@ services:
     environment:
       REDIS_URL: ${REDIS_URL}
       TIMESCALE_URL: ${TIMESCALE_URL}
+      HELIOS_REDIS_URL: redis://helios-redis:6379/0
       RULES_PATH: /app/configs/healthcheck-rules.yaml
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro

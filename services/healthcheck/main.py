@@ -22,9 +22,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 logger = logging.getLogger("healthcheck")
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://helios-redis:6379/3")
+HELIOS_REDIS_URL = os.environ.get("HELIOS_REDIS_URL", "redis://helios-redis:6379/0")
 PG_URL = os.environ.get("TIMESCALE_URL", "").replace("postgresql+asyncpg://", "postgresql://")
 RULES_PATH = os.environ.get("RULES_PATH", "/app/configs/healthcheck-rules.yaml")
 ALERT_STREAM = "system.alerts"
+HELIOS_PUBSUB_CHANNEL = "alerts"
 DEDUP_PREFIX = "healthcheck:dedup:"
 
 
@@ -43,6 +45,7 @@ class HealthChecker:
         self.interval = cfg["meta"]["check_interval_seconds"]
         self.dedup_min = cfg["meta"]["alert_dedup_minutes"]
         self.redis = aioredis.from_url(REDIS_URL, decode_responses=True)
+        self.helios_redis = aioredis.from_url(HELIOS_REDIS_URL, decode_responses=True)
         if PG_URL:
             try:
                 self.pg_pool = await asyncpg.create_pool(PG_URL, min_size=1, max_size=2)
@@ -181,8 +184,21 @@ class HealthChecker:
             "message": message,
             "ts": datetime.now(timezone.utc).isoformat(),
         }
+        # Write to selene stream (gateway / notification-service consumers)
         await self.redis.xadd(ALERT_STREAM, {"data": json.dumps(payload, ensure_ascii=False)})
-        logger.warning(f"ALERT {rule['severity']} {rule['id']}: {message}")
+        # PUBLISH to helios db=0 PUBSUB channel (helios-alert-notifier → Telegram)
+        sev = rule["severity"]
+        level = "error" if sev == "CRITICAL" else "warn"
+        helios_msg = json.dumps({
+            "level": level,
+            "title": f"[selene] {sev} {rule['id']}",
+            "message": f"{rule['description']}\n{message}",
+        }, ensure_ascii=False)
+        try:
+            await self.helios_redis.publish(HELIOS_PUBSUB_CHANNEL, helios_msg)
+        except Exception as e:
+            logger.warning(f"helios pubsub publish failed: {e}")
+        logger.warning(f"ALERT {sev} {rule['id']}: {message}")
 
 
 async def main():
