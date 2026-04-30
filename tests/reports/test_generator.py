@@ -101,6 +101,8 @@ def _make_health_report(
         period_end=BASE_TIME + timedelta(days=7),
         total_bars=168,
         cold_start_bars=0,
+        missing_data_bars=0,
+        no_match_bars=0,
         active_bars=total,
         state_counts=counts,
         state_rates=rates,

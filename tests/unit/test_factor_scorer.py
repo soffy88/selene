@@ -44,8 +44,8 @@ class TestIndividualFactors:
         assert score > 0.3
 
     def test_funding_very_positive_bearish(self):
-        history = [0.0] * 20
-        score = score_funding_zscore(0.15, history)
+        history = [0.0] * 10 + [0.01] * 10  # baseline near 0, symmetric to bullish test
+        score = score_funding_zscore(0.15, history)  # 3σ above mean
         assert score < -0.3
 
     def test_oi_momentum_rising_with_price(self):

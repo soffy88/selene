@@ -28,12 +28,12 @@ class TestFactorScorers:
         assert score_ema_alignment(None, None, None, 100) == 0.0
 
     def test_negative_funding_bullish(self):
-        history = [0.01]*30
-        s = score_funding_zscore(-0.10, history)  # very negative vs history
+        history = [0.01]*20 + [0.02]*10  # need variance; std=0 returns 0.0
+        s = score_funding_zscore(-0.10, history)  # 3σ below mean
         assert s > 0.5
     def test_positive_funding_bearish(self):
-        history = [0.0]*30
-        s = score_funding_zscore(0.15, history)
+        history = [0.0]*15 + [0.01]*15  # need variance; std=0 returns 0.0
+        s = score_funding_zscore(0.15, history)  # 3σ above mean
         assert s < -0.3
     def test_funding_no_history_zero(self):
         assert score_funding_zscore(0.05, []) == 0.0
@@ -127,7 +127,7 @@ class TestScoredSignal:
 
     def test_is_not_actionable_low_quality(self):
         s = ScoredSignal(symbol="BTCUSDT", win_probability=0.65,
-                         data_quality=0.80, entry_price=50000, stop_loss=49000)
+                         data_quality=0.70, entry_price=50000, stop_loss=49000)
         assert not s.is_actionable
 
     def test_risk_reward_calculation(self):

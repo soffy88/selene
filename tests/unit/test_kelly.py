@@ -23,7 +23,7 @@ class TestKellyFraction:
 
 class TestPositionSizing:
     def test_basic(self):
-        qty = position_size_from_kelly(10000, 0.02, 100, 98)
+        qty = position_size_from_kelly(10000, 0.02, 100, 98, max_position_pct=1.0)
         assert abs(qty - 100.0) < 0.001
     def test_zero_stop_zero(self):
         assert position_size_from_kelly(10000, 0.02, 100, 100) == 0.0
@@ -31,11 +31,11 @@ class TestPositionSizing:
         qty = position_size_from_kelly(10000, 1.0, 100, 99, max_position_pct=0.10)
         assert qty <= 10.0 + 1e-6
     def test_drawdown_scalar(self):
-        q1 = position_size_from_kelly(10000, 0.02, 100, 98, drawdown_scalar=1.0)
-        q5 = position_size_from_kelly(10000, 0.02, 100, 98, drawdown_scalar=0.5)
+        q1 = position_size_from_kelly(10000, 0.02, 100, 98, drawdown_scalar=1.0, max_position_pct=1.0)
+        q5 = position_size_from_kelly(10000, 0.02, 100, 98, drawdown_scalar=0.5, max_position_pct=1.0)
         assert abs(q5/q1 - 0.5) < 0.01
     def test_2pct_risk(self):
-        qty = position_size_from_kelly(50000, 0.02, 200, 196)
+        qty = position_size_from_kelly(50000, 0.02, 200, 196, max_position_pct=1.0)
         risk_usd = qty * 4
         assert abs(risk_usd/50000 - 0.02) < 0.001
 

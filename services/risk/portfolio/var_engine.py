@@ -24,9 +24,9 @@ def calc_historical_var(returns_usd: list[float], confidence: float = 0.95) -> O
     s = sorted(returns_usd)
     n = len(s)
     c95 = int((1 - 0.95) * n); c99 = int((1 - 0.99) * n)
-    var_95 = abs(s[max(0, c95)]); var_99 = abs(s[max(0, c99)])
+    var_95 = max(0.0, -s[max(0, c95)]); var_99 = max(0.0, -s[max(0, c99)])
     tail = s[:max(1, c95)]
-    cvar = abs(sum(tail) / len(tail)) if tail else var_95
+    cvar = max(0.0, -sum(tail) / len(tail)) if tail else var_95
     return VaRResult(var_95=round(var_95, 2), var_99=round(var_99, 2),
                      expected_shortfall=round(cvar, 2), confidence=confidence, n_observations=n)
 

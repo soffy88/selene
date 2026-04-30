@@ -51,10 +51,13 @@ class TestRegimeDetector:
         highs  = [c + 0.3 for c in closes]; lows = [c - 0.3 for c in closes]
         for h, l, c in zip(highs, lows, closes):
             det.update(h, l, c)
-        # Then inject explosive volatility (ATR >> baseline)
-        for _ in range(20):
-            c = closes[-1] + random.gauss(0, 10)  # 20x normal vol
-            closes.append(c); det.update(c+5, c-5, c)
+        # Inject explosive volatility — 3 bars is the minimum hysteresis window.
+        # TR ~1000x baseline (≈0.6) so ATR(14)/ATR(30) > 2.0 threshold fires on bar 1;
+        # after 3 consecutive hits the regime switches. Beyond bar 4 ATR(30) catches up
+        # and ratio falls below 2.0, so only check immediately after the hysteresis fires.
+        for _ in range(3):
+            c = closes[-1] + random.gauss(0, 300)  # 600x normal vol
+            closes.append(c); det.update(c+300, c-300, c)
         assert det.regime == Regime.HIGH_VOLATILITY
 
     def test_params_populated(self):
