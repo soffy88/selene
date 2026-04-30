@@ -97,6 +97,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="CryptoWatch v4 Gateway", version="4.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+try:
+    from sel_engine.paper_interface.api import router as sel_router
+    app.include_router(sel_router, prefix="/api/v4")
+except ImportError:
+    logger.warning("sel_engine not available — /api/v4/sel/* endpoints disabled")
+
 
 # ── Health ─────────────────────────────────────────────────────────────────────
 @app.get("/health")
@@ -185,8 +191,12 @@ async def portfolio_pnl(period: str = Query("7d")):
 # ── Regime ──────────────────────────────────────────────────────────────────────
 @app.get("/api/v4/regime")
 async def regime_status():
-    regimes = await hgetall_json("cw4:regimes") or {}
-    return {"regimes": regimes, "symbol_count": len(regimes)}
+    try:
+        regimes = await hgetall_json("cw4:regimes") or {}
+        return {"regimes": regimes, "symbol_count": len(regimes)}
+    except Exception as exc:
+        import logging; logging.getLogger(__name__).error("regime_status failed: %s", exc)
+        return {"regimes": {}, "symbol_count": 0, "error": str(exc)}
 
 
 @app.get("/api/v4/regime/current")
@@ -218,14 +228,37 @@ async def reset_circuit_breaker():
 
 
 # ── Execution / Orders ──────────────────────────────────────────────────────────
+async def _scan_orders_stripped() -> list[dict]:
+    """HSCAN cw4:orders:recent in chunks, stripping 'history' to avoid OOM (38 MB hash)."""
+    r = get_redis()
+    _STRIP = {"history"}
+    orders: list[dict] = []
+    cursor = 0
+    while True:
+        cursor, items = await r.hscan("cw4:orders:recent", cursor=cursor, count=20)
+        for v in items.values():
+            try:
+                o = json.loads(v)
+                if isinstance(o, dict):
+                    orders.append({k: val for k, val in o.items() if k not in _STRIP})
+            except Exception:
+                pass
+        if cursor == 0:
+            break
+    return orders
+
+
 @app.get("/api/v4/orders")
 async def list_orders(limit: int = Query(50, le=200), state: str = Query(None)):
-    raw = await hgetall_json("cw4:orders:recent") or {}
-    orders = list(raw.values())
-    orders.sort(key=lambda o: o.get("created_at", ""), reverse=True)
-    if state:
-        orders = [o for o in orders if o.get("state") == state]
-    return {"orders": orders[:limit], "total": len(orders)}
+    try:
+        orders = await _scan_orders_stripped()
+        orders.sort(key=lambda o: o.get("created_at", ""), reverse=True)
+        if state:
+            orders = [o for o in orders if o.get("state") == state]
+        return {"orders": orders[:limit], "total": len(orders)}
+    except Exception as exc:
+        logger.error("list_orders failed: %s", exc)
+        return {"orders": [], "total": 0, "error": str(exc)}
 
 
 @app.get("/api/v4/execution/slippage/{symbol}")
@@ -587,8 +620,10 @@ async def system_overview():
             "blockers":   len(rec.get("blockers", [])),
         }
 
+    import os
     return {
         "ts": datetime.utcnow().isoformat(),
+        "exec_mode": os.environ.get("EXEC_MODE", "PAPER"),
         "portfolio": {
             "equity":    portfolio.get("total_equity")    if portfolio else None,
             "daily_pnl": portfolio.get("daily_pnl")       if portfolio else None,

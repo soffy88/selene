@@ -169,7 +169,7 @@ td.neu{color:var(--text1)}
   </div>
   <div class="hrow">
     <div class="pill"><div class="dot" id="wdot"></div><span id="wlabel">连接中</span></div>
-    <div class="badge notify" id="exec-badge">NOTIFY_ONLY</div>
+    <div class="badge notify" id="exec-badge">PAPER</div>
     <div class="pill" id="dd-pill" style="background:var(--gd);border-color:rgba(0,229,160,.2)">
       <span style="color:var(--green)" id="dd-level">GREEN</span>
       <span style="color:var(--text2);font-size:10px" id="dd-pct">0.0%</span>
@@ -186,6 +186,7 @@ td.neu{color:var(--text1)}
   <div class="tab" data-p="risk">🛡 风控</div>
   <div class="tab" data-p="funding">💰 套利</div>
   <div class="tab" data-p="backtest">📈 回测</div>
+  <div class="tab" data-p="sel">🌙 sel</div>
 </nav>
 
 <div class="main">
@@ -263,6 +264,13 @@ td.neu{color:var(--text1)}
     <div style="overflow-x:auto">
       <table><thead><tr><th>币种</th><th>方向</th><th>入场价</th><th>数量</th><th>止损</th><th>止盈</th><th>未实现PnL</th><th>策略</th></tr></thead>
       <tbody id="p-pos-table"></tbody></table>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <div class="ch">近期订单 <span style="font-size:10px;color:var(--text2)" id="p-orders-count"></span></div>
+    <div style="overflow-x:auto">
+      <table><thead><tr><th>时间</th><th>币种</th><th>方向</th><th>状态</th><th>入场价</th><th>成交价</th><th>数量</th><th>PnL</th></tr></thead>
+      <tbody id="p-orders-table"><tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text2)">加载中...</td></tr></tbody></table>
     </div>
   </div>
 </div>
@@ -396,6 +404,34 @@ td.neu{color:var(--text1)}
   </div>
 </div>
 
+<!-- ── SEL ────────────────────────────────────────────────────────── -->
+<div class="page" id="page-sel">
+  <div class="stats">
+    <div class="stat"><div class="stat-label">当前状态</div><div class="stat-val b" id="sel-state">--</div><div class="stat-sub" id="sel-sym">BTCUSDT</div></div>
+    <div class="stat"><div class="stat-label">数据条数</div><div class="stat-val" id="sel-bars">--</div><div class="stat-sub">720条满仓</div></div>
+    <div class="stat"><div class="stat-label">冷启动条数</div><div class="stat-val a" id="sel-cold">--</div><div class="stat-sub">待完成</div></div>
+    <div class="stat"><div class="stat-label">健康警告</div><div class="stat-val" id="sel-warn">--</div><div class="stat-sub">过去30天</div></div>
+  </div>
+  <div class="card">
+    <div class="ch">冷启动进度 <span style="font-size:10px;color:var(--text2)">(需要720条1h数据)</span></div>
+    <div class="cb">
+      <div style="background:var(--bg2);border-radius:6px;height:10px;overflow:hidden;margin-bottom:8px">
+        <div id="sel-prog-bar" style="height:100%;background:var(--green);transition:width .4s;width:0%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2)">
+        <span id="sel-prog-txt">0 / 720</span><span id="sel-prog-pct">0%</span>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="ch">状态历史（最近24h · BTCUSDT）</div>
+    <div style="overflow-x:auto">
+      <table><thead><tr><th>时间</th><th>状态</th><th>方向</th><th>置信度</th><th>特征完整性</th><th>冷启动</th></tr></thead>
+      <tbody id="sel-hist-table"><tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text2)">加载中...</td></tr></tbody></table>
+    </div>
+  </div>
+</div>
+
 </div><!-- .main -->
 </div><!-- .app -->
 
@@ -413,7 +449,7 @@ td.neu{color:var(--text1)}
 </style>
 
 <script>
-const API='/api/v4'; const st={signals:[],prices:{},fr:{},regimes:{},portfolio:null,pending:[],arbOpps:[],btRunId:null,sigFilter:'ALL'};
+const API='/api/v4'; const st={signals:[],prices:{},fr:{},regimes:{},portfolio:null,pending:[],arbOpps:[],btRunId:null,sigFilter:'ALL',orders:[]};
 
 // Clock
 setInterval(()=>{document.getElementById('clock').textContent=new Date().toLocaleTimeString('zh-CN',{hour12:false})},1000);
@@ -424,7 +460,7 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
   t.classList.add('active');
   document.getElementById('page-'+t.dataset.p).classList.add('active');
-  const loads={signals:loadSignals,portfolio:loadPortfolio,regime:loadRegime,risk:loadRisk,funding:loadFunding};
+  const loads={signals:loadSignals,portfolio:loadPortfolio,regime:loadRegime,risk:loadRisk,funding:loadFunding,sel:loadSel};
   if(loads[t.dataset.p]) loads[t.dataset.p]();
 }));
 
@@ -443,6 +479,14 @@ function handle(msg){
   else if(msg.type==='signal'){st.signals.unshift(msg.data);if(st.signals.length>200)st.signals.pop();updSigCount();renderMktSigs();if(document.getElementById('page-signals').classList.contains('active'))renderSigFeed();}
   else if(msg.type==='portfolio'&&msg.data){st.portfolio=msg.data;if(document.getElementById('page-portfolio').classList.contains('active'))renderPortfolio();}
   else if(msg.type==='alert'){toast(msg.data.message||JSON.stringify(msg.data),'warn')}
+  else if(msg.type==='order'&&msg.data){
+    const o=msg.data; const idx=st.orders.findIndex(x=>x.id===o.id);
+    if(idx>=0)st.orders[idx]=o; else st.orders.unshift(o);
+    if(st.orders.length>200)st.orders.pop();
+    if(document.getElementById('page-portfolio').classList.contains('active'))renderOrders();
+    toast(`${o.symbol} ${o.side} → ${o.state}`,'b');
+  }
+  else if(msg.type==='onchain'&&msg.data){toast(msg.data.message||`链上: ${msg.data.symbol||''} ${msg.data.amount||''}`,'b')}
 }
 
 // API
@@ -519,9 +563,32 @@ async function reject_(id){const r=await api(`/signals/${id}/reject`,{method:'PO
 
 // Portfolio
 async function loadPortfolio(){
-  const d=await api('/portfolio/state');
+  const [d,od]=await Promise.all([api('/portfolio/state'),api('/orders?limit=20')]);
   if(d)st.portfolio=d;
+  if(od){st.orders=od.orders||[]}
   renderPortfolio();
+  renderOrders();
+}
+
+function renderOrders(){
+  const tb=document.getElementById('p-orders-table');
+  const orders=st.orders;
+  document.getElementById('p-orders-count').textContent=orders.length?`共 ${orders.length} 条`:'';
+  const STATE_CLR={CLOSED:'g',FILLED:'g',MONITORING:'b',CLOSING:'a',QUEUED:'neu',OPEN:'b',CANCELLED:'neu'};
+  tb.innerHTML=orders.length?orders.map(o=>{
+    const pnl=o.realized_pnl!=null?`<span class="${o.realized_pnl>=0?'pos':'neg'}">$${o.realized_pnl.toFixed(2)}</span>`:'--';
+    const sc=STATE_CLR[o.state]||'neu';
+    return`<tr>
+      <td class="neu">${ft(o.created_at)}</td>
+      <td class="sym">${(o.symbol||'').replace('USDT','')}</td>
+      <td class="${o.side==='BUY'?'pos':'neg'}">${o.side||'--'}</td>
+      <td class="${sc}">${o.state||'--'}</td>
+      <td>$${fp(o.entry_price)}</td>
+      <td>$${fp(o.filled_price)}</td>
+      <td>${(o.filled_qty||0).toFixed(2)}</td>
+      <td>${pnl}</td>
+    </tr>`;
+  }).join(''):'<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text2)">无订单记录</td></tr>';
 }
 
 function renderPortfolio(){
@@ -780,11 +847,65 @@ function toast(msg,type='g'){
   clearTimeout(_tt); _tt=setTimeout(()=>{t.style.opacity='0'},3000);
 }
 
+// Overview — exec_mode badge + market stats
+async function loadOverview(){
+  const d=await api('/system/overview');
+  if(!d)return;
+  const m=d.exec_mode||'PAPER';
+  const eb=document.getElementById('exec-badge');
+  eb.textContent=m;
+  eb.className='badge '+(m==='AUTO_EXEC'?'auto':m==='CONFIRM_THEN_EXEC'?'confirm':'notify');
+  document.getElementById('m-mode').textContent=m;
+  // Sync active mode button in risk tab
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active',b.dataset.m===m));
+}
+
+// sel state
+async function loadSel(){
+  const sym='BTCUSDT';
+  const [hd,hst]=await Promise.all([
+    api(`/sel/state/health?symbol=${sym}`),
+    api(`/sel/state/history?symbol=${sym}&hours=24&limit=24`)
+  ]);
+  if(hd){
+    const tot=hd.total_bars||0; const cold=hd.cold_start_bars||0; const active=hd.active_bars||0;
+    const pct=Math.min(100,(tot/720*100)).toFixed(1);
+    document.getElementById('sel-bars').textContent=tot;
+    document.getElementById('sel-cold').textContent=cold;
+    document.getElementById('sel-warn').textContent=hd.health_warning_count||0;
+    document.getElementById('sel-prog-bar').style.width=pct+'%';
+    document.getElementById('sel-prog-txt').textContent=`${tot} / 720`;
+    document.getElementById('sel-prog-pct').textContent=pct+'%';
+    const sc=hd.state_counts||{};
+    const topState=Object.entries(sc).sort((a,b)=>b[1]-a[1])[0];
+    document.getElementById('sel-state').textContent=topState?topState[0]:'冷启动';
+  }
+  if(hst&&hst.length){
+    const STATE_COL={DCalm:'g',DCaution:'a',DCritical:'r',Ranging:'b',Trending:'b',Volatile:'a'};
+    document.getElementById('sel-hist-table').innerHTML=hst.map(r=>{
+      const sc=STATE_COL[r.state]||'neu';
+      const cs=r.is_cold_start?'<span style="color:var(--amber)">冷启</span>':'--';
+      const fc=r.feature_completeness!=null?(r.feature_completeness*100).toFixed(0)+'%':'--';
+      return`<tr>
+        <td class="neu">${ft(r.bar_time)}</td>
+        <td class="${sc}">${r.state||'NULL'}</td>
+        <td class="neu">${r.direction||'--'}</td>
+        <td class="neu">${r.confidence||'--'}</td>
+        <td class="neu">${fc}</td>
+        <td>${cs}</td>
+      </tr>`;
+    }).join('');
+  }else{
+    document.getElementById('sel-hist-table').innerHTML='<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text2)">无数据（系统尚在冷启动）</td></tr>';
+  }
+}
+
 // Init
 (async()=>{
   connectWS();
-  await loadMarket();
+  await Promise.all([loadMarket(), loadOverview()]);
   setInterval(loadMarket,15000);
+  setInterval(loadOverview,60000);
   setInterval(async()=>{
     if(document.getElementById('page-signals').classList.contains('active'))loadSignals();
     if(document.getElementById('page-portfolio').classList.contains('active'))loadPortfolio();
