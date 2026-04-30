@@ -45,61 +45,93 @@ CREATE UNIQUE INDEX IF NOT EXISTS sel_state_seq_time_sym
 
 _UPSERT_SQL = """
 INSERT INTO sel_state_sequence (
-    time, symbol, state, direction, is_cold_start, confidence, reason,
-    is_legal, transition_from, health_warning,
-    close_price, sigma_p_24h, H, TF, OI, funding_rate, LV,
-    feature_completeness, computed_at
+    time, symbol, state, none_reason, reason,
+    cold_start, is_legal_transition, transition_from, feature_quantiles
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7,
-    $8, $9, $10,
-    $11, $12, $13, $14, $15, $16, $17,
-    $18, NOW()
+    $1, $2, $3, $4, $5,
+    $6, $7, $8, $9::jsonb
 )
 ON CONFLICT (time, symbol)
 DO UPDATE SET
     state               = EXCLUDED.state,
-    direction           = EXCLUDED.direction,
-    is_cold_start       = EXCLUDED.is_cold_start,
-    confidence          = EXCLUDED.confidence,
+    none_reason         = EXCLUDED.none_reason,
     reason              = EXCLUDED.reason,
-    is_legal            = EXCLUDED.is_legal,
+    cold_start          = EXCLUDED.cold_start,
+    is_legal_transition = EXCLUDED.is_legal_transition,
     transition_from     = EXCLUDED.transition_from,
-    health_warning      = EXCLUDED.health_warning,
-    close_price         = EXCLUDED.close_price,
-    sigma_p_24h         = EXCLUDED.sigma_p_24h,
-    H                   = EXCLUDED.H,
-    TF                  = EXCLUDED.TF,
-    OI                  = EXCLUDED.OI,
-    funding_rate        = EXCLUDED.funding_rate,
-    LV                  = EXCLUDED.LV,
-    feature_completeness = EXCLUDED.feature_completeness,
-    computed_at         = NOW()
+    feature_quantiles   = EXCLUDED.feature_quantiles
 ;
 """
 
 _GET_CURRENT_SQL = """
 SELECT
-    time, symbol, state, direction, is_cold_start, confidence, reason,
-    is_legal, transition_from, health_warning,
-    close_price, sigma_p_24h, H, TF, OI, funding_rate, LV, feature_completeness
-FROM sel_state_sequence
-WHERE symbol = $1
-  AND is_cold_start = FALSE
-  AND state IS NOT NULL
-ORDER BY time DESC
+    ss.time,
+    ss.symbol,
+    ss.state,
+    NULL                          AS direction,
+    ss.cold_start                 AS is_cold_start,
+    1.0                           AS confidence,
+    ss.reason,
+    ss.is_legal_transition        AS is_legal,
+    ss.transition_from,
+    FALSE                         AS health_warning,
+    sf.close                      AS close_price,
+    sf.sigma_p_24h,
+    sf.h                          AS "H",
+    sf.tf                         AS "TF",
+    sf.oi                         AS "OI",
+    sf.funding_rate,
+    sf.lv                         AS "LV",
+    (
+        CASE WHEN sf.sigma_p_24h  IS NOT NULL THEN 1 ELSE 0 END +
+        CASE WHEN sf.h            IS NOT NULL THEN 1 ELSE 0 END +
+        CASE WHEN sf.tf           IS NOT NULL THEN 1 ELSE 0 END +
+        CASE WHEN sf.oi           IS NOT NULL THEN 1 ELSE 0 END +
+        CASE WHEN sf.funding_rate IS NOT NULL THEN 1 ELSE 0 END +
+        CASE WHEN sf.lv           IS NOT NULL THEN 1 ELSE 0 END
+    )::float / 6.0                AS feature_completeness
+FROM sel_state_sequence ss
+LEFT JOIN sel_features sf ON ss.time = sf.time AND ss.symbol = sf.symbol
+WHERE ss.symbol = $1
+  AND ss.cold_start = FALSE
+  AND ss.state IS NOT NULL
+ORDER BY ss.time DESC
 LIMIT 1;
 """
 
 _GET_HISTORY_SQL = """
 SELECT
-    time, symbol, state, direction, is_cold_start, confidence, reason,
-    is_legal, transition_from, health_warning,
-    close_price, sigma_p_24h, H, TF, OI, funding_rate, LV, feature_completeness
-FROM sel_state_sequence
-WHERE symbol = $1
-  AND time >= $2
-  AND time <= $3
-ORDER BY time ASC
+    ss.time,
+    ss.symbol,
+    ss.state,
+    NULL                          AS direction,
+    ss.cold_start                 AS is_cold_start,
+    1.0                           AS confidence,
+    ss.reason,
+    ss.is_legal_transition        AS is_legal,
+    ss.transition_from,
+    FALSE                         AS health_warning,
+    sf.close                      AS close_price,
+    sf.sigma_p_24h,
+    sf.h                          AS "H",
+    sf.tf                         AS "TF",
+    sf.oi                         AS "OI",
+    sf.funding_rate,
+    sf.lv                         AS "LV",
+    (
+        CASE WHEN sf.sigma_p_24h  IS NOT NULL THEN 1 ELSE 0 END +
+        CASE WHEN sf.h            IS NOT NULL THEN 1 ELSE 0 END +
+        CASE WHEN sf.tf           IS NOT NULL THEN 1 ELSE 0 END +
+        CASE WHEN sf.oi           IS NOT NULL THEN 1 ELSE 0 END +
+        CASE WHEN sf.funding_rate IS NOT NULL THEN 1 ELSE 0 END +
+        CASE WHEN sf.lv           IS NOT NULL THEN 1 ELSE 0 END
+    )::float / 6.0                AS feature_completeness
+FROM sel_state_sequence ss
+LEFT JOIN sel_features sf ON ss.time = sf.time AND ss.symbol = sf.symbol
+WHERE ss.symbol = $1
+  AND ss.time >= $2
+  AND ss.time <= $3
+ORDER BY ss.time ASC
 LIMIT $4;
 """
 
@@ -160,21 +192,12 @@ class StateStore:
                 output.bar_time,
                 output.symbol,
                 output.state,
-                output.direction,
-                output.is_cold_start,
-                output.confidence,
+                output.none_reason,
                 output.reason,
+                output.is_cold_start,
                 output.is_legal_transition,
                 output.transition_from,
-                output.health_warning,
-                output.close,
-                output.sigma_p_24h,
-                output.H,
-                output.TF,
-                output.OI,
-                output.funding_rate,
-                output.LV,
-                output.feature_completeness,
+                "{}",
             )
 
     async def get_current(self, pg_pool, symbol: str) -> Optional[StateOutput]:
