@@ -1,9 +1,10 @@
 """
-Offline 4H bar replay — sel v2.0 Wave 3.
+Offline 4H bar replay — sel v2.0 / Wave 5 helixa integration.
 
 Loads BTC-USDT 4H bars from the local parquet file (Wave 1 data),
-precomputes all features, runs the state machine bar-by-bar, and writes
-results to v2_state_history.
+precomputes all features (including helixa OI/funding/taker_flow when
+available), runs the state machine bar-by-bar, and writes results to
+v2_state_history.
 
 Usage:
     python -m sel_v2.scheduler.replay --start 2024-01-01 --end 2026-04-29
@@ -11,6 +12,7 @@ Usage:
     python -m sel_v2.scheduler.replay --reset            # truncate then replay
     python -m sel_v2.scheduler.replay --no-hawkes        # skip Hawkes (fast test)
     python -m sel_v2.scheduler.replay --no-tda           # skip TDA (fast test)
+    python -m sel_v2.scheduler.replay --no-helixa        # skip helixa loaders
 
 Output:
     v2_state_history table (≈5096 rows)
@@ -36,6 +38,8 @@ from sel_v2.states.hawkes_critical import precompute_branching_ratios
 from sel_v2.states.tda_critical import precompute_tda_l1, compute_tda_rolling_pctile
 from sel_v2.states.schema import StateLabel
 from sel_v2.scheduler.bar_runner import BarRunner
+from sel_v2.scheduler.derivatives_loader import load_oi_funding_series
+from sel_v2.scheduler.taker_flow_loader import load_taker_flow_series
 from sel_v2.strategies.db_writer import DBWriter
 from sel_v2.strategies.params_loader import load_strategy_params
 
@@ -110,7 +114,9 @@ async def run_replay(
     reset: bool = False,
     skip_hawkes: bool = False,
     skip_tda: bool = False,
+    skip_helixa: bool = False,
     db_url: Optional[str] = None,
+    helixa_db_url: Optional[str] = None,
 ) -> dict:
     t0 = time.time()
     logger.info("=== Wave 3 offline replay starting ===")
@@ -178,6 +184,44 @@ async def run_replay(
                 float(np.quantile(valid_l1, 0.95)), tda_threshold,
             )
 
+    # Load helixa OI / funding / taker-flow series
+    oi_raw: Optional[np.ndarray] = None
+    funding_raw: Optional[np.ndarray] = None
+    ofi_proxy: Optional[np.ndarray] = None
+
+    if not skip_helixa:
+        logger.info("Loading helixa derivatives (OI + funding)...")
+        try:
+            bar_ts_list = list(df["time"])
+            deriv = await load_oi_funding_series(
+                bar_ts_list, symbol="BTC", db_url=helixa_db_url
+            )
+            oi_raw = deriv["open_interest"]
+            funding_raw = deriv["funding_rate"]
+            oi_valid = int(np.sum(~np.isnan(oi_raw)))
+            logger.info(
+                "helixa OI/funding: %d/%d bars covered (%.1f%%)",
+                oi_valid, n, oi_valid / n * 100,
+            )
+        except Exception as exc:
+            logger.warning("helixa derivatives load failed (%s) — skipping", exc)
+
+        logger.info("Loading helixa taker flow (OFI proxy)...")
+        try:
+            flow = await load_taker_flow_series(
+                bar_ts_list, symbol="BTC/USDT-SWAP", db_url=helixa_db_url
+            )
+            ofi_proxy = flow["net_taker_flow"]
+            ofi_valid = int(np.sum(~np.isnan(ofi_proxy)))
+            logger.info(
+                "helixa taker flow: %d/%d bars covered (%.1f%%)",
+                ofi_valid, n, ofi_valid / n * 100,
+            )
+        except Exception as exc:
+            logger.warning("helixa taker_flow load failed (%s) — skipping", exc)
+    else:
+        logger.info("Skipping helixa loaders (--no-helixa)")
+
     # Build BarRunner
     runner = BarRunner.from_precomputed(
         df=df,
@@ -188,6 +232,9 @@ async def run_replay(
         tda_l1_pctile_series=tda_pctile,
         hawkes_br_threshold=hawkes_threshold,
         tda_l1_threshold=tda_threshold,
+        oi_series=oi_raw,
+        funding_series=funding_raw,
+        ofi_proxy_series=ofi_proxy,
     )
 
     # Run state machine
@@ -228,6 +275,9 @@ async def run_replay(
     stats["sigma_mean"] = float(np.nanmean(sigma_series))
     stats["start_date"] = str(df["time"].iloc[0])
     stats["end_date"] = str(df["time"].iloc[-1])
+    stats["helixa_oi_covered"] = int(np.sum(~np.isnan(oi_raw))) if oi_raw is not None else 0
+    stats["helixa_funding_covered"] = int(np.sum(~np.isnan(funding_raw))) if funding_raw is not None else 0
+    stats["helixa_ofi_covered"] = int(np.sum(~np.isnan(ofi_proxy))) if ofi_proxy is not None else 0
 
     # Write report
     _write_report(stats, records, _REPORT_PATH)
@@ -460,7 +510,9 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--reset", action="store_true", help="Truncate v2_state_history before replay")
     p.add_argument("--no-hawkes", action="store_true", help="Skip Hawkes computation (fast test)")
     p.add_argument("--no-tda", action="store_true", help="Skip TDA computation (fast test)")
+    p.add_argument("--no-helixa", action="store_true", help="Skip helixa OI/funding/taker_flow loading")
     p.add_argument("--db-url", default=None, help="PostgreSQL DSN override")
+    p.add_argument("--helixa-db-url", default=None, help="Helixa PostgreSQL DSN override")
     return p.parse_args()
 
 
@@ -474,7 +526,9 @@ async def main() -> None:
         reset=args.reset,
         skip_hawkes=args.no_hawkes,
         skip_tda=args.no_tda,
+        skip_helixa=args.no_helixa,
         db_url=args.db_url,
+        helixa_db_url=args.helixa_db_url,
     )
     print("\n=== Replay Summary ===")
     print(f"Total bars : {stats['total_bars']}")

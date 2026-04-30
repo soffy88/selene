@@ -13,7 +13,7 @@ on each 4H bar close.
 Feature computation strategy:
   - Precompute rolling σ, σ-percentile, Hawkes BR, TDA L^1 once for all bars
   - Per-bar: look up precomputed values by index, check monotone/breakout
-  - STUB features (LOB/OI/funding) remain None throughout Wave 3
+  - Wave 5: helixa OI/funding/taker_flow series are optional; NaN → None in BarFeatures
 """
 from __future__ import annotations
 
@@ -34,6 +34,12 @@ _SIGMA_WINDOW = 180       # 30 days × 6 bars/day
 _SIGMA_PCTILE_WINDOW = 180
 _BREAKOUT_WINDOW = 6      # 24h = 6 × 4H bars
 _TDA_PCTILE_WINDOW = 540  # 90 days for percentile baseline
+
+# Helixa-derived rolling windows
+_OI_PCTILE_WINDOW = 360   # 60 days
+_FUNDING_PCTILE_WINDOW = 360
+_OFI_PCTILE_WINDOW = 42   # 7 days
+_FUNDING_PERSIST_BARS = 6  # same sign 6 consecutive bars
 
 
 class BarRunner:
@@ -56,6 +62,10 @@ class BarRunner:
         tda_l1_pctile_series: np.ndarray,  # rolling 95th pctile of TDA, shape (n,)
         hawkes_br_threshold: float = 0.85,
         tda_l1_threshold: float = 0.000097,
+        # Wave 5: helixa-derived optional series (all shape (n,), NaN where no data)
+        oi_series: Optional[np.ndarray] = None,
+        funding_series: Optional[np.ndarray] = None,
+        ofi_proxy_series: Optional[np.ndarray] = None,
     ) -> None:
         self._closes = closes
         self._timestamps = timestamps
@@ -69,6 +79,81 @@ class BarRunner:
         self._recognizer = StateRecognizer()
         self._n = len(closes)
 
+        # Precompute helixa-derived feature series
+        self._oi_raw = oi_series
+        self._funding_raw = funding_series
+        self._ofi_raw = ofi_proxy_series
+        self._oi_change_rate = self._precompute_oi_change_rate(oi_series)
+        self._oi_change_rate_pctile = self._precompute_rolling_pctile(
+            np.abs(self._oi_change_rate) if self._oi_change_rate is not None else None,
+            _OI_PCTILE_WINDOW,
+        )
+        self._oi_acceleration = self._precompute_oi_acceleration(self._oi_change_rate)
+        self._funding_pctile = self._precompute_rolling_pctile(
+            np.abs(funding_series) if funding_series is not None else None,
+            _FUNDING_PCTILE_WINDOW,
+        )
+        self._funding_persistent = self._precompute_funding_persistent(funding_series)
+        self._ofi_cumulative_pctile = self._precompute_rolling_pctile(
+            ofi_proxy_series, _OFI_PCTILE_WINDOW
+        )
+
+    # ── Helixa feature precomputation ─────────────────────────────────────────
+
+    def _precompute_oi_change_rate(
+        self, oi: Optional[np.ndarray]
+    ) -> Optional[np.ndarray]:
+        if oi is None:
+            return None
+        n = len(oi)
+        rate = np.full(n, np.nan)
+        for i in range(1, n):
+            if np.isfinite(oi[i]) and np.isfinite(oi[i - 1]) and oi[i - 1] != 0:
+                rate[i] = (oi[i] - oi[i - 1]) / abs(oi[i - 1])
+        return rate
+
+    def _precompute_rolling_pctile(
+        self, series: Optional[np.ndarray], window: int
+    ) -> Optional[np.ndarray]:
+        if series is None:
+            return None
+        n = len(series)
+        pctile = np.full(n, np.nan)
+        for i in range(window, n):
+            seg = series[i - window: i]
+            valid = seg[np.isfinite(seg)]
+            if len(valid) >= 2 and np.isfinite(series[i]):
+                pctile[i] = float(np.mean(valid <= series[i]))
+        return pctile
+
+    def _precompute_oi_acceleration(
+        self, rate: Optional[np.ndarray]
+    ) -> Optional[np.ndarray]:
+        if rate is None:
+            return None
+        n = len(rate)
+        accel = np.full(n, np.nan)
+        for i in range(1, n):
+            if np.isfinite(rate[i]) and np.isfinite(rate[i - 1]):
+                accel[i] = 1.0 if rate[i] > rate[i - 1] else 0.0
+        return accel
+
+    def _precompute_funding_persistent(
+        self, funding: Optional[np.ndarray]
+    ) -> Optional[np.ndarray]:
+        if funding is None:
+            return None
+        n = len(funding)
+        persist = np.full(n, np.nan)
+        for i in range(_FUNDING_PERSIST_BARS - 1, n):
+            window = funding[i - _FUNDING_PERSIST_BARS + 1: i + 1]
+            if np.all(np.isfinite(window)):
+                signs = np.sign(window)
+                persist[i] = 1.0 if np.all(signs == signs[0]) and signs[0] != 0 else 0.0
+        return persist
+
+    # ── Factory ───────────────────────────────────────────────────────────────
+
     @classmethod
     def from_precomputed(
         cls,
@@ -80,6 +165,9 @@ class BarRunner:
         tda_l1_pctile_series: np.ndarray,
         hawkes_br_threshold: float = 0.85,
         tda_l1_threshold: float = 0.000097,
+        oi_series: Optional[np.ndarray] = None,
+        funding_series: Optional[np.ndarray] = None,
+        ofi_proxy_series: Optional[np.ndarray] = None,
     ) -> "BarRunner":
         closes = df["close"].values.astype(float)
         timestamps = df["time"].values
@@ -93,6 +181,9 @@ class BarRunner:
             tda_l1_pctile_series=tda_l1_pctile_series,
             hawkes_br_threshold=hawkes_br_threshold,
             tda_l1_threshold=tda_l1_threshold,
+            oi_series=oi_series,
+            funding_series=funding_series,
+            ofi_proxy_series=ofi_proxy_series,
         )
 
     def build_features(self, i: int) -> BarFeatures:
@@ -158,6 +249,27 @@ class BarRunner:
             if np.isfinite(l1_prev2) and np.isfinite(l1_prev1):
                 tda_monotone = bool(float(l1_prev2) < float(l1_prev1) < tda_l1)
 
+        # ── Helixa-derived features (NaN → None) ──────────────────────────────
+        def _f(arr: Optional[np.ndarray]) -> Optional[float]:
+            if arr is None:
+                return None
+            v = arr[i]
+            return float(v) if np.isfinite(v) else None
+
+        def _b(arr: Optional[np.ndarray]) -> Optional[bool]:
+            if arr is None:
+                return None
+            v = arr[i]
+            return bool(v) if np.isfinite(v) else None
+
+        oi_change_rate = _f(self._oi_change_rate)
+        oi_change_rate_pctile = _f(self._oi_change_rate_pctile)
+        oi_acceleration: Optional[bool] = _b(self._oi_acceleration)
+        funding_rate = _f(self._funding_raw)
+        funding_pctile = _f(self._funding_pctile)
+        funding_persistent: Optional[bool] = _b(self._funding_persistent)
+        ofi_cumulative_pctile = _f(self._ofi_cumulative_pctile)
+
         return BarFeatures(
             timestamp=ts,
             bar_index=i,
@@ -175,6 +287,13 @@ class BarRunner:
             tda_l1_threshold=self._tda_threshold,
             tda_l1_monotone_3bar=tda_monotone,
             cold_start=False,
+            oi_change_rate=oi_change_rate,
+            oi_change_rate_pctile=oi_change_rate_pctile,
+            oi_acceleration=oi_acceleration,
+            funding_rate=funding_rate,
+            funding_pctile=funding_pctile,
+            funding_persistent=funding_persistent,
+            ofi_cumulative_pctile=ofi_cumulative_pctile,
         )
 
     def process_bar(self, i: int) -> StateRecord:

@@ -1,7 +1,7 @@
 # Wave 3 Offline Replay Report
 
-**Generated**: 2026-04-29 10:14 UTC  
-**Elapsed**: 275.4 s  
+**Generated**: 2026-04-30 02:05 UTC  
+**Elapsed**: 273.6 s  
 
 ## 1. Replay Time Range
 
@@ -14,9 +14,9 @@
 
 | State | Bars | % | Target (§16.2) |
 |---|---|---|---|
-| Coiling | 0 | 0.0% | 20-30% |
+| Coiling | 10 | 0.2% | 20-30% |
 | Surging | 0 | 0.0% | 10-20% |
-| Drifting_Calm | 4995 | 98.0% | 40-60% |
+| Drifting_Calm | 4985 | 97.8% | 40-60% |
 | Drifting_Charged | 0 | 0.0% | — |
 | Critical | 100 | 2.0% | 1-5% |
 | Cascade | 0 | 0.0% | <1% |
@@ -28,7 +28,7 @@
 | Release | 0 |
 | Exhaustion | 0 |
 | Decay | 1 |
-| Charging | 0 |
+| Charging | 1 |
 | Stress | 1 |
 | Trigger | 0 |
 | Reset | 0 |
@@ -88,8 +88,8 @@ Coiling and Surging may be under-counted because σ alone triggers without OI/OF
 
 ## 9. Health Alerts (§16.2 targets)
 
-- ⚠️ Coiling=0.0% (target 20-30%). LOB/OI STUB may cause undercounting.
-- ⚠️ Drifting-Calm=98.0% (target 40-60%).
+- ⚠️ Coiling=0.2% (target 20-30%). LOB/OI STUB may cause undercounting.
+- ⚠️ Drifting-Calm=97.8% (target 40-60%).
 - ⚠️ Surging=0.0% (target 10-20%). OFI STUB affects entry confirmation.
 
 ## Limitations
