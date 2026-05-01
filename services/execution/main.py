@@ -247,7 +247,7 @@ async def monitoring_loop():
             rec = fsm.record; price = prices.get(rec.symbol, 0)
             if not price: continue
             hit_stop = (rec.side=="BUY" and price<=rec.stop_loss) or (rec.side=="SELL" and price>=rec.stop_loss)
-            hit_take = (rec.side=="BUY" and price>=rec.take_profit) or (rec.side=="SELL" and price<=rec.take_profit)
+            hit_take = rec.take_profit > 0 and ((rec.side=="BUY" and price>=rec.take_profit) or (rec.side=="SELL" and price<=rec.take_profit))
             if hit_stop or hit_take:
                 reason = "stop_loss" if hit_stop else "take_profit"
                 fsm.transition(OrderState.CLOSING, note=reason)
@@ -360,12 +360,64 @@ async def consume_loop():
                     except Exception as e: logger.error(f"{worker}: {e}", exc_info=True)
 
 
+async def _recover_monitoring_orders():
+    """On startup: reload MONITORING orders from DB into _orders so the monitoring_loop picks them up."""
+    import uuid as _uuid
+    try:
+        pool = await get_pg()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT id, signal_id, symbol, exchange, side, order_type, "
+                "quantity, limit_price, stop_price, filled_price, filled_qty, "
+                "slippage_pct, fee_paid, state, exchange_id, kelly_fraction, risk_usd, "
+                "reject_reason, close_reason, realized_pnl, created_at, closed_at "
+                "FROM orders WHERE state='MONITORING'"
+            )
+        for row in rows:
+            lp = float(row['limit_price'] or 0)
+            rec = OrderRecord(
+                id            = str(row['id']),
+                signal_id     = str(row['signal_id']) if row['signal_id'] else "",
+                symbol        = row['symbol'],
+                exchange      = row['exchange'],
+                side          = row['side'],
+                order_type    = row['order_type'],
+                quantity      = float(row['quantity'] or 0),
+                limit_price   = lp or None,
+                entry_price   = lp,
+                stop_loss     = float(row['stop_price'] or 0),
+                take_profit   = 0.0,  # not stored in DB; monitoring guards take_profit > 0
+                filled_price  = float(row['filled_price'] or 0),
+                filled_qty    = float(row['filled_qty'] or 0),
+                slippage_pct  = float(row['slippage_pct'] or 0),
+                fee_paid      = float(row['fee_paid'] or 0),
+                state         = OrderState.MONITORING,
+                exchange_id   = row['exchange_id'] or "",
+                kelly_fraction= float(row['kelly_fraction'] or 0),
+                risk_usd      = float(row['risk_usd'] or 0),
+                reject_reason = row['reject_reason'] or "",
+                close_reason  = row['close_reason'] or "",
+                realized_pnl  = float(row['realized_pnl']) if row['realized_pnl'] is not None else None,
+                created_at    = row['created_at'],
+                closed_at     = row['closed_at'],
+            )
+            if rec.exchange_id:
+                _exchange_map[rec.exchange_id] = rec.id
+            fsm = OrderFSM(rec)
+            _orders[rec.id] = fsm
+            _recent_orders.append(fsm)
+        logger.info(f"recovered {len(rows)} MONITORING orders from DB")
+    except Exception as e:
+        logger.error(f"DB order recovery failed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _init_adapters()
     for name, adp in get_all_adapters().items():
         adp.on_fill(on_fill); asyncio.create_task(adp.subscribe_fills())
         logger.info(f"Fill subscription: {name}")
+    await _recover_monitoring_orders()
     tasks = [asyncio.create_task(consume_loop()), asyncio.create_task(monitoring_loop())]
     yield
     for t in tasks: t.cancel()

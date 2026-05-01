@@ -282,8 +282,63 @@ async def state_publisher():
             logger.error(f"state_publisher: {e}")
 
 
+async def _recover_portfolio():
+    """On startup: rebuild _positions from MONITORING orders + accumulated realized PnL from DB."""
+    try:
+        pool = await get_pg()
+        r    = await get_redis()
+        # Determine session start: Redis key → fallback 2026-04-30 00:00 UTC
+        sess_raw = await r.get("cw4:portfolio:session_start")
+        if sess_raw:
+            session_start = datetime.fromisoformat(sess_raw.decode() if isinstance(sess_raw, bytes) else sess_raw)
+        else:
+            session_start = datetime(2026, 4, 30, 0, 0, 0)
+
+        async with pool.acquire() as conn:
+            # Rebuild open positions from MONITORING orders
+            mon_rows = await conn.fetch(
+                "SELECT id, signal_id, symbol, side, filled_price, filled_qty, "
+                "stop_price, created_at "
+                "FROM orders WHERE state='MONITORING'"
+            )
+            for row in mon_rows:
+                pos_side  = PositionSide.LONG if row['side'] == 'BUY' else PositionSide.SHORT
+                signal_id = str(row['signal_id']) if row['signal_id'] else str(row['id'])
+                pos = Position(
+                    id          = str(row['id']),
+                    symbol      = row['symbol'],
+                    side        = pos_side,
+                    entry_price = float(row['filled_price'] or 0),
+                    quantity    = float(row['filled_qty'] or 0),
+                    stop_loss   = float(row['stop_price'] or 0),
+                    take_profit = 0.0,
+                    signal_id   = signal_id,
+                    opened_at   = row['created_at'],
+                )
+                _engine._positions[signal_id] = pos
+
+            # Accumulate realized PnL from CLOSED orders since session_start
+            pnl_row = await conn.fetchrow(
+                "SELECT COALESCE(SUM(realized_pnl), 0) AS total_pnl "
+                "FROM orders WHERE state='CLOSED' AND created_at >= $1",
+                session_start,
+            )
+            realized = float(pnl_row['total_pnl'] or 0)
+
+        _engine._realized_pnl = realized
+        _engine._daily_pnl    = realized
+        _engine._equity       = INITIAL_CAPITAL + realized
+        _engine._peak_equity  = max(INITIAL_CAPITAL, _engine._equity)
+        logger.info(
+            f"recovered {len(mon_rows)} positions, realized_pnl={realized:+.4f}, equity={_engine._equity:.2f}"
+        )
+    except Exception as e:
+        logger.error(f"portfolio DB recovery failed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await _recover_portfolio()
     tasks = [
         asyncio.create_task(consume_loop()),
         asyncio.create_task(state_publisher()),
