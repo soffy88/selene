@@ -1,0 +1,8 @@
+oprim v1.1.0 (40 elements):
+['__version__', 'bayes_beta_update', 'beta_alpha_ols', 'bootstrap_ci', 'brier_score_decomposed', 'clip_with_warning', 'correlation_batch', 'cosine_similarity_batch', 'cumulative_returns', 'distribution_summary', 'drawdown_curve', 'dtw_distance', 'euclidean_distance_matrix', 'ewma_smooth', 'futures_curve_shape', 'gap_detect', 'kde_density', 'kolmogorov_smirnov_test', 'lag_forward_fill', 'log_returns', 'logsumexp_safe', 'mann_kendall_trend', 'nelson_siegel_yield_curve', 'pearson_spearman_corr', 'percentile_ci', 'percentile_rank', 'purge_embargo_split', 'realized_vol', 'regime_filter_data', 'regime_label_align', 'regime_transition_matrix', 'resample_align', 'rolling_window_split', 'sharpe_ratio', 'skew_kurt_robust', 'softmax_safe', 'symmetric_kl_divergence', 'value_at_risk', 'wasserstein_distance', 'zscore_normalize']
+
+oskill v1.1.0 (16 elements):
+['__version__', 'bootstrap_distribution', 'bootstrap_sharpe', 'calibration_analysis', 'commodity_ratio_analytics', 'cpcv_pipeline', 'detect_outliers_robust', 'distribution_shift_test', 'factor_attribution', 'geopolitical_risk_index', 'historical_analogy_search', 'psr_dsr', 'regime_aware_performance', 'regime_aware_rolling', 'regime_transition_analysis', 'walk_forward_optimization']
+
+omodul v0.1.0 (17 elements):
+['__version__', 'alert_calibration_engine', 'cross_source_consistency_check', 'event_cascade_clusterer', 'factor_attribution_report', 'panel_data_quality_check', 'regime_change_detector', 'regime_conditional_dashboard_data', 'regime_replay_search', 'scenario_stress_test', 'shadow_account_simulator', 'smart_peer_finder', 'strategy_backtest_report', 'strategy_decay_monitor', 'tail_risk_analyzer', 'thesis_invalidation_monitor', 'trade_journal_analyzer']
