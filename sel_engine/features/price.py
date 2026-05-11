@@ -38,12 +38,13 @@ def compute_autocorr(closes: list[float], window: int) -> Optional[float]:
     returns = np.diff(np.log(prices))
     if len(returns) < 2:
         return None
-    # corrcoef returns NaN for zero-variance series; guard against that.
     try:
-        val = float(np.corrcoef(returns[:-1], returns[1:])[0, 1])
+        from oprim import pearson_spearman_corr
+        result = pearson_spearman_corr(returns[:-1], returns[1:], min_samples=2)
+        val = result['pearson_r']
         if np.isnan(val):
             return None
-        return val
+        return float(val)
     except Exception as exc:
         logger.debug("autocorr computation failed: %s", exc)
         return None

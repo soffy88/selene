@@ -130,6 +130,7 @@ class RegimeDetector:
 def _ema(closes: list[float], period: int) -> Optional[float]:
     if len(closes) < period:
         return None
+    # SMA-seeded EMA (matches original behavior exactly)
     k = 2.0 / (period + 1)
     ema = sum(closes[:period]) / period
     for p in closes[period:]:

@@ -165,11 +165,13 @@ class HMMRegimeDetector:
     def _autocorr(arr: np.ndarray, lag: int = 1) -> float:
         if len(arr) <= lag:
             return 0.0
-        x  = arr[:-lag]
-        y  = arr[lag:]
+        x = arr[:-lag]
+        y = arr[lag:]
         if x.std() < 1e-10 or y.std() < 1e-10:
             return 0.0
-        return float(np.corrcoef(x, y)[0, 1])
+        from oprim import pearson_spearman_corr
+        result = pearson_spearman_corr(x, y, min_samples=2)
+        return float(result['pearson_r'])
 
     # ── HMM 训练 + 预测（同步，在线程池执行）────────────
     def _fit_and_predict(

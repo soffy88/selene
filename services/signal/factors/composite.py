@@ -106,13 +106,13 @@ def score_funding_zscore(current_rate: float, rate_history: list[float]) -> floa
     """
     if not rate_history or len(rate_history) < 5:
         return 0.0
-    mean = sum(rate_history) / len(rate_history)
-    std  = math.sqrt(sum((r - mean)**2 for r in rate_history) / len(rate_history))
-    if std == 0:
+    import numpy as np
+    arr = np.array(rate_history, dtype=float)
+    mean = float(arr.mean())
+    std = float(arr.std(ddof=0))
+    if std < 1e-15:
         return 0.0
     z = (current_rate - mean) / std
-    # Clamp to [-3, 3] and normalize to [-1, +1], then invert
-    # (negative z = rate below mean = longs are cheap = bullish)
     return round(-max(-1.0, min(1.0, z / 3.0)), 4)
 
 
@@ -224,11 +224,12 @@ class MultiFactorScorer:
         """Wilson confidence interval half-width at 95%."""
         if n < 10:
             return 0.15
+        import numpy as np
         z = 1.96
         denominator = 1 + z**2 / n
         center = (p + z**2 / (2*n)) / denominator
-        half   = z * math.sqrt(p*(1-p)/n + z**2/(4*n**2)) / denominator
-        return round(half, 4)
+        half = z * np.sqrt(p*(1-p)/n + z**2/(4*n**2)) / denominator
+        return round(float(half), 4)
 
     def update_calibration(self, center: float, scale: float) -> None:
         """Update Platt calibration parameters after fitting on historical data."""
