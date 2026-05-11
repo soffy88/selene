@@ -66,12 +66,6 @@ def compute_dwt(returns: np.ndarray, wavelet: str = "db4", level: int = 6):
     return coeffs, energies, energy_pct
 
 
-def _reconstruction_energy_fraction(coeffs: list, level_idx: int) -> np.ndarray:
-    """Reconstruct signal using only one level's coefficients."""
-    zero_coeffs = [np.zeros_like(c) for c in coeffs]
-    zero_coeffs[level_idx] = coeffs[level_idx]
-    return pywt.waverec(zero_coeffs, "db4", mode="periodization")
-
 
 def _event_signature(
     returns: np.ndarray,
