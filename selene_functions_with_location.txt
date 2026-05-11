@@ -1,0 +1,579 @@
+paper_trading/account.py:10:    def __init__(self, initial_nav: float, risk_config: RiskConfig) -> None:
+paper_trading/account.py:20:    def apply_fill(
+paper_trading/account.py:36:    def check_risk(
+paper_trading/account.py:89:    def snapshot(self, time: datetime, position: Optional[Position]) -> AccountState:
+paper_trading/account.py:114:    def reset_daily(self, bar_time: datetime) -> None:
+paper_trading/account.py:125:    def _daily_drawdown_pct(self) -> float:
+paper_trading/account.py:130:    def _set_pause(self, bar_time: datetime) -> None:
+paper_trading/replay.py:25:    def __init__(self, config: DecisionConfig) -> None:
+paper_trading/replay.py:29:    def replay(self, trails: list[DecisionTrail]) -> list[DecisionTrail]:
+paper_trading/replay.py:125:    def __init__(self, trail: DecisionTrail) -> None:
+paper_trading/risk.py:51:def _classify_lag_subtype(none_reasons: Optional[dict]) -> str:
+paper_trading/risk.py:70:    def __init__(self, risk_config: RiskConfig, symbol: str) -> None:
+paper_trading/risk.py:81:    def check(
+paper_trading/risk.py:167:    def recent_events(self, n: int = 20) -> list[RiskEvent]:
+paper_trading/risk.py:175:    def to_state_dict(self) -> dict:
+paper_trading/risk.py:183:    def from_state_dict(
+paper_trading/risk.py:197:    def _fire_rule_2(
+paper_trading/risk.py:235:    def _fire(
+paper_trading/runner.py:29:    def __init__(self, config: DecisionConfig, symbol: str = "BTCUSDT") -> None:
+paper_trading/runner.py:208:    def _get_none_reasons_in_window(self, start: datetime, end: datetime) -> dict:
+paper_trading/trail.py:88:    def __init__(self, symbol: str, config: DecisionConfig) -> None:
+paper_trading/trail.py:94:    def record_state(self, state: Optional[str]) -> None:
+paper_trading/trail.py:99:    def build(
+paper_trading/positions.py:9:    def __init__(self) -> None:
+paper_trading/positions.py:13:    def open(self, fill: SimulatedFill, bar_time: datetime, mark_price: float) -> Position:
+paper_trading/positions.py:33:    def close(self, fill: SimulatedFill, realized_pnl: float) -> None:
+paper_trading/positions.py:40:    def reduce(self, fill: SimulatedFill, realized_pnl: float) -> None:
+paper_trading/positions.py:49:    def update_unrealized(self, current_price: float) -> None:
+paper_trading/positions.py:62:    def current(self) -> Optional[Position]:
+paper_trading/scripts/replay_cli.py:23:def _make_synthetic_trails(n: int = 5):
+paper_trading/scripts/replay_cli.py:87:def _print_table(original: list, replayed: list) -> None:
+paper_trading/scripts/replay_cli.py:141:def main() -> None:
+paper_trading/scripts/validate_runner.py:44:    def __init__(self, symbol: str) -> None:
+paper_trading/scripts/validate_runner.py:59:    def __init__(self, bar_time, symbol, state, prev_state, close_price):
+paper_trading/scripts/validate_runner.py:90:    def __init__(self, config):
+paper_trading/scripts/validate_runner.py:222:def main() -> None:
+paper_trading/fills.py:10:    def __init__(self, config: ExecutionConfig) -> None:
+paper_trading/fills.py:14:    def simulate_open(
+paper_trading/fills.py:57:    def simulate_close(
+paper_trading/engine.py:15:    def __init__(self, config: DecisionConfig) -> None:
+paper_trading/engine.py:19:    def decide(
+paper_trading/engine.py:93:    def _compute_target_size(
+paper_trading/engine.py:117:    def _symbol(position: Optional[Position]) -> str:
+decision/config.py:65:    def find_rule(self, current_state: str, previous_state: Optional[str]) -> Optional[DecisionRule]:
+decision/config.py:75:def _matches_previous(rule: DecisionRule, prev: Optional[str]) -> bool:
+decision/config.py:90:def load_config(path: Path = CONFIG_PATH) -> DecisionConfig:
+decision/config.py:99:def _validate(data: dict) -> None:
+decision/config.py:112:def _parse(data: dict, config_hash: str) -> DecisionConfig:
+sel_engine/paper_interface/service.py:26:    def __init__(self, symbol: str = "BTCUSDT") -> None:
+sel_engine/paper_interface/service.py:96:    def _to_output(self, record: StateRecord, fv: FeatureVector) -> StateOutput:
+sel_engine/paper_interface/store.py:139:def _row_to_output(row: dict) -> StateOutput:
+sel_engine/features/derived.py:19:def compute_LV(
+sel_engine/features/derived.py:47:def compute_hurst_rs(series: list[float]) -> Optional[float]:
+sel_engine/features/derived.py:94:def compute_oi_change_rate_24h(OI_history: list) -> Optional[float]:
+sel_engine/features/derived.py:109:def compute_H_24h_mean(H_history: list) -> Optional[float]:
+sel_engine/features/derived.py:123:def compute_tf_dp_ratio_24h(
+sel_engine/features/derived.py:144:def compute_tf_directional_ratio_6h(
+sel_engine/features/derived.py:164:def compute_abs_tf_24h_sum(TF_history: Optional[list]) -> Optional[float]:
+sel_engine/features/derived.py:178:def compute_all_derived(
+sel_engine/features/flow.py:59:def compute_absorption_ratio(
+sel_engine/features/liquidity.py:16:def compute_orderbook_entropy(levels: list[tuple[float, float]]) -> float:
+sel_engine/features/liquidity.py:32:def compute_H_from_samples(samples: list[float]) -> tuple[Optional[float], int]:
+sel_engine/features/liquidity.py:40:def compute_H_change_rate_std(H_history: list[float], window: int = 12) -> Optional[float]:
+sel_engine/features/orderbook.py:13:def compute_depth_features(
+sel_engine/features/orderbook.py:46:def compute_depth_features_stub() -> dict:
+sel_engine/features/price.py:10:def compute_price_features(closes: list[float]) -> dict:
+sel_engine/features/price.py:33:def compute_autocorr(closes: list[float], window: int) -> Optional[float]:
+sel_engine/features/price.py:52:def compute_sigma_p_d2(sigma_history: list[float]) -> Optional[float]:
+sel_engine/features/price.py:59:def compute_price_slope_6h(closes: list[float]) -> Optional[float]:
+sel_engine/features/price.py:77:def compute_sigma_slope_12h(sigma_history: list[float]) -> Optional[bool]:
+sel_engine/features/price.py:84:def compute_sigma_change_rate_std_6h(sigma_history: list[float]) -> Optional[float]:
+sel_engine/scheduler/health.py:21:def check() -> bool:
+sel_engine/scheduler/bar_close_runner.py:61:    def __init__(
+sel_engine/scheduler/bar_close_runner.py:228:    def _apply_depth_samples(self, fv, samples: list[dict]) -> None:
+sel_engine/validator.py:50:    def validate(self, vectors: list[FeatureVector]) -> ValidationReport:
+sel_engine/validator.py:90:    def summary(self, report: ValidationReport) -> str:
+sel_engine/diagnostics/state_inspection.py:51:def _sparkline(values: list[float], width: int = 48) -> str:
+sel_engine/diagnostics/state_inspection.py:61:    def _ch(v: float) -> str:
+sel_engine/diagnostics/state_inspection.py:67:def _ascii_chart(
+sel_engine/diagnostics/state_inspection.py:99:    def _row(v: float) -> int:
+sel_engine/diagnostics/state_inspection.py:305:def _detect_runs(state_rows: list[dict], candle_map: dict) -> list[dict]:
+sel_engine/diagnostics/state_inspection.py:315:    def _flush():
+sel_engine/diagnostics/state_inspection.py:355:def _sample_runs(runs: list[dict], n: int = MAX_SAMPLES) -> list[dict]:
+sel_engine/diagnostics/state_inspection.py:392:def _fmt(v) -> str:
+sel_engine/diagnostics/state_inspection.py:404:def _feature_table(bars: list[dict], feat_map: dict) -> str:
+sel_engine/diagnostics/state_inspection.py:453:def _write_figure(run_idx: int, state: str, bars: list[dict]) -> Optional[str]:
+sel_engine/diagnostics/state_inspection.py:473:def _build_report(
+sel_engine/diagnostics/state_inspection.py:595:def _print_summary(
+sel_engine/diagnostics/state_inspection.py:743:def _parse_args() -> argparse.Namespace:
+sel_engine/scripts/validate_e2e.py:31:def _make_mock_pg():
+sel_engine/scripts/validate_e2e.py:49:def _make_mock_redis():
+sel_engine/states/health.py:51:    def __init__(self) -> None:
+sel_engine/states/health.py:59:    def record(self, sr: StateRecord) -> None:
+sel_engine/states/health.py:65:    def set_cooling_events(self, count: int) -> None:
+sel_engine/states/health.py:69:    def generate(
+sel_engine/states/health.py:204:    def _filter(
+sel_engine/states/health.py:217:    def _compute_avg_dwell(records: list[StateRecord]) -> dict[str, float]:
+sel_engine/states/conditions.py:13:def check_cascade(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
+sel_engine/states/conditions.py:51:def check_critical(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
+sel_engine/states/conditions.py:109:def check_coiling(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
+sel_engine/states/conditions.py:157:def check_surging(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
+sel_engine/states/conditions.py:210:def check_drifting_charged(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
+sel_engine/states/conditions.py:255:def check_drifting_calm(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
+sel_engine/states/transition.py:90:    def __init__(self) -> None:
+sel_engine/states/transition.py:95:    def apply(
+sel_engine/states/transition.py:153:    def __init__(self, cooldown_bars: int = 6) -> None:
+sel_engine/states/transition.py:158:    def apply(
+sel_engine/states/transition.py:226:    def __init__(self) -> None:
+sel_engine/states/transition.py:231:    def illegal_transition_types(self) -> dict[str, int]:
+sel_engine/states/transition.py:234:    def check(
+sel_engine/states/engine.py:25:    def __init__(self, symbol: str) -> None:
+sel_engine/states/engine.py:34:    def process(self, fv: FeatureVector) -> StateRecord:
+sel_engine/states/engine.py:47:    def health_report(
+sel_engine/states/recognizer.py:60:def _none_reason_for_no_match(qr: dict, fv: FeatureVector) -> StateNoneReason:
+sel_engine/states/recognizer.py:76:    def __init__(self):
+sel_engine/states/recognizer.py:80:    def recognize(self, fv: FeatureVector) -> StateRecord:
+sel_engine/states/recognizer.py:148:    def _compute_quantile_ranks(self, fv: FeatureVector) -> dict:
+sel_engine/states/recognizer.py:177:    def _update_windows(self, fv: FeatureVector) -> None:
+sel_engine/states/recognizer.py:200:def compute_state_distribution(state_records: list[StateRecord]) -> dict:
+sel_engine/states/thresholds.py:16:    def __init__(self):
+sel_engine/states/thresholds.py:19:    def add(self, feature_name: str, value: Optional[float]) -> None:
+sel_engine/states/thresholds.py:25:    def quantile_rank(self, feature_name: str, current_value: Optional[float]) -> Optional[float]:
+sel_engine/states/thresholds.py:44:    def is_cold_start(self, feature_name: str) -> bool:
+sel_engine/states/thresholds.py:49:    def bar_count(self) -> int:
+sel_engine/collectors/orderbook_collector.py:30:def _bar_ts_iso(now: datetime) -> str:
+sel_engine/collectors/trade_flow_collector.py:28:def _bar_ts_iso(now: datetime) -> str:
+sel_v2/offline/transfer_entropy.py:31:def _ordinal_pattern(x: np.ndarray, d: int = 3) -> np.ndarray:
+sel_v2/offline/transfer_entropy.py:47:def _H(x: np.ndarray) -> float:
+sel_v2/offline/transfer_entropy.py:54:def _joint_symbols(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+sel_v2/offline/transfer_entropy.py:60:def symbolic_te(source: np.ndarray, target: np.ndarray, d: int = 3, lag: int = 1) -> float:
+sel_v2/offline/transfer_entropy.py:106:def phase_randomize(x: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+sel_v2/offline/transfer_entropy.py:115:def te_pvalue(
+sel_v2/offline/transfer_entropy.py:139:def build_signals(df: pd.DataFrame) -> dict[str, np.ndarray]:
+sel_v2/offline/transfer_entropy.py:189:def run_causal_map(
+sel_v2/offline/transfer_entropy.py:250:def _write_report(
+sel_v2/offline/transfer_entropy.py:364:def _interpret_edge(src: str, tgt: str) -> str:
+sel_v2/offline/transfer_entropy.py:378:def _validate_design(significant: list) -> str:
+sel_v2/offline/transfer_entropy.py:420:def main() -> None:
+sel_v2/offline/wavelet.py:59:def compute_dwt(returns: np.ndarray, wavelet: str = "db4", level: int = 6):
+sel_v2/offline/wavelet.py:69:def _reconstruction_energy_fraction(coeffs: list, level_idx: int) -> np.ndarray:
+sel_v2/offline/wavelet.py:76:def _event_signature(
+sel_v2/offline/wavelet.py:107:def run_wavelet_analysis(
+sel_v2/offline/wavelet.py:178:def _write_report(result: dict, output_path: str) -> None:
+sel_v2/offline/wavelet.py:313:def _energy_interpretation(lvl: int, energy_pct: float, autocorr: float) -> str:
+sel_v2/offline/wavelet.py:324:def _anchor_validation(dominant_lvl: int, energy_pct: list) -> str:
+sel_v2/offline/wavelet.py:348:def _design_validation(dominant_lvl: int, energy_pct: list, actual_level: int) -> str:
+sel_v2/offline/wavelet.py:395:def main() -> None:
+sel_v2/offline/hawkes_calibration.py:53:def hawkes_nll(
+sel_v2/offline/hawkes_calibration.py:98:def fit_hawkes(
+sel_v2/offline/hawkes_calibration.py:152:def run_rolling_hawkes(
+sel_v2/offline/hawkes_calibration.py:200:def run_hawkes_calibration(
+sel_v2/offline/hawkes_calibration.py:314:def _write_report(result: dict, output_path: str) -> None:
+sel_v2/offline/hawkes_calibration.py:448:def _design_validation(
+sel_v2/offline/hawkes_calibration.py:506:def main() -> None:
+sel_v2/offline/tda_calibration.py:50:def takens_embed(x: np.ndarray, d: int = 4, tau: int = 1) -> np.ndarray:
+sel_v2/offline/tda_calibration.py:64:def estimate_tau(x: np.ndarray, max_lag: int = 20) -> int:
+sel_v2/offline/tda_calibration.py:95:def persistence_diagram_to_landscape(
+sel_v2/offline/tda_calibration.py:128:def compute_pl_l1(
+sel_v2/offline/tda_calibration.py:180:def run_rolling_tda(
+sel_v2/offline/tda_calibration.py:207:def run_tda_calibration(
+sel_v2/offline/tda_calibration.py:331:def _write_report(result: dict, output_path: str) -> None:
+sel_v2/offline/tda_calibration.py:468:def _design_validation(
+sel_v2/offline/tda_calibration.py:523:def main() -> None:
+sel_v2/db/connection.py:27:def _selene_url() -> str:
+sel_v2/db/connection.py:37:def _helixa_url() -> str:
+sel_v2/evaluation/tool_evaluator.py:67:    def __init__(self, db_writer=None) -> None:
+sel_v2/evaluation/tool_evaluator.py:168:    def _compute_lead_time(
+sel_v2/evaluation/tool_evaluator.py:188:    def _compute_fp_rate(
+sel_v2/evaluation/tool_evaluator.py:212:    def _make_decision(
+sel_v2/evaluation/tool_evaluator.py:231:    def _decision_reason(
+sel_v2/scheduler/replay.py:63:def precompute_sigma_series(close: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+sel_v2/scheduler/replay.py:88:def precompute_tda_pctile_series(
+sel_v2/scheduler/replay.py:289:def _compile_stats(records, df) -> dict:
+sel_v2/scheduler/replay.py:356:def _write_report(stats: dict, records, output_path: str) -> None:
+sel_v2/scheduler/replay.py:504:def _parse_args() -> argparse.Namespace:
+sel_v2/scheduler/derivatives_loader.py:22:def _helixa_db_url(override: Optional[str] = None) -> str:
+sel_v2/scheduler/derivatives_loader.py:36:def _to_ns_array(timestamps: Sequence) -> np.ndarray:
+sel_v2/scheduler/taker_flow_loader.py:26:def _helixa_db_url(override: Optional[str] = None) -> str:
+sel_v2/scheduler/taker_flow_loader.py:40:def _to_ns_array(timestamps: Sequence) -> np.ndarray:
+sel_v2/scheduler/bar_runner.py:54:    def __init__(
+sel_v2/scheduler/bar_runner.py:103:    def _precompute_oi_change_rate(
+sel_v2/scheduler/bar_runner.py:115:    def _precompute_rolling_pctile(
+sel_v2/scheduler/bar_runner.py:129:    def _precompute_oi_acceleration(
+sel_v2/scheduler/bar_runner.py:141:    def _precompute_funding_persistent(
+sel_v2/scheduler/bar_runner.py:158:    def from_precomputed(
+sel_v2/scheduler/bar_runner.py:189:    def build_features(self, i: int) -> BarFeatures:
+sel_v2/scheduler/bar_runner.py:299:    def process_bar(self, i: int) -> StateRecord:
+sel_v2/scheduler/bar_runner.py:304:    def run_all(self, start: int = 0, end: Optional[int] = None) -> list[StateRecord]:
+sel_v2/hawkes/mle.py:25:    def branching_ratio(self) -> float:
+sel_v2/hawkes/mle.py:29:def hawkes_nll(params: np.ndarray, event_times: np.ndarray, T: float) -> float:
+sel_v2/hawkes/mle.py:54:def fit_hawkes(
+sel_v2/data/okx_backfill.py:39:def fetch_candles(
+sel_v2/data/okx_backfill.py:72:def _to_ms(dt: datetime) -> int:
+sel_v2/data/okx_backfill.py:76:def backfill_to_parquet(
+sel_v2/data/okx_backfill.py:154:def backfill_to_db(
+sel_v2/data/okx_backfill.py:236:def main() -> None:
+sel_v2/strategies/strategy_exit.py:67:def _unrealized_pnl_pct(
+sel_v2/strategies/strategy_exit.py:79:def check_strategy1_exit(
+sel_v2/strategies/strategy_exit.py:107:    def _update(candidate: ExitDecision) -> None:
+sel_v2/strategies/strategy_exit.py:180:def check_strategy2_exit(
+sel_v2/strategies/strategy_exit.py:208:    def _update(candidate: ExitDecision) -> None:
+sel_v2/strategies/cusum_short.py:57:    def __init__(
+sel_v2/strategies/cusum_short.py:78:    def update(self, z_t: float, t: Optional[float] = None) -> CUSUMTrigger:
+sel_v2/strategies/cusum_short.py:145:    def reset_positive(self) -> None:
+sel_v2/strategies/cusum_short.py:150:    def reset_negative(self) -> None:
+sel_v2/strategies/cusum_short.py:155:    def reset_all(self) -> None:
+sel_v2/strategies/cusum_short.py:161:    def _current_threshold(self, t: Optional[float]) -> float:
+sel_v2/strategies/cusum_short.py:169:    def _record_peak(self, t: Optional[float], peak: float, positive: bool) -> None:
+sel_v2/strategies/cusum_short.py:175:    def _evict(self, t: Optional[float]) -> None:
+sel_v2/strategies/cusum_short.py:184:    def state(self) -> dict:
+sel_v2/strategies/sub_account.py:58:    def notional_usdt(self) -> float:
+sel_v2/strategies/sub_account.py:61:    def unrealized_pnl_pct(self, mark_price: float) -> float:
+sel_v2/strategies/sub_account.py:66:    def unrealized_pnl_usdt(self, mark_price: float) -> float:
+sel_v2/strategies/sub_account.py:98:    def __post_init__(self) -> None:
+sel_v2/strategies/sub_account.py:104:    def nav(self) -> float:
+sel_v2/strategies/sub_account.py:108:    def open_positions(self) -> list[Position]:
+sel_v2/strategies/sub_account.py:112:    def closed_positions(self) -> list[ClosedPosition]:
+sel_v2/strategies/sub_account.py:115:    def unrealized_pnl(self, mark_price: float) -> float:
+sel_v2/strategies/sub_account.py:118:    def equity(self, mark_price: float) -> float:
+sel_v2/strategies/sub_account.py:123:    def can_open(self) -> bool:
+sel_v2/strategies/sub_account.py:126:    def open_position(
+sel_v2/strategies/sub_account.py:167:    def close_position(
+sel_v2/strategies/sub_account.py:197:    def reduce_position(
+sel_v2/strategies/sub_account.py:248:    def cascade_close_all(
+sel_v2/strategies/sub_account.py:263:def leverage_pnl(leverage: float, pnl_pct: float) -> float:
+sel_v2/strategies/sub_account.py:285:    def __post_init__(self) -> None:
+sel_v2/strategies/sub_account.py:299:    def total_equity(self, mark_price: float) -> float:
+sel_v2/strategies/sub_account.py:305:    def cascade_close_all(
+sel_v2/strategies/db_writer.py:30:def _default_db_url() -> str:
+sel_v2/strategies/db_writer.py:52:    def __init__(self, db_url: Optional[str] = None) -> None:
+sel_v2/strategies/strategy1_entry.py:100:    def evaluate(
+sel_v2/strategies/params_loader.py:21:def _default_db_url() -> str:
+sel_v2/strategies/params_loader.py:30:def load_strategy_params(
+sel_v2/strategies/kelly_sizing.py:93:    def record_trade(self, closed_at: datetime, pnl_pct: float) -> None:
+sel_v2/strategies/kelly_sizing.py:98:    def compute(self, nav_usdt: float, as_of: Optional[datetime] = None) -> KellyDiagnostic:
+sel_v2/strategies/kelly_sizing.py:171:    def is_ready_for_phase2(self) -> bool:
+sel_v2/strategies/kelly_sizing.py:177:    def _evict(self, as_of: datetime) -> None:
+sel_v2/strategies/kelly_sizing.py:184:    def _apply_kelly(
+sel_v2/strategies/strategy2_entry.py:67:    def evaluate(
+sel_v2/strategies/strategy2_entry.py:234:def _classify_entry_type(
+sel_v2/strategies/strategy2_entry.py:278:def _compute_leverage(vocab: set[str]) -> float:
+sel_v2/strategies/hawkes_intensity.py:48:    def branching_ratio(self) -> float:
+sel_v2/strategies/hawkes_intensity.py:52:    def from_h2_reference(cls, db_url: Optional[str] = None) -> "HawkesParams":
+sel_v2/strategies/hawkes_intensity.py:97:    def __init__(self, params: Optional[HawkesParams] = None) -> None:
+sel_v2/strategies/hawkes_intensity.py:105:    def add_event(self, t: float) -> float:
+sel_v2/strategies/hawkes_intensity.py:122:    def intensity(self, t: float) -> float:
+sel_v2/strategies/hawkes_intensity.py:132:    def reset(self) -> None:
+sel_v2/strategies/hawkes_intensity.py:138:    def update_params(self, params: HawkesParams) -> None:
+sel_v2/strategies/hawkes_intensity.py:151:    def recent_intensities(self, since: float) -> List[float]:
+sel_v2/strategies/hawkes_intensity.py:158:    def fit_gmm(
+sel_v2/strategies/hawkes_intensity.py:223:    def __init__(
+sel_v2/strategies/hawkes_intensity.py:232:    def add(self, t: float, intensity: float) -> None:
+sel_v2/strategies/hawkes_intensity.py:236:    def threshold(self, t: float) -> Optional[float]:
+sel_v2/strategies/hawkes_intensity.py:244:    def above_threshold(self, t: float, intensity: float) -> bool:
+sel_v2/strategies/hawkes_intensity.py:255:    def _evict(self, now: float) -> None:
+sel_v2/reports/weekly_generator.py:47:    def __init__(self, output_dir: str = _REPORTS_DIR) -> None:
+sel_v2/reports/weekly_generator.py:52:    def generate(
+sel_v2/reports/weekly_generator.py:85:    def generate_markdown(self, week_iso: str, data: dict[str, Any]) -> str:
+sel_v2/reports/weekly_generator.py:91:    def _header(
+sel_v2/reports/weekly_generator.py:106:    def _body(self, data: dict[str, Any]) -> str:
+sel_v2/reports/weekly_generator.py:120:    def _manual_placeholders(self) -> str:
+sel_v2/reports/weekly_generator.py:132:    def _write(self, week_iso: str, content: str) -> str:
+sel_v2/reports/sections/cusum_stats.py:7:def build_cusum_stats(data: dict[str, Any]) -> str:
+sel_v2/reports/sections/cusum_stats.py:26:    def _fmt(v, fmt=".3f"):
+sel_v2/reports/sections/coordination_events.py:7:def build_coordination_events(data: dict[str, Any]) -> str:
+sel_v2/reports/sections/observation_tools.py:18:def build_observation_tools(data: dict[str, Any]) -> str:
+sel_v2/reports/sections/inverse_vocab_stats.py:7:def build_inverse_vocab_stats(data: dict[str, Any]) -> str:
+sel_v2/reports/sections/account_state.py:7:def build_account_state(data: dict[str, Any]) -> str:
+sel_v2/reports/sections/account_state.py:17:    def _fmt(v, fmt=".2f"):
+sel_v2/reports/sections/anomalies.py:7:def build_anomalies(data: dict[str, Any]) -> str:
+sel_v2/reports/sections/anomalies.py:22:    def _section(title: str, items: list[str]) -> list[str]:
+sel_v2/reports/sections/strategy2_perf.py:7:def build_strategy2_perf(data: dict[str, Any]) -> str:
+sel_v2/reports/sections/strategy2_perf.py:22:    def _fmt(v, fmt=".2f"):
+sel_v2/reports/sections/state_distribution.py:7:def build_state_distribution(data: dict[str, Any]) -> str:
+sel_v2/reports/sections/strategy1_perf.py:7:def build_strategy1_perf(data: dict[str, Any]) -> str:
+sel_v2/reports/sections/strategy1_perf.py:21:    def _fmt(v, fmt=".2f"):
+sel_v2/reports/scheduler.py:32:def _current_week_iso() -> str:
+sel_v2/reports/scheduler.py:38:def _period_strings(now: datetime) -> tuple[str, str]:
+sel_v2/reports/scheduler.py:44:def _collect_report_data(period_start: str, period_end: str, db=None) -> dict[str, Any]:
+sel_v2/reports/scheduler.py:112:def schedule_weekly_report_blocking() -> None:
+sel_v2/observation_tools/runner.py:74:    def __init__(self, db_writer=None) -> None:
+sel_v2/observation_tools/runner.py:89:    def process_bar_sync(self, bar: BarFeatures) -> list[ObservationResult]:
+sel_v2/observation_tools/runner.py:146:    def ready_tools(self) -> list[str]:
+sel_v2/observation_tools/runner.py:150:    def all_ready(self) -> bool:
+sel_v2/observation_tools/runner.py:154:    def bars_processed(self) -> int:
+sel_v2/observation_tools/runner.py:157:    def reset_all(self) -> None:
+sel_v2/observation_tools/transfer_entropy_rolling.py:40:    def __init__(
+sel_v2/observation_tools/transfer_entropy_rolling.py:52:    def is_ready(self) -> bool:
+sel_v2/observation_tools/transfer_entropy_rolling.py:58:    def _threshold(self) -> float:
+sel_v2/observation_tools/transfer_entropy_rolling.py:63:    def update(self, bar: BarFeatures) -> ObservationResult:
+sel_v2/observation_tools/transfer_entropy_rolling.py:118:    def reset(self) -> None:
+sel_v2/observation_tools/tda_clustering.py:38:def _persistence_landscape_l1(x: np.ndarray, d: int = EMBED_DIM, tau: int = EMBED_TAU) -> float:
+sel_v2/observation_tools/tda_clustering.py:70:    def __init__(
+sel_v2/observation_tools/tda_clustering.py:80:    def is_ready(self) -> bool:
+sel_v2/observation_tools/tda_clustering.py:83:    def _threshold(self) -> float:
+sel_v2/observation_tools/tda_clustering.py:88:    def update(self, bar: BarFeatures) -> ObservationResult:
+sel_v2/observation_tools/tda_clustering.py:123:    def reset(self) -> None:
+sel_v2/observation_tools/hmm_boundary_arbiter.py:30:    def __init__(self, shift_threshold: float = SHIFT_THRESHOLD) -> None:
+sel_v2/observation_tools/hmm_boundary_arbiter.py:35:    def is_ready(self) -> bool:
+sel_v2/observation_tools/hmm_boundary_arbiter.py:38:    def update(self, bar: BarFeatures) -> ObservationResult:
+sel_v2/observation_tools/hmm_boundary_arbiter.py:83:    def reset(self) -> None:
+sel_v2/observation_tools/hawkes_cascade_warning.py:43:def _bar_to_intensity_proxy(bar: BarFeatures) -> tuple[float, float, float]:
+sel_v2/observation_tools/hawkes_cascade_warning.py:84:    def __init__(
+sel_v2/observation_tools/hawkes_cascade_warning.py:99:    def is_ready(self) -> bool:
+sel_v2/observation_tools/hawkes_cascade_warning.py:102:    def update(self, bar: BarFeatures) -> ObservationResult:
+sel_v2/observation_tools/hawkes_cascade_warning.py:165:    def reset(self) -> None:
+sel_v2/observation_tools/bayesian_hmm.py:43:    def __init__(self, n_iter: int = MAX_ITER, tol: float = TOL) -> None:
+sel_v2/observation_tools/bayesian_hmm.py:56:    def _emit(self, x: np.ndarray) -> np.ndarray:
+sel_v2/observation_tools/bayesian_hmm.py:70:    def _forward(self, B: np.ndarray):
+sel_v2/observation_tools/bayesian_hmm.py:83:    def _backward(self, B: np.ndarray, scale: np.ndarray):
+sel_v2/observation_tools/bayesian_hmm.py:94:    def fit(self, x: np.ndarray) -> None:
+sel_v2/observation_tools/bayesian_hmm.py:135:    def predict_proba(self, x: np.ndarray) -> np.ndarray:
+sel_v2/observation_tools/bayesian_hmm.py:144:    def predict(self, x: np.ndarray) -> np.ndarray:
+sel_v2/observation_tools/bayesian_hmm.py:163:def _canonical_high_vol_state(hmm: _GaussianHMM) -> int:
+sel_v2/observation_tools/bayesian_hmm.py:179:    def __init__(self, window: int = WINDOW_BARS, high_vol_threshold: float = 0.60) -> None:
+sel_v2/observation_tools/bayesian_hmm.py:185:    def is_ready(self) -> bool:
+sel_v2/observation_tools/bayesian_hmm.py:188:    def update(self, bar: BarFeatures) -> ObservationResult:
+sel_v2/observation_tools/bayesian_hmm.py:229:    def reset(self) -> None:
+sel_v2/observation_tools/bayesian_hmm.py:234:    def last_high_vol_proba(self) -> float:
+sel_v2/observation_tools/permutation_entropy.py:40:def _permutation_entropy(x: np.ndarray, order: int = ORDER) -> float:
+sel_v2/observation_tools/permutation_entropy.py:68:    def __init__(
+sel_v2/observation_tools/permutation_entropy.py:81:    def is_ready(self) -> bool:
+sel_v2/observation_tools/permutation_entropy.py:84:    def update(self, bar: BarFeatures) -> ObservationResult:
+sel_v2/observation_tools/permutation_entropy.py:135:    def reset(self) -> None:
+sel_v2/observation_tools/base.py:40:    def should_persist(self) -> bool:
+sel_v2/observation_tools/base.py:65:    def update(self, bar: BarFeatures) -> ObservationResult:
+sel_v2/observation_tools/base.py:75:    def is_ready(self) -> bool:
+sel_v2/observation_tools/base.py:78:    def reset(self) -> None:
+sel_v2/observation_tools/wavelet_multifractal.py:32:def _energy_ratio(x: np.ndarray, wavelet: str = WAVELET, level: int = DWT_LEVELS) -> float:
+sel_v2/observation_tools/wavelet_multifractal.py:60:    def __init__(
+sel_v2/observation_tools/wavelet_multifractal.py:70:    def is_ready(self) -> bool:
+sel_v2/observation_tools/wavelet_multifractal.py:73:    def _threshold(self) -> float:
+sel_v2/observation_tools/wavelet_multifractal.py:78:    def update(self, bar: BarFeatures) -> ObservationResult:
+sel_v2/observation_tools/wavelet_multifractal.py:113:    def reset(self) -> None:
+sel_v2/scripts/paper_startup.py:163:def _build_report(
+sel_v2/states/conditions.py:31:def _result(
+sel_v2/states/conditions.py:41:def _tristate_all(conditions: list[tuple[str, Optional[bool]]]) -> ConditionResult:
+sel_v2/states/conditions.py:67:def check_cascade(features: BarFeatures) -> ConditionResult:
+sel_v2/states/conditions.py:140:def check_critical(features: BarFeatures) -> ConditionResult:
+sel_v2/states/conditions.py:176:def check_surging(features: BarFeatures) -> ConditionResult:
+sel_v2/states/conditions.py:246:def check_coiling(features: BarFeatures) -> ConditionResult:
+sel_v2/states/conditions.py:308:def check_drifting_charged(features: BarFeatures) -> ConditionResult:
+sel_v2/states/conditions.py:367:def check_drifting_calm(features: BarFeatures) -> ConditionResult:
+sel_v2/states/hawkes_critical.py:32:def compute_hawkes_branching_ratio(
+sel_v2/states/hawkes_critical.py:79:def precompute_branching_ratios(
+sel_v2/states/min_dwell.py:20:    def __init__(self) -> None:
+sel_v2/states/min_dwell.py:25:    def current_state(self) -> Optional[StateLabel]:
+sel_v2/states/min_dwell.py:29:    def duration_4h(self) -> int:
+sel_v2/states/min_dwell.py:33:    def update(self, new_state: StateLabel) -> None:
+sel_v2/states/min_dwell.py:41:    def can_leave(self) -> bool:
+sel_v2/states/priority.py:24:def arbitrate(
+sel_v2/states/tda_critical.py:36:def takens_embed(x: np.ndarray, d: int = _EMBED_DIM, tau: int = _EMBED_TAU) -> np.ndarray:
+sel_v2/states/tda_critical.py:44:def _persistence_landscape(dgm: np.ndarray, resolution: int = 100, x_max: float = 2.0) -> np.ndarray:
+sel_v2/states/tda_critical.py:58:def compute_pl_l1(
+sel_v2/states/tda_critical.py:102:def precompute_tda_l1(
+sel_v2/states/tda_critical.py:129:def compute_tda_rolling_pctile(
+sel_v2/states/critical_logic.py:39:def _and(a: Optional[bool], b: Optional[bool]) -> Optional[bool]:
+sel_v2/states/critical_logic.py:48:def _or(a: Optional[bool], b: Optional[bool]) -> Optional[bool]:
+sel_v2/states/critical_logic.py:59:def _eval_a1(features: BarFeatures) -> Optional[bool]:
+sel_v2/states/critical_logic.py:78:def _eval_a2(features: BarFeatures) -> Optional[bool]:
+sel_v2/states/critical_logic.py:86:def _eval_b(features: BarFeatures) -> Optional[bool]:
+sel_v2/states/critical_logic.py:93:def _eval_c(features: BarFeatures) -> Optional[bool]:
+sel_v2/states/critical_logic.py:130:def evaluate_critical_entry(features: BarFeatures) -> CriticalConditions:
+sel_v2/states/recognizer.py:37:    def __init__(self) -> None:
+sel_v2/states/recognizer.py:42:    def current_state(self) -> Optional[StateLabel]:
+sel_v2/states/recognizer.py:46:    def duration_4h(self) -> int:
+sel_v2/states/recognizer.py:49:    def recognize(self, features: BarFeatures) -> StateRecord:
+sel_v2/states/recognizer.py:116:def _make_record(
+sel_v2/states/transitions.py:66:def identify_transition(
+sel_v2/states/transitions.py:95:def get_legal_exits(state: StateLabel) -> list[tuple[StateLabel, str]]:
+services/onchain/sol/worker.py:50:    def __init__(self, maxsize=2000):
+services/onchain/sol/worker.py:54:    def add(self, key) -> bool:
+services/onchain/scorer.py:92:    def classify(self) -> str:
+services/onchain/scorer.py:124:    def __init__(self, symbol: str, ewma_alpha: float = 0.15):
+services/onchain/scorer.py:137:    def ingest(self, event: RawOnchainEvent) -> float:
+services/onchain/scorer.py:176:    def apply_regime(self, regime: str) -> float:
+services/onchain/scorer.py:182:    def update_from_scored(self, win_prob: float, ci_lo: float, ci_hi: float):
+services/onchain/scorer.py:189:    def composite_score(self) -> dict:
+services/onchain/scorer.py:219:    def get_state(self) -> dict:
+services/onchain/scorer.py:225:    def decay(self, hours: float = 1.0):
+services/onchain/historian.py:33:def get_db() -> sqlite3.Connection:
+services/onchain/historian.py:39:def init_db():
+services/onchain/historian.py:98:def record_alert(
+services/onchain/historian.py:130:def _infer_direction(signal_class: str) -> str:
+services/onchain/historian.py:219:def get_signal_stats(
+services/onchain/historian.py:265:def get_wallet_stats(address: str, chain: str) -> dict:
+services/onchain/historian.py:295:def get_daily_summary(symbol: str, lookback_days: int = 7) -> list:
+services/onchain/main.py:49:    def __init__(self):
+services/onchain/main.py:236:    def _build_msg(self, event: RawOnchainEvent, comp: dict, stats: dict,
+services/signal/onchain/bridge.py:90:def _decode(fields: dict) -> dict:
+services/signal/weight_learner.py:67:    def __init__(self, redis_client, pg_pool):
+services/signal/weight_learner.py:95:    def stop(self):
+services/signal/regime/hmm_detector.py:53:    def __init__(self, redis_client, pg_pool, symbols: list[str]):
+services/signal/regime/hmm_detector.py:80:    def stop(self):
+services/signal/regime/hmm_detector.py:121:    def _build_features(
+services/signal/regime/hmm_detector.py:165:    def _autocorr(arr: np.ndarray, lag: int = 1) -> float:
+services/signal/regime/hmm_detector.py:175:    def _fit_and_predict(
+services/signal/regime/hmm_detector.py:308:def fuse_regimes(
+services/signal/regime/detector.py:41:    def __init__(self, symbol: str):
+services/signal/regime/detector.py:51:    def update(self, high: float, low: float, close: float) -> Regime:
+services/signal/regime/detector.py:73:    def _classify(self) -> Regime:
+services/signal/regime/detector.py:111:    def regime(self) -> Regime:
+services/signal/regime/detector.py:115:    def params(self) -> dict:
+services/signal/regime/detector.py:118:    def get_status(self) -> dict:
+services/signal/regime/detector.py:130:def _ema(closes: list[float], period: int) -> Optional[float]:
+services/signal/regime/detector.py:140:def _calc_atr(highs: list, lows: list, closes: list, period: int = 14) -> Optional[float]:
+services/signal/regime/detector.py:153:def _calc_adx(highs: list, lows: list, closes: list, period: int = 14) -> Optional[float]:
+services/signal/regime/detector.py:167:    def wilder_smooth(values, n):
+services/signal/factors/composite.py:51:    def to_dict(self) -> dict:
+services/signal/factors/composite.py:77:def score_rsi(rsi: Optional[float]) -> float:
+services/signal/factors/composite.py:85:def score_ema_alignment(ema20: Optional[float], ema50: Optional[float],
+services/signal/factors/composite.py:101:def score_funding_zscore(current_rate: float, rate_history: list[float]) -> float:
+services/signal/factors/composite.py:119:def score_oi_momentum(oi_change_pct: Optional[float], price_change_pct: Optional[float]) -> float:
+services/signal/factors/composite.py:133:def score_lsr_divergence(long_ratio: Optional[float]) -> float:
+services/signal/factors/composite.py:156:    def __init__(self, calibration_center: float = 0.0, calibration_scale: float = 2.5):
+services/signal/factors/composite.py:163:    def set_sample_size(self, n: int) -> None:
+services/signal/factors/composite.py:167:    def score(
+services/signal/factors/composite.py:219:    def _sigmoid(self, x: float) -> float:
+services/signal/factors/composite.py:223:    def _ci_half(self, p: float, n: int) -> float:
+services/signal/factors/composite.py:233:    def update_calibration(self, center: float, scale: float) -> None:
+services/signal/factors/composite.py:265:def platt_fit(scores: list[float], outcomes: list[int]) -> tuple[float, float]:
+services/signal/main.py:135:    def __init__(self, symbol: str, window: int = 100):
+services/signal/main.py:141:    def record_signal(self, signal_id: str, score: float, price: float):
+services/signal/main.py:146:    def record_outcome(self, signal_id: str, exit_price: float):
+services/signal/main.py:153:    def calc_ic(self) -> dict:
+services/signal/main.py:183:    def _calc_single_ic(self, idx: int) -> float:
+services/signal/main.py:194:def _rank(values: list) -> list:
+services/signal/main.py:206:    def __init__(self):
+services/signal/main.py:225:    def _get_detector(self, symbol: str) -> RegimeDetector:
+services/signal/main.py:230:    def _get_ic(self, symbol: str) -> ICTracker:
+services/signal/main.py:499:    def _compute_data_quality(
+services/signal/main.py:531:    def _apply_weight_adj(self, factors: FactorScores, adj: dict) -> FactorScores:
+services/signal/main.py:565:    def _apply_dynamic_weights(
+services/gateway/main.py:27:    def __init__(self):
+services/gateway/main.py:34:    def disconnect(self, ws: WebSocket):
+services/gateway/main.py:49:    def count(self) -> int:
+services/gateway/main.py:537:    def dec(v):
+services/data/cleaning/pipeline.py:36:    def clean_bars(self, bars: list[BarData]) -> tuple[list[BarData], CleaningReport]:
+services/data/cleaning/pipeline.py:54:    def _check_ohlc_consistency(self, bars: list[BarData], report: CleaningReport) -> list[BarData]:
+services/data/cleaning/pipeline.py:71:    def _zscore_anomalies(self, bars: list[BarData], report: CleaningReport) -> list[BarData]:
+services/data/cleaning/pipeline.py:95:    def _extreme_move_filter(self, bars: list[BarData], report: CleaningReport) -> list[BarData]:
+services/data/cleaning/pipeline.py:116:    def _detect_gaps(self, bars: list[BarData], report: CleaningReport) -> list[BarData]:
+services/data/cleaning/pipeline.py:139:    def _interpolate_anomalies(self, bars: list[BarData], report: CleaningReport) -> list[BarData]:
+services/data/cleaning/pipeline.py:162:    def clean_funding_rate(self, rate_pct: float, symbol: str) -> tuple[float, bool]:
+services/data/ingestion/market_provider.py:38:def _clean_url(value: str) -> str:
+services/data/ingestion/market_provider.py:42:def _okx_inst_id(symbol: str) -> str:
+services/data/ingestion/market_provider.py:49:def _from_okx_inst_id(inst_id: str) -> str:
+services/data/ingestion/market_provider.py:53:def get_market_data_provider() -> str:
+services/data/ingestion/market_provider.py:57:def get_futures_symbols() -> list[str]:
+services/data/ingestion/market_provider.py:64:def get_provider_config(provider: Optional[str] = None) -> ProviderConfig:
+services/data/ingestion/market_provider.py:116:    def __init__(
+services/data/ingestion/market_provider.py:135:    def provider_name(self) -> str:
+services/data/ingestion/binance_rest.py:34:    def __init__(self, api_key: str = "", api_secret: str = ""):
+services/data/main.py:34:def _ema(prices: list[float], period: int) -> float | None:
+services/data/main.py:44:def _rsi(closes: list[float], period: int = 14) -> float | None:
+services/data/main.py:84:def _push_fr(symbol: str, rate: float) -> list[float]:
+services/data/main.py:90:def _set_price_reference(symbol: str, latest_close: float, prev_close: float | None) -> None:
+services/data/main.py:97:def _get_price_change_pct(symbol: str, price: float) -> float:
+services/execution/slippage/model.py:45:    def estimate(
+services/execution/slippage/model.py:87:    def adjust_entry_price(self, price: float, side: str, slippage_pct: float) -> float:
+services/execution/routing/smart_router.py:48:    def __init__(self, max_participation: float = 0.10):
+services/execution/routing/smart_router.py:100:    def _analyze_book(
+services/execution/routing/smart_router.py:154:    def _plan_splits(self, routes: list[RouteResult], total_qty_usd: float) -> list[dict]:
+services/execution/statemachine/order_fsm.py:76:    def is_terminal(self): return self.state in TERMINAL_STATES
+services/execution/statemachine/order_fsm.py:78:    def notional(self):
+services/execution/statemachine/order_fsm.py:84:    def __init__(self, record: OrderRecord):
+services/execution/statemachine/order_fsm.py:87:    def transition(self, new_state: OrderState, note: str = "") -> None:
+services/execution/statemachine/order_fsm.py:105:    def on_fill(self, qty: float, price: float, fee: float = 0.0) -> None:
+services/execution/statemachine/order_fsm.py:119:    def calc_realized_pnl(self, exit_price: float) -> float:
+services/execution/statemachine/order_fsm.py:128:    def to_dict(self) -> dict:
+services/execution/main.py:39:def _init_adapters():
+services/execution/adapters/binance.py:44:    def __init__(self, api_key: str, api_secret: str, testnet: bool = False):
+services/execution/adapters/binance.py:62:    def _sign(self, params: dict) -> str:
+services/execution/adapters/okx.py:35:    def __init__(
+services/execution/adapters/okx.py:54:    def _to_contracts(self, inst_id: str, qty: float) -> int:
+services/execution/adapters/okx.py:63:    def _sign(self, ts: str, method: str, path: str, body: str = "") -> str:
+services/execution/adapters/okx.py:69:    def _headers(self, method: str, path: str, body: str = "") -> dict:
+services/execution/adapters/base.py:71:    def __init__(self, api_key: str, api_secret: str, testnet: bool = False):
+services/execution/adapters/base.py:77:    def on_fill(self, callback: Callable[[FillEvent], None]):
+services/execution/adapters/base.py:142:def register_adapter(name: str, adapter: BaseAdapter):
+services/execution/adapters/base.py:147:def get_adapter(name: str = "binance") -> BaseAdapter:
+services/execution/adapters/base.py:158:def get_all_adapters() -> dict[str, BaseAdapter]:
+services/portfolio/capital/kelly.py:15:def kelly_fraction(
+services/portfolio/capital/kelly.py:48:def position_size_from_kelly(
+services/portfolio/capital/kelly.py:81:def risk_parity_weights(volatilities: dict[str, float]) -> dict[str, float]:
+services/portfolio/capital/kelly.py:118:def volatility_targeting(
+services/portfolio/capital/kelly.py:143:    def __init__(
+services/portfolio/capital/kelly.py:159:    def update_equity(self, equity: float) -> None:
+services/portfolio/capital/kelly.py:162:    def update_strategy_volatility(self, strategy: str, vol: float) -> None:
+services/portfolio/capital/kelly.py:166:    def _recompute_allocations(self) -> None:
+services/portfolio/capital/kelly.py:170:    def compute_position_size(
+services/portfolio/capital/kelly.py:217:    def get_allocations(self) -> dict:
+services/portfolio/main.py:48:    def __init__(self):
+services/portfolio/main.py:166:    def build_state(self, unrealized: float) -> PortfolioState:
+services/portfolio/main.py:191:    def _drawdown_scalar(self) -> float:
+services/healthcheck/main.py:34:    def __init__(self):
+services/monitoring/report.py:54:def get_redis() -> _redis_sync.Redis:
+services/monitoring/report.py:60:def fetch_ic_stats(r: _redis_sync.Redis, symbols: list) -> dict:
+services/monitoring/report.py:73:def fetch_recent_signals(r: _redis_sync.Redis, days: int) -> list:
+services/monitoring/report.py:94:def fetch_regime_distribution(r: _redis_sync.Redis) -> dict:
+services/monitoring/report.py:114:def fetch_risk_status(r: _redis_sync.Redis) -> dict:
+services/monitoring/report.py:125:def fetch_portfolio_state(r: _redis_sync.Redis) -> dict:
+services/monitoring/report.py:136:def fetch_recent_orders(r: _redis_sync.Redis, days: int) -> list:
+services/monitoring/report.py:157:def fetch_onchain_state(r: _redis_sync.Redis) -> dict:
+services/monitoring/report.py:172:def analyze_ic(ic_stats: dict) -> dict:
+services/monitoring/report.py:202:def analyze_signals(signals: list, days: int) -> dict:
+services/monitoring/report.py:251:def analyze_regime(regime_data: dict) -> dict:
+services/monitoring/report.py:275:def analyze_orders(orders: list, days: int) -> dict:
+services/monitoring/report.py:312:def generate_recommendation(
+services/monitoring/report.py:424:def render_report(data: dict, days: int) -> str:
+services/monitoring/report.py:439:    def h(title: str):
+services/monitoring/report.py:444:    def row(label: str, value, warn: str = ""):
+services/monitoring/report.py:639:def push_telegram(text: str) -> bool:
+services/monitoring/report.py:669:def run(days: int = 1, push: bool = False, current_mode: str = "NOTIFY_ONLY") -> dict:
+services/monitoring/main.py:83:def analyze_trend(trend: list) -> dict:
+services/monitoring/main.py:130:def _run_report_sync(days: int) -> dict:
+services/monitoring/main.py:196:def _build_trend_section(trend: list, analysis: dict) -> str:
+services/monitoring/main.py:226:def _push_telegram(text: str):
+services/notification/hub.py:21:    def __init__(self, token: str, chat_id: str):
+services/notification/hub.py:86:    def __init__(self, webhook_url: str):
+services/notification/hub.py:110:    def __init__(self, telegram: TelegramChannel = None, dingtalk: DingTalkChannel = None):
+services/notification/hub.py:191:    def get_stats(self) -> dict:
+services/risk/persistence/circuit_breaker.py:42:    def __init__(self, redis_client, pg_pool=None):
+services/risk/portfolio/var_engine.py:21:def calc_historical_var(returns_usd: list[float], confidence: float = 0.95) -> Optional[VaRResult]:
+services/risk/portfolio/var_engine.py:49:    def __init__(self):
+services/risk/portfolio/var_engine.py:53:    def update(self, equity: float) -> DrawdownLevel:
+services/risk/portfolio/var_engine.py:65:    def _classify(self, dd: float) -> DrawdownLevel:
+services/risk/portfolio/var_engine.py:70:    def manual_reset(self):
+services/risk/portfolio/var_engine.py:76:    def current_dd(self): return self._current_dd
+services/risk/portfolio/var_engine.py:78:    def max_dd(self): return self._max_dd
+services/risk/portfolio/var_engine.py:80:    def level(self): return self._level
+services/risk/portfolio/var_engine.py:82:    def position_scalar(self): return self._level.max_position_pct
+services/risk/portfolio/var_engine.py:84:    def is_halted(self): return not self._level.new_trades_allowed
+services/risk/portfolio/var_engine.py:86:    def get_status(self) -> dict:
+services/risk/main.py:87:    def check_drawdown_level(self) -> tuple[bool, str, float]:
+services/risk/main.py:101:    def check_var(self, allocated_usd: float, equity: float) -> tuple[bool, str]:
+services/risk/main.py:122:    def check_single_position(
+services/risk/main.py:132:    def check_corr_exposure(self, symbol: str, side: str) -> tuple[bool, str]:
+services/risk/main.py:164:    def check_win_probability(self, win_prob: float) -> tuple[bool, str]:
+services/risk/main.py:169:    def check_leverage(self, allocated_usd: float, equity: float) -> tuple[bool, str]:
+services/risk/main.py:234:def _get_equity() -> float:
+reports/scheduler.py:21:    def __init__(
+reports/scheduler.py:32:    def maybe_generate(
+reports/generator.py:34:    def generate(
+backtest/engine.py:47:    def pnl_pct(self) -> float:
+backtest/engine.py:54:    def pnl_usd(self) -> float:
+backtest/engine.py:96:    def to_dict(self) -> dict:
+backtest/engine.py:127:    def __init__(self, config: WFOConfig = None):
+backtest/engine.py:200:    def _simulate_period(
+backtest/engine.py:276:    def _check_signals(self, closes, highs, lows, price, funding_rate, regime) -> list[dict]:
+backtest/engine.py:309:    def _check_exit(self, pos: dict, high: float, low: float, close: float,
+backtest/engine.py:334:    def _calc_period_metrics(self, trades: list[TradeRecord], t_start: int, t_end: int, is_oos: bool) -> PeriodMetrics:
+backtest/engine.py:365:    def _aggregate_metrics(self, result: WFOResult) -> None:
+backtest/engine.py:388:    def _monte_carlo(self, result: WFOResult, runs: int = 1000) -> None:
+backtest/engine.py:405:    def _check_pass(self, result: WFOResult) -> None:
+shared/events/streams.py:53:def encode(data: dict) -> dict:
+shared/events/streams.py:58:def decode(fields: dict) -> dict:
+shared/events/streams.py:81:def consume(stream, group, consumer, callback, block_ms=100):
+shared/db/redis_client.py:20:def init_redis(url: str) -> aioredis.Redis:
+shared/db/redis_client.py:26:def get_redis() -> aioredis.Redis:
+shared/models/signal.py:77:    def is_actionable(self) -> bool:
+shared/models/signal.py:89:    def risk_reward(self) -> float:
+shared/models/signal.py:95:    def to_dict(self) -> dict:
+shared/models/signal.py:121:    def from_dict(cls, d: dict) -> "ScoredSignal":
+shared/models/market.py:21:    def mid(self) -> float: return (self.high + self.low) / 2
+shared/models/market.py:23:    def range(self) -> float: return self.high - self.low
+shared/models/market.py:25:    def dt(self) -> datetime: return datetime.utcfromtimestamp(self.open_time / 1000)
+shared/models/market.py:27:    def to_dict(self) -> dict:
+shared/models/market.py:37:    def dt(self) -> datetime: return datetime.utcfromtimestamp(self.funding_time / 1000)
+shared/models/market.py:62:    def bid(self) -> float: return self.bids[0][0] if self.bids else 0.0
+shared/models/market.py:64:    def ask(self) -> float: return self.asks[0][0] if self.asks else 0.0
+shared/models/market.py:66:    def mid(self) -> float: return (self.bid + self.ask) / 2
+shared/models/market.py:68:    def spread_pct(self) -> float:
+shared/models/market.py:70:    def depth_usd(self, side: str, levels: int = 5) -> float:
+shared/models/portfolio.py:40:    def notional(self) -> float:
+shared/models/portfolio.py:44:    def current_value(self) -> float:
+shared/models/portfolio.py:47:    def update_unrealized(self, current_price: float) -> None:
+shared/models/portfolio.py:53:    def to_dict(self) -> dict:
+shared/models/portfolio.py:106:    def to_dict(self) -> dict:
