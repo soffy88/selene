@@ -65,14 +65,11 @@ def compute_price_slope_6h(closes: list[float]) -> Optional[float]:
     """
     if len(closes) < 7:
         return None
+    from oprim import linear_slope
     window = np.array(closes[-7:], dtype=float)
-    mean_price = float(window.mean())
-    if mean_price == 0.0:
+    if float(window.mean()) == 0.0:
         return None
-    x = np.arange(6, dtype=float)
-    y = window[1:]  # 6 log-prices corresponding to intervals
-    slope = float(np.polyfit(x, y, 1)[0])
-    return abs(slope) / mean_price
+    return linear_slope(window[1:], normalize=True)
 
 
 def compute_sigma_slope_12h(sigma_history: list[float]) -> Optional[bool]:
