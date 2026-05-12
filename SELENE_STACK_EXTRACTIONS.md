@@ -43,3 +43,20 @@
 - **Selene-side replacements done**: 5 (linear_slope, hurst_exponent, orderbook_entropy, takens_embed, atr)
 - **Selene-side deferred**: 17 (internal helpers, stateful classes, different formulas)
 - **Reason for deferrals**: Most Bucket B items are internal to modules that will be used via the stack in NEW projects, but Selene's existing code has project-specific wrappers that are better left in Layer 4.
+
+
+## Audit Corrections (post-Wave 3)
+
+Audit 阶段将以下 4 项归到 Bucket B (extraction candidate),
+实际深入实施后确认应归 Bucket C (Layer 4 stateful):
+
+| # | Item | Original bucket | Corrected bucket | Reason |
+|---|---|---|---|---|
+| 1 | DrawdownController | B → oskill? | C (Layer 4) | Stateful class maintaining _peak/_halted_at/level; oprim.drawdown_curve is pure functional |
+| 2 | CUSUMShort | B → oskill.cusum_detector | C (Layer 4) | Stateful class with peaks deque + time-based eviction; oskill version is batch/functional |
+| 3 | _GaussianHMM | B → oskill.gaussian_hmm | C (Layer 4) | Incremental fit mode (update per bar); oskill version is batch fit on full sequence |
+| 4 | SlippageModel | B → omodul.execution_cost_model | C (Layer 4) | Class maintaining regime state; omodul version is pure function |
+
+These remain as Selene Layer 4 business logic. The stack versions (oskill.cusum_detector,
+oskill.gaussian_hmm, omodul.execution_cost_model) serve as general-purpose batch alternatives
+for future non-stateful projects.
