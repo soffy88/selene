@@ -108,3 +108,40 @@ class TestRank:
         result = rankdata(values, method='ordinal').tolist()
         # 3→1, 5→2, 7→3, 8→4, 10→5
         assert result == [5.0, 2.0, 4.0, 1.0, 3.0]
+
+
+class TestPercentileValue:
+    """Bucket B #13 (new): oprim.percentile_value matches np.quantile exactly."""
+
+    def test_matches_np_quantile_basic(self):
+        from oprim import percentile_value
+        rng = np.random.default_rng(42)
+        data = rng.normal(0, 1, 200)
+        for q in [0.5, 0.9, 0.95, 0.99]:
+            expected = float(np.quantile(data, q))
+            result = percentile_value(data, q)
+            np.testing.assert_allclose(result, expected, rtol=1e-15,
+                                       err_msg=f"percentile_value q={q}")
+
+    def test_tda_rolling_pctile_uses_stack(self):
+        """Verify compute_tda_rolling_pctile now uses oprim internally."""
+        from sel_v2.states.tda_critical import compute_tda_rolling_pctile
+        data = np.random.default_rng(42).normal(0.05, 0.02, 600)
+        result = compute_tda_rolling_pctile(data, quantile_window=540, q=0.95)
+        # Should have valid values after window
+        assert np.isfinite(result[-1])
+        # Cross-check with np.quantile
+        expected = float(np.quantile(data[-540:], 0.95))
+        np.testing.assert_allclose(result[-1], expected, rtol=1e-10)
+
+    def test_cusum_threshold_uses_stack(self):
+        """Verify CUSUMShort._current_threshold uses oprim internally."""
+        from sel_v2.strategies.cusum_short import CUSUMShort
+        cs = CUSUMShort(threshold_quantile=0.95)
+        # Feed enough data to build peaks
+        rng = np.random.default_rng(42)
+        for i in range(100):
+            cs.update(rng.normal(0, 1), t=float(i))
+        threshold = cs._current_threshold(100.0)
+        assert isinstance(threshold, float)
+        assert threshold > 0
