@@ -238,8 +238,9 @@ class RollingIntensityThreshold:
         self._evict(t)
         if len(self._buffer) < 20:
             return None
-        values = [v for _, v in self._buffer]
-        return float(np.quantile(values, self.quantile))
+        from oprim import percentile_value
+        values = np.array([v for _, v in self._buffer])
+        return float(percentile_value(values, self.quantile))
 
     def above_threshold(self, t: float, intensity: float) -> bool:
         """

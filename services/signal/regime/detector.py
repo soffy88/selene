@@ -130,6 +130,7 @@ class RegimeDetector:
 def _ema(closes: list[float], period: int) -> Optional[float]:
     if len(closes) < period:
         return None
+    # SMA-seeded EMA (matches original behavior exactly)
     k = 2.0 / (period + 1)
     ema = sum(closes[:period]) / period
     for p in closes[period:]:
@@ -140,14 +141,10 @@ def _ema(closes: list[float], period: int) -> Optional[float]:
 def _calc_atr(highs: list, lows: list, closes: list, period: int = 14) -> Optional[float]:
     if len(closes) < period + 1:
         return None
-    trs = []
-    for i in range(1, len(closes)):
-        tr = max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1]))
-        trs.append(tr)
-    atr = sum(trs[:period]) / period
-    for tr in trs[period:]:
-        atr = (atr * (period - 1) + tr) / period
-    return atr
+    import numpy as np
+    from oprim import atr
+    return atr(np.array(highs, dtype=float), np.array(lows, dtype=float),
+               np.array(closes, dtype=float), period=period)
 
 
 def _calc_adx(highs: list, lows: list, closes: list, period: int = 14) -> Optional[float]:

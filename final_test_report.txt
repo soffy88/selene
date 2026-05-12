@@ -1,0 +1,284 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.14.4, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/soffy/projects/selene
+configfile: pytest.ini
+testpaths: tests
+plugins: asyncio-1.3.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 844 items
+
+tests/decision/test_config.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                             [  1%][0m
+tests/migration/test_numerical_regression.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m             [  3%][0m
+tests/paper_trading/test_account.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                    [  5%][0m
+tests/paper_trading/test_engine.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                             [  6%][0m
+tests/paper_trading/test_fills.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                             [  7%][0m
+tests/paper_trading/test_positions.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                       [  9%][0m
+tests/paper_trading/test_risk.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m        [ 12%][0m
+tests/paper_trading/test_runner.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                            [ 14%][0m
+tests/paper_trading/test_trail.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                  [ 16%][0m
+tests/reports/test_generator.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                       [ 18%][0m
+tests/sel_engine/test_features.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m [ 23%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                                                                  [ 24%][0m
+tests/sel_engine/test_paper_interface.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m [ 27%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                                                                  [ 28%][0m
+tests/sel_engine/test_scheduler.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                                 [ 29%][0m
+tests/sel_engine/test_states.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m [ 33%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                            [ 39%][0m
+tests/sel_engine/test_transitions.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m [ 43%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                                                              [ 44%][0m
+tests/sel_v2/test_critical_logic.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m      [ 48%][0m
+tests/sel_v2/test_cusum_short.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                         [ 50%][0m
+tests/sel_v2/test_db_writer.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                        [ 52%][0m
+tests/sel_v2/test_db_writer_wave4.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                  [ 54%][0m
+tests/sel_v2/test_derivatives_loader.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                         [ 55%][0m
+tests/sel_v2/test_hawkes_intensity.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m             [ 57%][0m
+tests/sel_v2/test_integration_e2e.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                            [ 58%][0m
+tests/sel_v2/test_kelly_sizing.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                             [ 60%][0m
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m [ 61%]
+[0m[33m                                                                         [ 61%][0m
+tests/sel_v2/test_observation_tools/test_observation_base.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m [ 63%]
+[0m[32m.[0m[32m.[0m[32m.[0m[33m                                                                      [ 63%][0m
+tests/sel_v2/test_paper_startup.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                        [ 65%][0m
+tests/sel_v2/test_params_loader.py [32m.[0m[32m.[0m[33m                                    [ 65%][0m
+tests/sel_v2/test_state_conditions.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m      [ 68%][0m
+tests/sel_v2/test_strategy1_entry.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m               [ 71%][0m
+tests/sel_v2/test_strategy2_entry.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                 [ 73%][0m
+tests/sel_v2/test_strategy_exit.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                  [ 75%][0m
+tests/sel_v2/test_sub_account.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                           [ 77%][0m
+tests/sel_v2/test_taker_flow_loader.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                          [ 78%][0m
+tests/sel_v2/test_transitions.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m [ 83%]
+[0m[32m.[0m[33m                                                                        [ 83%][0m
+tests/sel_v2/test_weekly_generator.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                       [ 84%][0m
+tests/unit/test_factor_scorer.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                 [ 87%][0m
+tests/unit/test_kelly.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                               [ 89%][0m
+tests/unit/test_order_fsm.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                                  [ 90%][0m
+tests/unit/test_regime.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                                   [ 91%][0m
+tests/unit/test_signals.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                 [ 95%][0m
+tests/unit/test_slippage.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                                   [ 96%][0m
+tests/unit/test_var.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                                     [ 98%][0m
+tests/unit/test_var_drawdown.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                         [100%][0m
+
+[33m=============================== warnings summary ===============================[0m
+tests/sel_engine/test_features.py::TestComputeAutocorr::test_constant_series_returns_none
+tests/sel_engine/test_paper_interface.py::TestProcessBarEndToEnd::test_process_bar_caps_close_history_at_800
+  /home/soffy/projects/selene/.venv/lib/python3.14/site-packages/oprim/statistics.py:541: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+    pr, pp = stats.pearsonr(x, y)
+
+tests/sel_engine/test_features.py::TestComputeAutocorr::test_constant_series_returns_none
+tests/sel_engine/test_paper_interface.py::TestProcessBarEndToEnd::test_process_bar_caps_close_history_at_800
+  /home/soffy/projects/selene/.venv/lib/python3.14/site-packages/oprim/statistics.py:542: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+    sr, sp = stats.spearmanr(x, y)
+
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestBayesianHMM::test_ready_after_min_bars
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestBayesianHMM::test_update_returns_float_value
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestBayesianHMM::test_reset_clears_state
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestBayesianHMM::test_metadata_keys_present
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestHMMBoundaryArbiter::test_stable_returns_no_boundary
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestHMMBoundaryArbiter::test_reset
+  /home/soffy/projects/selene/.venv/lib/python3.14/site-packages/numpy/_core/_methods.py:219: RuntimeWarning: Degrees of freedom <= 0 for slice
+    ret = _var(a, axis=axis, dtype=dtype, out=out, ddof=ddof,
+
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestBayesianHMM::test_ready_after_min_bars
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestBayesianHMM::test_update_returns_float_value
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestBayesianHMM::test_reset_clears_state
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestBayesianHMM::test_metadata_keys_present
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestHMMBoundaryArbiter::test_stable_returns_no_boundary
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestHMMBoundaryArbiter::test_reset
+  /home/soffy/projects/selene/.venv/lib/python3.14/site-packages/numpy/_core/_methods.py:178: RuntimeWarning: invalid value encountered in divide
+    arrmean = um.true_divide(arrmean, div, out=arrmean,
+
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestBayesianHMM::test_ready_after_min_bars
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestBayesianHMM::test_update_returns_float_value
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestBayesianHMM::test_reset_clears_state
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestBayesianHMM::test_metadata_keys_present
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestHMMBoundaryArbiter::test_stable_returns_no_boundary
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py::TestHMMBoundaryArbiter::test_reset
+  /home/soffy/projects/selene/.venv/lib/python3.14/site-packages/numpy/_core/_methods.py:211: RuntimeWarning: invalid value encountered in scalar divide
+    ret = ret.dtype.type(ret / rcount)
+
+tests/unit/test_signals.py::TestScoredSignal::test_is_actionable_passes
+tests/unit/test_signals.py::TestScoredSignal::test_is_not_actionable_low_prob
+tests/unit/test_signals.py::TestScoredSignal::test_is_not_actionable_low_quality
+tests/unit/test_signals.py::TestScoredSignal::test_risk_reward_calculation
+tests/unit/test_signals.py::TestScoredSignal::test_serialization_roundtrip
+tests/unit/test_signals.py::TestScoredSignal::test_serialization_roundtrip
+  <string>:20: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+
+tests/unit/test_var.py::TestDrawdownController::test_red_halt_triggered
+tests/unit/test_var.py::TestDrawdownController::test_manual_reset
+tests/unit/test_var.py::TestDrawdownController::test_max_dd_tracks
+tests/unit/test_var_drawdown.py::TestDrawdownController::test_red_halt_at_15pct
+tests/unit/test_var_drawdown.py::TestDrawdownController::test_max_drawdown_persists
+tests/unit/test_var_drawdown.py::TestDrawdownController::test_manual_reset_clears_halt
+  /home/soffy/projects/selene/tests/unit/../../services/risk/portfolio/var_engine.py:69: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    self._halted_at = datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.14.4-final-0 ________________
+
+Name                                                           Stmts   Miss  Cover   Missing
+--------------------------------------------------------------------------------------------
+__init__.py                                                        0      0   100%
+conftest.py                                                        7      0   100%
+decision/__init__.py                                               2      0   100%
+decision/config.py                                                62      2    97%   72, 106
+paper_trading/__init__.py                                          0      0   100%
+paper_trading/account.py                                          56      1    98%   127
+paper_trading/engine.py                                           29      1    97%   57
+paper_trading/fills.py                                            34      0   100%
+paper_trading/positions.py                                        33      1    97%   46
+paper_trading/replay.py                                           57      1    98%   68
+paper_trading/risk.py                                             83      0   100%
+paper_trading/runner.py                                           84     47    44%   30-45, 59-150, 204-205
+paper_trading/schema.py                                           23      0   100%
+paper_trading/trail.py                                            69      0   100%
+reports/__init__.py                                                2      0   100%
+reports/generator.py                                             209     10    95%   102-103, 127, 229, 247, 258, 348, 367, 381, 388
+sel_engine/__init__.py                                             0      0   100%
+sel_engine/db/__init__.py                                          0      0   100%
+sel_engine/db/reader.py                                           39     23    41%   36-38, 48-56, 66-74, 102-110, 119-133
+sel_engine/db/writer.py                                           35     21    40%   65-81, 87-93, 99-105, 118-124, 146-158
+sel_engine/features/__init__.py                                    0      0   100%
+sel_engine/features/calculator.py                                 81      6    93%   58-62, 67
+sel_engine/features/derived.py                                    72     31    57%   58-59, 70-74, 85-88, 101-109, 123-129, 140-143
+sel_engine/features/flow.py                                       36     12    67%   29, 33, 36-38, 53-56, 69-71
+sel_engine/features/liquidity.py                                  23      1    96%   45
+sel_engine/features/orderbook.py                                  16     10    38%   21-38
+sel_engine/features/price.py                                      58     11    81%   40, 48-50, 71, 79, 86-90
+sel_engine/features/schema.py                                     65      0   100%
+sel_engine/paper_interface/__init__.py                             5      0   100%
+sel_engine/paper_interface/events.py                              25      0   100%
+sel_engine/paper_interface/schema.py                               9      0   100%
+sel_engine/paper_interface/service.py                             58      7    88%   77, 79-81, 83-85
+sel_engine/paper_interface/store.py                               45      3    93%   181-183, 209
+sel_engine/scheduler/__init__.py                                   0      0   100%
+sel_engine/scheduler/bar_close_runner.py                         115     34    70%   146-150, 173-179, 205-208, 217-226, 237-252
+sel_engine/states/__init__.py                                      8      0   100%
+sel_engine/states/conditions.py                                  126      0   100%
+sel_engine/states/engine.py                                       28      0   100%
+sel_engine/states/health.py                                      121      3    98%   67, 164-167
+sel_engine/states/recognizer.py                                   69      3    96%   119-122
+sel_engine/states/schema.py                                       26      0   100%
+sel_engine/states/thresholds.py                                   30      0   100%
+sel_engine/states/transition.py                                   68      0   100%
+sel_engine/validator.py                                           66      5    92%   91-99
+sel_v2/__init__.py                                                 0      0   100%
+sel_v2/hawkes/__init__.py                                          2      0   100%
+sel_v2/hawkes/mle.py                                              55     42    24%   26, 31-51, 63-98
+sel_v2/observation_tools/__init__.py                              10      0   100%
+sel_v2/observation_tools/base.py                                  44      1    98%   42
+sel_v2/observation_tools/bayesian_hmm.py                         131      0   100%
+sel_v2/observation_tools/hawkes_cascade_warning.py                64     19    70%   59, 66, 106, 123-146
+sel_v2/observation_tools/hmm_boundary_arbiter.py                  33      0   100%
+sel_v2/observation_tools/permutation_entropy.py                   58     28    52%   45-56, 98-120
+sel_v2/observation_tools/runner.py                                57     15    74%   112-115, 118-139, 148, 151
+sel_v2/observation_tools/tda_clustering.py                        61     28    54%   27-28, 43-61, 84-86, 102-108
+sel_v2/observation_tools/transfer_entropy_rolling.py              49     17    65%   59-61, 79-104
+sel_v2/observation_tools/wavelet_multifractal.py                  52     22    58%   37-51, 74-76, 92-98
+sel_v2/offline/__init__.py                                         0      0   100%
+sel_v2/offline/hawkes_calibration.py                             142    123    13%   75-100, 112-216, 220-350, 360-408, 412-423, 433
+sel_v2/offline/transfer_entropy.py                               167    144    14%   33-42, 49-51, 56-57, 69-101, 108-112, 127-134, 145-184, 198-247, 258-361, 365-375, 380-417, 421-431, 442
+sel_v2/reports/__init__.py                                         2      0   100%
+sel_v2/reports/sections/__init__.py                               10      0   100%
+sel_v2/reports/sections/account_state.py                          12      0   100%
+sel_v2/reports/sections/anomalies.py                              18      2    89%   25-26
+sel_v2/reports/sections/coordination_events.py                     7      0   100%
+sel_v2/reports/sections/cusum_stats.py                            17      0   100%
+sel_v2/reports/sections/inverse_vocab_stats.py                    15      1    93%   43
+sel_v2/reports/sections/observation_tools.py                      13      0   100%
+sel_v2/reports/sections/state_distribution.py                     26      0   100%
+sel_v2/reports/sections/strategy1_perf.py                         19      0   100%
+sel_v2/reports/sections/strategy2_perf.py                         21      0   100%
+sel_v2/reports/weekly_generator.py                                37      0   100%
+sel_v2/scheduler/__init__.py                                       0      0   100%
+sel_v2/scheduler/derivatives_loader.py                            55      4    93%   24, 26, 43, 48
+sel_v2/scheduler/taker_flow_loader.py                             58      4    93%   28, 30, 46, 50
+sel_v2/scripts/__init__.py                                         0      0   100%
+sel_v2/scripts/paper_startup.py                                  113     67    41%   77-83, 88-100, 105-110, 115-122, 142-158, 188, 192, 220-250, 254-260
+sel_v2/states/__init__.py                                          3      0   100%
+sel_v2/states/conditions.py                                      130      8    94%   59, 154, 156, 198-199, 335, 384, 391
+sel_v2/states/critical_logic.py                                   80      0   100%
+sel_v2/states/min_dwell.py                                        25      6    76%   46-51
+sel_v2/states/priority.py                                         28      1    96%   82
+sel_v2/states/recognizer.py                                       51     10    80%   43, 47, 56-66, 88-89
+sel_v2/states/schema.py                                           63      0   100%
+sel_v2/states/tda_critical.py                                     70     46    34%   38-41, 46-55, 70-99, 116-126
+sel_v2/states/transitions.py                                      16      0   100%
+sel_v2/strategies/__init__.py                                      0      0   100%
+sel_v2/strategies/cusum_short.py                                  83      3    96%   99, 101, 182
+sel_v2/strategies/db_writer.py                                   131      8    94%   158-159, 169, 209-210, 229-231
+sel_v2/strategies/hawkes_intensity.py                            121      6    95%   129, 143, 153, 187, 202-204
+sel_v2/strategies/kelly_sizing.py                                 88      2    98%   147, 156
+sel_v2/strategies/params_loader.py                                27      6    78%   22-27
+sel_v2/strategies/strategy1_entry.py                              78      2    97%   222-223
+sel_v2/strategies/strategy2_entry.py                              66      0   100%
+sel_v2/strategies/strategy_exit.py                                84      1    99%   74
+sel_v2/strategies/sub_account.py                                 126      1    99%   214
+services/execution/slippage/model.py                              26      1    96%   67
+services/portfolio/__init__.py                                     0      0   100%
+services/portfolio/capital/kelly.py                               71      5    93%   41, 101-102, 144, 202
+services/risk/__init__.py                                          0      0   100%
+services/risk/portfolio/var_engine.py                             59      1    98%   76
+services/signal/__init__.py                                        0      0   100%
+services/signal/factors/composite.py                             141     50    65%   139, 165, 226, 236-238, 243-251, 258-263, 271-285, 301-311, 319-325
+services/signal/regime/__init__.py                                 0      0   100%
+services/signal/regime/detector.py                               115      8    93%   96-97, 108, 119, 132, 143, 179, 186
+shared/models/signal.py                                           78      0   100%
+tests/__init__.py                                                  0      0   100%
+tests/decision/__init__.py                                         0      0   100%
+tests/decision/test_config.py                                     91      0   100%
+tests/migration/__init__.py                                        0      0   100%
+tests/migration/fixtures.py                                       25     14    44%   17-20, 25-26, 31-38
+tests/migration/test_numerical_regression.py                      94      0   100%
+tests/paper_trading/__init__.py                                    0      0   100%
+tests/paper_trading/test_account.py                              141      0   100%
+tests/paper_trading/test_engine.py                                74      0   100%
+tests/paper_trading/test_fills.py                                 79      0   100%
+tests/paper_trading/test_positions.py                             92      2    98%   16, 21
+tests/paper_trading/test_risk.py                                 238      0   100%
+tests/paper_trading/test_runner.py                               104      0   100%
+tests/paper_trading/test_trail.py                                265      0   100%
+tests/reports/__init__.py                                          0      0   100%
+tests/reports/test_generator.py                                  179      1    99%   163
+tests/sel_engine/__init__.py                                       0      0   100%
+tests/sel_engine/test_features.py                                225      0   100%
+tests/sel_engine/test_paper_interface.py                         362      0   100%
+tests/sel_engine/test_scheduler.py                                98      3    97%   38, 126, 151
+tests/sel_engine/test_states.py                                  553      1    99%   1080
+tests/sel_engine/test_transitions.py                             366      3    99%   68, 627, 683
+tests/sel_v2/__init__.py                                           0      0   100%
+tests/sel_v2/conftest.py                                          14      3    79%   30-32
+tests/sel_v2/test_critical_logic.py                              142      0   100%
+tests/sel_v2/test_cusum_short.py                                  95      0   100%
+tests/sel_v2/test_db_writer.py                                   154      0   100%
+tests/sel_v2/test_db_writer_wave4.py                             172      0   100%
+tests/sel_v2/test_derivatives_loader.py                           92      0   100%
+tests/sel_v2/test_hawkes_intensity.py                            143      0   100%
+tests/sel_v2/test_integration_e2e.py                              75      0   100%
+tests/sel_v2/test_kelly_sizing.py                                 69      0   100%
+tests/sel_v2/test_observation_tools/__init__.py                    0      0   100%
+tests/sel_v2/test_observation_tools/test_bayesian_hmm.py         118      0   100%
+tests/sel_v2/test_observation_tools/test_observation_base.py     103      3    97%   131-132, 191
+tests/sel_v2/test_paper_startup.py                                65      0   100%
+tests/sel_v2/test_params_loader.py                                33      0   100%
+tests/sel_v2/test_state_conditions.py                            143      0   100%
+tests/sel_v2/test_strategy1_entry.py                             131      0   100%
+tests/sel_v2/test_strategy2_entry.py                             131      0   100%
+tests/sel_v2/test_strategy_exit.py                               102      0   100%
+tests/sel_v2/test_sub_account.py                                  91      0   100%
+tests/sel_v2/test_taker_flow_loader.py                            79      0   100%
+tests/sel_v2/test_transitions.py                                  61      0   100%
+tests/sel_v2/test_weekly_generator.py                             79      0   100%
+tests/unit/__init__.py                                             0      0   100%
+tests/unit/test_factor_scorer.py                                  98      0   100%
+tests/unit/test_kelly.py                                          62      0   100%
+tests/unit/test_order_fsm.py                                      72      0   100%
+tests/unit/test_regime.py                                         93      0   100%
+tests/unit/test_signals.py                                       104      0   100%
+tests/unit/test_slippage.py                                       45      0   100%
+tests/unit/test_var.py                                            80      0   100%
+tests/unit/test_var_drawdown.py                                  107      0   100%
+--------------------------------------------------------------------------------------------
+TOTAL                                                          10821    945    91%
+[33m======================= [32m844 passed[0m, [33m[1m34 warnings[0m[33m in 5.52s[0m[33m =======================[0m

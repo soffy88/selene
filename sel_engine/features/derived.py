@@ -47,48 +47,16 @@ def compute_LV(
 def compute_hurst_rs(series: list[float]) -> Optional[float]:
     """
     Hurst exponent via R/S analysis.
-    For each lag size, average R/S across all non-overlapping sub-windows;
-    regress log(mean_RS) on log(lag) to get H.
     H ≈ 0.5 → random walk; > 0.5 → trending; < 0.5 → mean-reverting.
     Returns None if series is too short or degenerate.
     """
     if len(series) < 20:
         return None
-
-    arr = np.array(series, dtype=float)
-    n = len(arr)
-
-    lags = [4, 8, 16, min(32, n // 2)]
-    lags = [l for l in lags if 2 <= l <= n // 2]
-    if len(lags) < 2:
+    try:
+        from oprim import hurst_exponent
+        return hurst_exponent(np.array(series, dtype=float), min_window=4)
+    except (ValueError, Exception):
         return None
-
-    rs_means: list[float] = []
-    used_lags: list[int] = []
-    for lag in lags:
-        rs_sub: list[float] = []
-        # Average over all non-overlapping sub-windows of length `lag`
-        num_windows = n // lag
-        for w in range(num_windows):
-            sub = arr[w * lag: (w + 1) * lag]
-            mean = sub.mean()
-            dev = sub - mean
-            cumdev = np.cumsum(dev)
-            R = float(cumdev.max() - cumdev.min())
-            S = float(sub.std(ddof=1))
-            if S > 0 and R > 0:
-                rs_sub.append(R / S)
-        if rs_sub:
-            rs_means.append(float(np.mean(rs_sub)))
-            used_lags.append(lag)
-
-    if len(rs_means) < 2:
-        return None
-
-    log_lags = np.log(np.array(used_lags, dtype=float))
-    log_rs = np.log(np.array(rs_means, dtype=float))
-    hurst = float(np.polyfit(log_lags, log_rs, 1)[0])
-    return max(0.0, min(1.0, hurst))
 
 
 def compute_oi_change_rate_24h(OI_history: list) -> Optional[float]:

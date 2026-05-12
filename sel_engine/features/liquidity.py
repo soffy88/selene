@@ -18,15 +18,9 @@ def compute_orderbook_entropy(levels: list[tuple[float, float]]) -> float:
     levels: list of (price, size) tuples from one side of the orderbook.
     Returns Shannon entropy H = -Σ p_i * log(p_i) over the size distribution.
     """
+    from oprim import orderbook_entropy
     sizes = np.array([size for _, size in levels if size > 0], dtype=float)
-    if len(sizes) == 0:
-        return 0.0
-    total = sizes.sum()
-    if total == 0.0:
-        return 0.0
-    probs = sizes / total
-    probs = probs[probs > 0]
-    return float(-np.sum(probs * np.log(probs)))
+    return orderbook_entropy(sizes)
 
 
 def compute_H_from_samples(samples: list[float]) -> tuple[Optional[float], int]:

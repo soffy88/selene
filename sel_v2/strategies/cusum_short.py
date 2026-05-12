@@ -164,7 +164,8 @@ class CUSUMShort:
         peaks = [v for _, v in self._pos_peaks] + [v for _, v in self._neg_peaks]
         if len(peaks) < 20:
             return 2.0  # cold-start default: require 2 sigma equivalent
-        return float(np.quantile(peaks, self.threshold_quantile))
+        from oprim import percentile_value
+        return float(percentile_value(np.array(peaks), self.threshold_quantile))
 
     def _record_peak(self, t: Optional[float], peak: float, positive: bool) -> None:
         if t is None:

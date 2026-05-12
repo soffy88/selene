@@ -21,14 +21,22 @@ class VaRResult:
 def calc_historical_var(returns_usd: list[float], confidence: float = 0.95) -> Optional[VaRResult]:
     if len(returns_usd) < 30:
         return None
-    s = sorted(returns_usd)
-    n = len(s)
-    c95 = int((1 - 0.95) * n); c99 = int((1 - 0.99) * n)
-    var_95 = max(0.0, -s[max(0, c95)]); var_99 = max(0.0, -s[max(0, c99)])
-    tail = s[:max(1, c95)]
-    cvar = max(0.0, -sum(tail) / len(tail)) if tail else var_95
-    return VaRResult(var_95=round(var_95, 2), var_99=round(var_99, 2),
-                     expected_shortfall=round(cvar, 2), confidence=confidence, n_observations=n)
+    import pandas as pd
+    from oprim import value_at_risk
+    rets = pd.Series(returns_usd, dtype=float)
+    result_95 = value_at_risk(rets, confidence_level=0.95, method='historical', include_es=True)
+    result_99 = value_at_risk(rets, confidence_level=0.99, method='historical', include_es=False)
+    # Clamp: if all returns positive, VaR = 0 (no loss scenario)
+    var95 = max(0.0, result_95['var'])
+    var99 = max(0.0, result_99['var'])
+    es = max(0.0, result_95['es'])
+    return VaRResult(
+        var_95=round(var95, 2),
+        var_99=round(var99, 2),
+        expected_shortfall=round(es, 2),
+        confidence=confidence,
+        n_observations=len(returns_usd),
+    )
 
 
 @dataclass

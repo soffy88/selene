@@ -135,6 +135,8 @@ def compute_tda_rolling_pctile(
     Compute rolling q-th percentile of l1_series over quantile_window bars.
     Used as the dynamic threshold for TDA condition C.
     """
+    from oprim import percentile_value
+
     n = len(l1_series)
     pctile = np.full(n, np.nan)
 
@@ -142,6 +144,6 @@ def compute_tda_rolling_pctile(
         seg = l1_series[i - quantile_window: i]
         valid = seg[np.isfinite(seg)]
         if len(valid) >= 10:
-            pctile[i] = float(np.quantile(valid, q))
+            pctile[i] = percentile_value(valid, q)
 
     return pctile

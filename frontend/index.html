@@ -328,21 +328,22 @@ td.neu{color:var(--text1)}
       <div class="cb" id="risk-var-rows"></div>
     </div>
   </div>
-  <div class="card"><div class="ch">执行模式</div>
+  <div class="card"><div class="ch">执行模式 <span style="font-size:11px;font-weight:400;color:var(--text2);margin-left:6px">只读 — 由 EXEC_MODE 环境变量控制</span></div>
     <div class="cb" style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="mode-btn active" data-m="NOTIFY_ONLY" onclick="setMode(this)">
+      <button class="mode-btn active" data-m="NOTIFY_ONLY" disabled title="只读：修改请重启容器并设置 EXEC_MODE=NOTIFY_ONLY">
         <div style="font-size:18px">🔔</div><div style="font-weight:600;font-size:12px;margin-top:4px">NOTIFY_ONLY</div>
         <div style="font-size:10px;color:var(--text2)">仅通知，不下单</div>
       </button>
-      <button class="mode-btn" data-m="CONFIRM_THEN_EXEC" onclick="setMode(this)">
+      <button class="mode-btn" data-m="CONFIRM_THEN_EXEC" disabled title="只读：修改请重启容器并设置 EXEC_MODE=CONFIRM_THEN_EXEC">
         <div style="font-size:18px">✅</div><div style="font-weight:600;font-size:12px;margin-top:4px">CONFIRM</div>
         <div style="font-size:10px;color:var(--text2)">人工确认后执行</div>
       </button>
-      <button class="mode-btn" data-m="AUTO_EXEC" onclick="setMode(this)">
+      <button class="mode-btn" data-m="AUTO_EXEC" disabled title="只读：修改请重启容器并设置 EXEC_MODE=AUTO_EXEC">
         <div style="font-size:18px">⚡</div><div style="font-weight:600;font-size:12px;margin-top:4px">AUTO_EXEC</div>
         <div style="font-size:10px;color:var(--red)">全自动（谨慎）</div>
       </button>
     </div>
+    <div style="margin-top:8px;font-size:11px;color:var(--text2)">当前模式由服务启动时读取，切换需修改 docker-compose.yml 中 EXEC_MODE 并重启 execution-service。</div>
   </div>
 </div>
 
@@ -436,9 +437,10 @@ td.neu{color:var(--text1)}
 </div><!-- .app -->
 
 <style>
-.mode-btn{flex:1;min-width:120px;padding:14px;border-radius:7px;border:1px solid var(--b1);background:var(--bg2);color:var(--text1);cursor:pointer;text-align:center;transition:all .15s}
-.mode-btn:hover{border-color:var(--green);color:var(--text0)}
-.mode-btn.active{border-color:var(--green);background:var(--gd);color:var(--green)}
+.mode-btn{flex:1;min-width:120px;padding:14px;border-radius:7px;border:1px solid var(--b1);background:var(--bg2);color:var(--text1);cursor:default;text-align:center;transition:all .15s;opacity:0.6}
+.mode-btn:hover{border-color:var(--b1);color:var(--text1)}
+.mode-btn.active{border-color:var(--green);background:var(--gd);color:var(--green);opacity:1}
+.mode-btn:disabled{pointer-events:none}
 .opp-card{background:var(--bg2);border:1px solid var(--b1);border-radius:7px;padding:13px;transition:border-color .2s}
 .opp-card:hover{border-color:var(--amber)}
 .opp-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
@@ -710,7 +712,7 @@ async function loadRisk(){
   ].map(([k,v,c])=>`<div class="irow"><span class="ik">${k}</span><span class="iv ${c}">${v}</span></div>`).join('');
 }
 
-function setMode(btn){document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');const m=btn.dataset.m;const eb=document.getElementById('exec-badge');eb.textContent=m;eb.className='badge '+(m==='AUTO_EXEC'?'auto':m==='CONFIRM_THEN_EXEC'?'confirm':'notify');toast('执行模式→'+m,m==='AUTO_EXEC'?'r':'g')}
+function setMode(){}
 
 // Funding
 async function loadFunding(){

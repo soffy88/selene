@@ -109,33 +109,6 @@ async def run_weekly_report(db=None) -> str:
     return path
 
 
-def schedule_weekly_report_blocking() -> None:
-    """
-    Block until next Sunday UTC 00:00 then run report.
-    For use as a standalone daemon (python -m sel_v2.reports.scheduler).
-
-    NOT deployed in Wave 5 — call manually or integrate with cron.
-    """
-    import time
-
-    while True:
-        now = datetime.now(timezone.utc)
-        # Next Sunday 00:00 UTC
-        days_until_sunday = (6 - now.weekday()) % 7
-        if days_until_sunday == 0 and now.hour == 0 and now.minute < 5:
-            asyncio.run(run_weekly_report())
-            time.sleep(300)  # sleep 5 min to avoid double-fire
-        else:
-            next_sunday = now + timedelta(days=days_until_sunday)
-            next_run = next_sunday.replace(hour=0, minute=0, second=0, microsecond=0)
-            sleep_secs = (next_run - now).total_seconds()
-            logger.info(
-                "Next weekly report in %.1f hours (%s UTC)",
-                sleep_secs / 3600,
-                next_run.strftime("%Y-%m-%d %H:%M"),
-            )
-            time.sleep(min(sleep_secs, 3600))
-
 
 if __name__ == "__main__":
     asyncio.run(run_weekly_report())

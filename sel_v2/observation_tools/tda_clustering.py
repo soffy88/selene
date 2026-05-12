@@ -19,7 +19,7 @@ from datetime import datetime
 import numpy as np
 
 from sel_v2.observation_tools.base import BarFeatures, ObservationResult, ObservationTool
-from sel_v2.offline.tda_calibration import takens_embed
+from oprim import takens_embed
 
 try:
     from ripser import ripser as _ripser

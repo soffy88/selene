@@ -25,7 +25,6 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -50,101 +49,7 @@ CRITICAL_THRESHOLD = 0.85
 
 # ── Hawkes log-likelihood ─────────────────────────────────────────────────────
 
-def hawkes_nll(
-    params: np.ndarray,
-    event_times: np.ndarray,
-    T: float,
-) -> float:
-    """
-    Negative log-likelihood of exponential Hawkes process.
-
-    Model: λ(t) = μ + Σ_{t_i < t} α·exp(-β·(t - t_i))
-    Branching ratio η = α/β
-
-    params: [log_mu, log_alpha, log_beta] (log-transform for positivity constraint)
-    event_times: sorted 1D array of event times in bar units
-    T: observation window end (bar units)
-    """
-    log_mu, log_alpha, log_beta = params
-    mu = np.exp(log_mu)
-    alpha = np.exp(log_alpha)
-    beta = np.exp(log_beta)
-
-    n = len(event_times)
-    if n < 2:
-        return 1e10
-
-    # Recursive computation of A_i = Σ_{j<i} exp(-β*(t_i - t_j))
-    # A_i = exp(-β*(t_i - t_{i-1})) * (1 + A_{i-1})
-    A = np.zeros(n)
-    for i in range(1, n):
-        A[i] = np.exp(-beta * (event_times[i] - event_times[i - 1])) * (1.0 + A[i - 1])
-
-    # Conditional intensities at each event
-    lambdas = mu + alpha * A
-    if np.any(lambdas <= 0):
-        return 1e10
-
-    # Log-likelihood terms
-    log_sum = np.sum(np.log(lambdas))
-
-    # Integral ∫_0^T λ(t) dt = μ*T + α/β * Σ_i (1 - exp(-β*(T - t_i)))
-    integral = mu * T + (alpha / beta) * np.sum(1.0 - np.exp(-beta * (T - event_times)))
-
-    nll = -(log_sum - integral)
-    return float(nll) if np.isfinite(nll) else 1e10
-
-
-def fit_hawkes(
-    event_times: np.ndarray,
-    T: float,
-    n_restarts: int = 5,
-) -> dict:
-    """
-    Fit exponential Hawkes via MLE with multiple random restarts.
-    Returns dict with mu, alpha, beta, branching_ratio, converged.
-    """
-    best_result = None
-    best_nll = np.inf
-    rng = np.random.default_rng(42)
-
-    for _ in range(n_restarts):
-        # Random initialisation in log-space
-        log_mu0 = rng.uniform(-5, -1)
-        log_alpha0 = rng.uniform(-5, -1)
-        log_beta0 = rng.uniform(-3, 1)
-        x0 = np.array([log_mu0, log_alpha0, log_beta0])
-
-        try:
-            result = minimize(
-                hawkes_nll,
-                x0,
-                args=(event_times, T),
-                method="Nelder-Mead",
-                options={"maxiter": 2000, "xatol": 1e-6, "fatol": 1e-6},
-            )
-            if result.fun < best_nll:
-                best_nll = result.fun
-                best_result = result
-        except Exception:
-            continue
-
-    if best_result is None or not best_result.success:
-        return {"converged": False, "branching_ratio": np.nan}
-
-    mu = np.exp(best_result.x[0])
-    alpha = np.exp(best_result.x[1])
-    beta = np.exp(best_result.x[2])
-    br = alpha / beta
-
-    return {
-        "converged": True,
-        "mu": float(mu),
-        "alpha": float(alpha),
-        "beta": float(beta),
-        "branching_ratio": float(br),
-        "nll": float(best_nll),
-    }
+from sel_v2.hawkes.mle import hawkes_nll, fit_hawkes  # canonical implementation
 
 
 # ── Rolling calibration ───────────────────────────────────────────────────────

@@ -192,11 +192,8 @@ class ICTracker:
 
 
 def _rank(values: list) -> list:
-    sorted_v = sorted(enumerate(values), key=lambda x: x[1])
-    ranks = [0.0] * len(values)
-    for rank, (idx, _) in enumerate(sorted_v):
-        ranks[idx] = rank + 1
-    return ranks
+    from scipy.stats import rankdata
+    return rankdata(values, method='ordinal').tolist()
 
 
 # ── Signal Service 核心 ────────────────────────────────────────────────────────

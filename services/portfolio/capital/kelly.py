@@ -115,22 +115,6 @@ def risk_parity_weights(volatilities: dict[str, float]) -> dict[str, float]:
     return rounded
 
 
-def volatility_targeting(
-    target_vol:   float,             # e.g. 0.20 for 20% annual
-    realized_vol: float,             # recent realized volatility
-    current_allocation: float,       # current allocation fraction
-) -> float:
-    """
-    Scale allocation up/down to hit the target volatility.
-    new_alloc = current_alloc × (target_vol / realized_vol)
-    Capped at [0, 2x current] to avoid extreme leverage changes.
-    """
-    if realized_vol <= 0:
-        return current_allocation
-    scaling = target_vol / realized_vol
-    scaling = max(0.1, min(2.0, scaling))   # cap 0.1x to 2x
-    return round(current_allocation * scaling, 6)
-
 
 # ── Portfolio-level sizing ────────────────────────────────────────────────────
 

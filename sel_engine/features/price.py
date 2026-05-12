@@ -38,12 +38,13 @@ def compute_autocorr(closes: list[float], window: int) -> Optional[float]:
     returns = np.diff(np.log(prices))
     if len(returns) < 2:
         return None
-    # corrcoef returns NaN for zero-variance series; guard against that.
     try:
-        val = float(np.corrcoef(returns[:-1], returns[1:])[0, 1])
+        from oprim import pearson_spearman_corr
+        result = pearson_spearman_corr(returns[:-1], returns[1:], min_samples=2)
+        val = result['pearson_r']
         if np.isnan(val):
             return None
-        return val
+        return float(val)
     except Exception as exc:
         logger.debug("autocorr computation failed: %s", exc)
         return None
@@ -64,14 +65,11 @@ def compute_price_slope_6h(closes: list[float]) -> Optional[float]:
     """
     if len(closes) < 7:
         return None
+    from oprim import linear_slope
     window = np.array(closes[-7:], dtype=float)
-    mean_price = float(window.mean())
-    if mean_price == 0.0:
+    if float(window.mean()) == 0.0:
         return None
-    x = np.arange(6, dtype=float)
-    y = window[1:]  # 6 log-prices corresponding to intervals
-    slope = float(np.polyfit(x, y, 1)[0])
-    return abs(slope) / mean_price
+    return linear_slope(window[1:], normalize=True)
 
 
 def compute_sigma_slope_12h(sigma_history: list[float]) -> Optional[bool]:
