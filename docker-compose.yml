@@ -79,7 +79,7 @@ services:
       PUSH_THRESHOLD_STRONG: ${PUSH_THRESHOLD_STRONG:-0.62}
       PUSH_THRESHOLD_WATCH:  ${PUSH_THRESHOLD_WATCH:-0.56}
     depends_on:
-      data-service: {condition: service_healthy}
+      - data-service
     ports: ['8002:8002']
     deploy:
       resources:
@@ -106,7 +106,7 @@ services:
       MAX_PORTFOLIO_DRAWDOWN: ${MAX_PORTFOLIO_DRAWDOWN:-0.15}
       MAX_SINGLE_POSITION:    ${MAX_SINGLE_POSITION:-0.2}
     depends_on:
-      signal-service: {condition: service_healthy}
+      - signal-service
     ports: ['8003:8003']
     deploy:
       resources:
@@ -133,7 +133,7 @@ services:
       FUNDING_MIN_RATE:         ${FUNDING_MIN_RATE:-0.0003}
       FUNDING_MAX_POSITION_USD: ${FUNDING_MAX_POSITION_USD:-10000}
     depends_on:
-      portfolio-service: {condition: service_healthy}
+      - portfolio-service
     ports: ['8004:8004']
     deploy:
       resources:
@@ -160,7 +160,7 @@ services:
       BINANCE_API_KEY:    ${BINANCE_API_KEY:-}
       BINANCE_API_SECRET: ${BINANCE_API_SECRET:-}
     depends_on:
-      risk-service: {condition: service_healthy}
+      - risk-service
     ports: ['8005:8005']
     deploy:
       resources:
@@ -214,8 +214,8 @@ services:
       PUSH_THRESHOLD_STRONG: ${PUSH_THRESHOLD_STRONG:-0.62}
       PUSH_THRESHOLD_WATCH:  ${PUSH_THRESHOLD_WATCH:-0.56}
     depends_on:
-      signal-service:       {condition: service_healthy}
-      notification-service: {condition: service_started}
+      - signal-service
+      - notification-service
     ports: ['8020:8020']
     volumes:
       - onchain_history:/root/.chain_sentinel
@@ -242,44 +242,10 @@ services:
       THRESHOLD_BTC:   ${THRESHOLD_BTC:-100}
       THRESHOLD_MINER: ${THRESHOLD_MINER:-500}
     depends_on:
-      onchain-sentinel: {condition: service_healthy}
+      - onchain-sentinel
     deploy:
       resources:
         limits: {cpus: '0.3', memory: 128M}
-
-# H3-PENDING   onchain-eth-worker:
-# H3-PENDING     <<: *defaults
-# H3-PENDING     build:
-# H3-PENDING       context: .
-# H3-PENDING       dockerfile: services/onchain/eth/Dockerfile
-# H3-PENDING     command: python -m services.onchain.eth.worker
-# H3-PENDING     environment:
-# H3-PENDING       <<: *common_env
-# H3-PENDING       SERVICE_NAME:  onchain-eth-worker
-# H3-PENDING       INFURA_KEY:    ${INFURA_KEY:-}
-# H3-PENDING       THRESHOLD_ETH: ${THRESHOLD_ETH:-500}
-# H3-PENDING     depends_on:
-# H3-PENDING       onchain-sentinel: {condition: service_healthy}
-# H3-PENDING     deploy:
-# H3-PENDING       resources:
-# H3-PENDING         limits: {cpus: '0.3', memory: 128M}
-# H3-PENDING 
-# H3-PENDING   onchain-sol-worker:
-# H3-PENDING     <<: *defaults
-# H3-PENDING     build:
-# H3-PENDING       context: .
-# H3-PENDING       dockerfile: services/onchain/sol/Dockerfile
-# H3-PENDING     command: python -m services.onchain.sol.worker
-# H3-PENDING     environment:
-# H3-PENDING       <<: *common_env
-# H3-PENDING       SERVICE_NAME:  onchain-sol-worker
-# H3-PENDING       HELIUS_KEY:    ${HELIUS_KEY:-}
-# H3-PENDING       THRESHOLD_SOL: ${THRESHOLD_SOL:-50000}
-# H3-PENDING     depends_on:
-# H3-PENDING       onchain-sentinel: {condition: service_healthy}
-# H3-PENDING     deploy:
-# H3-PENDING       resources:
-# H3-PENDING         limits: {cpus: '0.3', memory: 128M}
 
   # ── sel Bar-Close Scheduler ──────────────────────────────────────────────
   sel-bar-runner:
@@ -301,7 +267,7 @@ services:
       interval: 5m
       timeout: 30s
       retries: 3
-      start_period: 75m  # first trigger ~1h after start; 15m tolerance
+      start_period: 75m
 
   # ── sel Collectors ───────────────────────────────────────────────────────
   sel-orderbook:
@@ -377,8 +343,8 @@ services:
       TELEGRAM_CHAT_ID:          ${TELEGRAM_CHAT_ID:-}
       WX_WEBHOOK:                ${WX_WEBHOOK:-}
     depends_on:
-      signal-service: {condition: service_healthy}
-      risk-service:   {condition: service_healthy}
+      - signal-service
+      - risk-service
     ports: ['8021:8021']
     deploy:
       resources:
@@ -402,11 +368,11 @@ services:
       SERVICE_NAME: gateway
       SERVICE_PORT: "5000"
     depends_on:
-      data-service:      {condition: service_healthy}
-      signal-service:    {condition: service_healthy}
-      portfolio-service: {condition: service_healthy}
-      risk-service:      {condition: service_healthy}
-      execution-service: {condition: service_healthy}
+      - data-service
+      - signal-service
+      - portfolio-service
+      - risk-service
+      - execution-service
     ports: ['5000:5000']
     deploy:
       resources:
@@ -422,29 +388,27 @@ services:
       context: ./frontend
     ports: ['8088:80']
     depends_on:
-      gateway: {condition: service_healthy}
+      - gateway
     deploy:
       resources:
         limits: {cpus: '0.1', memory: 64M}
 
   # ── Healthcheck ───────────────────────────────────────────────────────────
-  healthcheck-service:
-    build:
-      context: .
-      dockerfile: services/healthcheck/Dockerfile
-    container_name: selene-healthcheck-1
-    restart: unless-stopped
+  selene-healthcheck:
+    build: ./services/healthcheck
+    env_file: .env
     environment:
-      REDIS_URL: ${REDIS_URL}
-      TIMESCALE_URL: ${TIMESCALE_URL}
-      HELIOS_REDIS_URL: redis://helios-redis:6379/0
-      RULES_PATH: /app/configs/healthcheck-rules.yaml
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
+      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway,api.telegram.org
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks: [helios-net]
-    deploy:
-      resources:
-        limits: {cpus: '0.1', memory: 128M}
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - helios-net
+    restart: unless-stopped
 
   # ── sel_v2 real-time data collectors ──────────────────────────────
   v2-tick-collector:
@@ -556,22 +520,6 @@ services:
     depends_on:
       - v2-tick-collector
       - v2-bar-aggregator
-    restart: unless-stopped
-
-  selene-healthcheck:
-    build: ./services/healthcheck
-    env_file: .env
-    environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
-      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
-      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway,api.telegram.org
-      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - helios-net
     restart: unless-stopped
 
 networks:
