@@ -73,6 +73,7 @@ services:
       <<: *common_env
       SERVICE_NAME: signal-service
       SERVICE_PORT: "8002"
+      DISABLE_V4_ENTRIES: "true"
       MIN_WIN_PROBABILITY:   ${MIN_WIN_PROBABILITY:-0.52}
       MIN_DATA_QUALITY:      ${MIN_DATA_QUALITY:-0.7}
       PUSH_THRESHOLD_STRONG: ${PUSH_THRESHOLD_STRONG:-0.62}
@@ -555,6 +556,22 @@ services:
     depends_on:
       - v2-tick-collector
       - v2-bar-aggregator
+    restart: unless-stopped
+
+  selene-healthcheck:
+    build: ./services/healthcheck
+    env_file: .env
+    environment:
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
+      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway,api.telegram.org
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - helios-net
     restart: unless-stopped
 
 networks:

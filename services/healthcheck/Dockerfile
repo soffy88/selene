@@ -1,7 +1,5 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 WORKDIR /app
-RUN pip install --no-cache-dir asyncpg redis pyyaml docker
-COPY services/healthcheck/main.py /app/main.py
-COPY configs/healthcheck-rules.yaml /app/configs/healthcheck-rules.yaml
-ENV PYTHONUNBUFFERED=1
-CMD ["python", "main.py"]
+RUN pip install --index-url https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir asyncpg aiohttp redis
+COPY main.py /app/main.py
+CMD ["python", "-u", "/app/main.py"]
