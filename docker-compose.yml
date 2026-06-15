@@ -535,6 +535,28 @@ services:
       - helios-net
     restart: unless-stopped
 
+  v2-paper-engine:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    command: python -m sel_v2.paper.paper_engine
+    env_file: .env
+    environment:
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
+      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - REDIS_URL=redis://helios-redis:6379/3
+      - SYMBOLS=BTC-USDT
+    volumes:
+      - ./sel_v2:/app/sel_v2:ro
+    networks:
+      - helios-net
+    depends_on:
+      - v2-tick-collector
+      - v2-bar-aggregator
+    restart: unless-stopped
+
 networks:
   helios-net:
     external: true
