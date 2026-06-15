@@ -17,12 +17,18 @@ async def get_pool():
 
 class StateHealth(BaseModel):
     symbol: str
+    total_bars: int  # Redundant for frontend compatibility
     total_bars_4h: int
     cold_start_bars: int
     active_bars: int
     satiation_pct: float
     is_ready: bool
     latest_ts: Optional[datetime]
+
+def normalize_symbol(symbol: str) -> str:
+    if symbol == "BTCUSDT": return "BTC-USDT"
+    if symbol == "ETHUSDT": return "ETH-USDT"
+    return symbol
 
 def record_to_dict(record):
     if not record: return None
@@ -36,6 +42,7 @@ def record_to_dict(record):
 
 @router.get("/sel/state/health", response_model=StateHealth)
 async def state_health(symbol: str = Query("BTC-USDT")):
+    symbol = normalize_symbol(symbol)
     p = await get_pool()
     async with p.acquire() as conn:
         count = await conn.fetchval("SELECT count(*) FROM v2_bars_4h WHERE symbol=$1", symbol)
@@ -47,6 +54,7 @@ async def state_health(symbol: str = Query("BTC-USDT")):
         
         return StateHealth(
             symbol=symbol,
+            total_bars=count,
             total_bars_4h=count,
             cold_start_bars=count, 
             active_bars=count,
@@ -57,6 +65,7 @@ async def state_health(symbol: str = Query("BTC-USDT")):
 
 @router.get("/sel/state/history")
 async def state_history(symbol: str = Query("BTC-USDT"), hours: int = 24, limit: int = 100):
+    symbol = normalize_symbol(symbol)
     p = await get_pool()
     async with p.acquire() as conn:
         rows = await conn.fetch(
