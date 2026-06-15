@@ -409,18 +409,18 @@ td.neu{color:var(--text1)}
 <div class="page" id="page-sel">
   <div class="stats">
     <div class="stat"><div class="stat-label">当前状态</div><div class="stat-val b" id="sel-state">--</div><div class="stat-sub" id="sel-sym">BTCUSDT</div></div>
-    <div class="stat"><div class="stat-label">数据条数</div><div class="stat-val" id="sel-bars">--</div><div class="stat-sub">720条满仓</div></div>
+    <div class="stat"><div class="stat-label">数据条数</div><div class="stat-val" id="sel-bars">--</div><div class="stat-sub">180条4H满仓</div></div>
     <div class="stat"><div class="stat-label">冷启动条数</div><div class="stat-val a" id="sel-cold">--</div><div class="stat-sub">待完成</div></div>
     <div class="stat"><div class="stat-label">健康警告</div><div class="stat-val" id="sel-warn">--</div><div class="stat-sub">过去30天</div></div>
   </div>
   <div class="card">
-    <div class="ch">冷启动进度 <span style="font-size:10px;color:var(--text2)">(需要720条1h数据)</span></div>
+    <div class="ch">冷启动进度 <span style="font-size:10px;color:var(--text2)">(需要180条4H数据)</span></div>
     <div class="cb">
       <div style="background:var(--bg2);border-radius:6px;height:10px;overflow:hidden;margin-bottom:8px">
         <div id="sel-prog-bar" style="height:100%;background:var(--green);transition:width .4s;width:0%"></div>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2)">
-        <span id="sel-prog-txt">0 / 720</span><span id="sel-prog-pct">0%</span>
+        <span id="sel-prog-txt">0 / 180</span><span id="sel-prog-pct">0%</span>
       </div>
     </div>
   </div>
@@ -912,6 +912,11 @@ async function loadSel(){
     if(document.getElementById('page-signals').classList.contains('active'))loadSignals();
     if(document.getElementById('page-portfolio').classList.contains('active'))loadPortfolio();
   },10000);
+})();
+</script>
+</body>
+</html>
+},10000);
 })();
 </script>
 </body>

@@ -103,6 +103,15 @@ try:
 except ImportError:
     logger.warning("sel_engine not available — /api/v4/sel/* endpoints disabled")
 
+# sel_v2 paper API (new)
+try:
+    from sel_v2.paper_interface.api import router as sel_v2_router
+    if sel_v2_router is not None:
+        app.include_router(sel_v2_router, prefix="/api/v2")
+        logger.info("sel_v2 paper API enabled at /api/v2/sel/*")
+except ImportError as e:
+    logger.warning(f"sel_v2 paper API unavailable: {e}")
+
 
 # ── Health ─────────────────────────────────────────────────────────────────────
 @app.get("/health")
