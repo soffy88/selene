@@ -445,6 +445,96 @@ services:
       resources:
         limits: {cpus: '0.1', memory: 128M}
 
+  # ── sel_v2 real-time data collectors ──────────────────────────────
+  v2-tick-collector:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    command: python -m sel_v2.data.v2_tick_collector
+    env_file: .env
+    environment:
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:20810}
+      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:20810}
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - SYMBOLS=BTC-USDT
+    networks:
+      - helios-net
+    restart: unless-stopped
+
+  v2-lob-collector:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    command: python -m sel_v2.data.v2_lob_collector
+    env_file: .env
+    environment:
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:20810}
+      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:20810}
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+    networks:
+      - helios-net
+    restart: unless-stopped
+
+  v2-liquidation-collector:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    command: python -m sel_v2.data.v2_liquidation_collector
+    env_file: .env
+    environment:
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:20810}
+      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:20810}
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+    networks:
+      - helios-net
+    restart: unless-stopped
+
+  v2-derivatives-collector:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    command: python -m sel_v2.data.v2_derivatives_collector
+    env_file: .env
+    environment:
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:20810}
+      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:20810}
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+    networks:
+      - helios-net
+    restart: unless-stopped
+
+  v2-onchain-collector:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    command: python -m sel_v2.data.v2_onchain_collector
+    env_file: .env
+    environment:
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+    networks:
+      - helios-net
+    restart: unless-stopped
+
+  v2-bar-aggregator:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    command: python -m sel_v2.data.v2_bar_aggregator
+    env_file: .env
+    environment:
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:20810}
+      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:20810}
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - SYMBOLS=BTC-USDT
+    networks:
+      - helios-net
+    restart: unless-stopped
+
 networks:
   helios-net:
     external: true
