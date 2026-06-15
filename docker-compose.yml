@@ -453,8 +453,8 @@ services:
     command: python -m sel_v2.data.v2_tick_collector
     env_file: .env
     environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:20810}
-      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:20810}
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
+      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
       - SYMBOLS=BTC-USDT
@@ -469,8 +469,8 @@ services:
     command: python -m sel_v2.data.v2_lob_collector
     env_file: .env
     environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:20810}
-      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:20810}
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
+      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
     networks:
@@ -484,8 +484,8 @@ services:
     command: python -m sel_v2.data.v2_liquidation_collector
     env_file: .env
     environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:20810}
-      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:20810}
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
+      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
     networks:
@@ -499,8 +499,8 @@ services:
     command: python -m sel_v2.data.v2_derivatives_collector
     env_file: .env
     environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:20810}
-      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:20810}
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
+      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
     networks:
@@ -526,8 +526,8 @@ services:
     command: python -m sel_v2.data.v2_bar_aggregator
     env_file: .env
     environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:20810}
-      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:20810}
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
+      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
       - SYMBOLS=BTC-USDT
