@@ -864,19 +864,19 @@ async function loadOverview(){
 
 // sel state
 async function loadSel(){
-  const sym='BTCUSDT';
+  const sym='BTC-USDT';
   const [hd,hst]=await Promise.all([
-    api(`/sel/state/health?symbol=${sym}`),
-    api(`/sel/state/history?symbol=${sym}&hours=24&limit=24`)
+    api(`/api/v2/sel/state/health?symbol=${sym}`),
+    api(`/api/v2/sel/state/history?symbol=${sym}&hours=24&limit=24`)
   ]);
   if(hd){
     const tot=hd.total_bars||0; const cold=hd.cold_start_bars||0; const active=hd.active_bars||0;
-    const pct=Math.min(100,(tot/720*100)).toFixed(1);
+    const pct=(hd.satiation_pct||0).toFixed(1);
     document.getElementById('sel-bars').textContent=tot;
     document.getElementById('sel-cold').textContent=cold;
     document.getElementById('sel-warn').textContent=hd.health_warning_count||0;
     document.getElementById('sel-prog-bar').style.width=pct+'%';
-    document.getElementById('sel-prog-txt').textContent=`${tot} / 720`;
+    document.getElementById('sel-prog-txt').textContent=`${tot} / 180`;
     document.getElementById('sel-prog-pct').textContent=pct+'%';
     const sc=hd.state_counts||{};
     const topState=Object.entries(sc).sort((a,b)=>b[1]-a[1])[0];
