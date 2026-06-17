@@ -866,8 +866,8 @@ async function loadOverview(){
 async function loadSel(){
   const sym='BTC-USDT';
   const [hd,hst]=await Promise.all([
-    api(`/api/v2/sel/state/health?symbol=${sym}`),
-    api(`/api/v2/sel/state/history?symbol=${sym}&hours=24&limit=24`)
+    fetch(`/api/v2/sel/state/health?symbol=${sym}`).then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch(`/api/v2/sel/state/history?symbol=${sym}&hours=24&limit=24`).then(r=>r.ok?r.json():null).catch(()=>null)
   ]);
   if(hd){
     const tot=hd.total_bars||0; const cold=hd.cold_start_bars||0; const active=hd.active_bars||0;
