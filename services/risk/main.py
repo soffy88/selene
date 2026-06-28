@@ -87,6 +87,53 @@ async def _get_corr_returns(symbols: set) -> dict:
     cache["data"] = out
     return out
 
+
+def _signed_positions() -> dict:
+    """Open positions as {symbol: signed notional} (+long / -short), excluding the equity marker."""
+    out = {}
+    for s, p in _open_positions.items():
+        if s == "__equity__" or "notional" not in p:
+            continue
+        sign = 1.0 if str(p.get("side", "LONG")).upper() in ("BUY", "LONG") else -1.0
+        out[s] = sign * float(p.get("notional", 0.0))
+    return out
+
+
+async def compute_portfolio_risk() -> dict:
+    """Correlation-aware portfolio risk snapshot: asset-level VaR (w'Σw), correlated
+    same-direction exposure, and standard stress scenarios.
+
+    Surfaced for monitoring / risk oversight — NOT an order gate: its per-bar horizon differs
+    from the equity-series VaR gate, and a hard threshold here would be easy to miscalibrate.
+    It closes the 'VaR ignores cross-asset correlation' gap by exposing the correct number.
+    """
+    from services.risk.portfolio.correlation_risk import (
+        parametric_var_correlated, correlated_exposure, stress_test)
+    equity = _get_equity()
+    signed = _signed_positions()
+    if not signed:
+        return {"equity": round(equity, 2), "positions": 0, "var_1bar_usd": 0.0,
+                "var_1bar_pct": 0.0, "max_correlated_exposure_pct": 0.0, "stress": {}}
+    returns = await _get_corr_returns(set(signed))
+    var_usd = parametric_var_correlated(signed, returns, confidence=0.95) if returns else 0.0
+    corr_exp = correlated_exposure(signed, returns, threshold=CORR_THRESHOLD) if returns else {}
+    held = list(signed)
+    scenarios = {
+        "broad_drop_15":  {s: -0.15 for s in held},
+        "broad_rally_15": {s:  0.15 for s in held},
+        "btc_led_crash":  {s: (-0.20 if s == "BTCUSDT" else -0.12) for s in held},
+    }
+    stress = stress_test(signed, scenarios)
+    return {
+        "equity": round(equity, 2),
+        "positions": len(signed),
+        "var_1bar_usd": round(var_usd, 2),
+        "var_1bar_pct": round(var_usd / equity, 4) if equity > 0 else 0.0,
+        "max_correlated_exposure_pct": round(corr_exp.get("max_fraction", 0.0), 4),
+        "worst_stress_usd": round(min(stress.values()), 2) if stress else 0.0,
+        "stress": stress,
+    }
+
 # 已知高相关资产组（防止 all-in 同一风险）
 CORR_GROUPS = [
     {"BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT"},   # 主流 L1
@@ -499,7 +546,14 @@ async def status():
         "daily_pnl":       _daily_pnl,
         "open_position_count": len(_open_positions) - 1,
         "equity_history_len":  len(_equity_history),
+        "portfolio_risk":  await compute_portfolio_risk(),
     }
+
+
+@app.get("/risk/portfolio-risk")
+async def portfolio_risk():
+    """Correlation-aware VaR + correlated-exposure + stress-scenario snapshot."""
+    return await compute_portfolio_risk()
 
 
 if __name__ == "__main__":
