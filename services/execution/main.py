@@ -30,6 +30,7 @@ RECONCILE_INTERVAL_S = float(os.getenv("RECONCILE_INTERVAL_S", "60"))  # exchang
 CG_EXECUTION     = "execution-service"
 
 _last_reconcile = {"ts": 0.0, "divergences": 0}
+_fill_lock = asyncio.Lock()   # serializes fill application across WS + reconcile paths
 
 _slippage_model = SlippageModel()
 _router         = SmartRouter()
@@ -109,14 +110,12 @@ async def _estimate_daily_volume_usd(r, symbol: str, price: float) -> float:
     return majors.get(symbol, 2e8)
 
 
-async def on_fill(event: FillEvent):
-    order_id = _exchange_map.get(event.exchange_id)
-    if not order_id: return
-    fsm = _orders.get(order_id)
-    if not fsm: return
+async def _apply_fill_locked(fsm, qty: float, price: float, fee: float, is_final: bool):
+    """Apply a fill to the FSM and publish. Caller MUST hold _fill_lock so that the
+    WebSocket fill path and the reconcile path never interleave and double-count."""
     r = await get_redis()
-    fsm.on_fill(event.filled_qty, event.filled_price, event.fee)
-    if event.is_final or fsm.record.state == OrderState.FILLED:
+    fsm.on_fill(qty, price, fee)
+    if is_final or fsm.record.state == OrderState.FILLED:
         if fsm.record.state == OrderState.FILLED:
             fsm.transition(OrderState.MONITORING)
             _stats["filled"] += 1
@@ -125,6 +124,15 @@ async def on_fill(event: FillEvent):
             logger.info(f"✅ FILLED {fsm.record.symbol} avg={fsm.record.filled_price:.4f} slip={fsm.record.slippage_pct:.4f}%")
     else:
         await _pub(r, fsm, "partial_fill")
+
+
+async def on_fill(event: FillEvent):
+    order_id = _exchange_map.get(event.exchange_id)
+    if not order_id: return
+    fsm = _orders.get(order_id)
+    if not fsm: return
+    async with _fill_lock:
+        await _apply_fill_locked(fsm, event.filled_qty, event.filled_price, event.fee, event.is_final)
 
 
 async def process_scored_signal(data: dict):
@@ -328,15 +336,16 @@ async def reconcile_loop():
                     continue
                 if not o.success:
                     continue
-                recorded = rec.filled_qty or 0.0
-                if o.filled_qty > recorded + 1e-9:
-                    logger.warning(f"RECONCILE missed fill {rec.id[:8]}: exch={o.filled_qty} recorded={recorded}")
-                    await on_fill(FillEvent(
-                        exchange_id=rec.exchange_id, symbol=rec.symbol, side=rec.side,
-                        filled_qty=o.filled_qty - recorded, filled_price=o.filled_price, fee=0.0,
-                        is_final=str(o.status).upper() in ("FILLED", "EFFECTIVE"),
-                    ))
-                    await _audit(fsm, "RECONCILE_MISSED_FILL")
+                # Re-read the recorded fill and apply the delta under _fill_lock so a WS fill
+                # arriving between the get_order() above and here cannot be double-counted.
+                async with _fill_lock:
+                    recorded = rec.filled_qty or 0.0
+                    if o.filled_qty > recorded + 1e-9:
+                        logger.warning(f"RECONCILE missed fill {rec.id[:8]}: exch={o.filled_qty} recorded={recorded}")
+                        await _apply_fill_locked(
+                            fsm, o.filled_qty - recorded, o.filled_price, 0.0,
+                            str(o.status).upper() in ("FILLED", "EFFECTIVE"))
+                        await _audit(fsm, "RECONCILE_MISSED_FILL")
 
             # 2) phantom-exposure detection: exchange position with no tracked order
             divergences = 0

@@ -287,6 +287,9 @@ class PaperStrategyEngine:
             applied = self._apply_exit(acct, pos.id, dec, mark, ts, is_s1=False)
             if applied == "batch":
                 meta.batches += 1
+                if meta.batches >= 3 and acct.close_position(pos.id, mark, ts, "batch_exit_final"):
+                    # third 1/3 batch — close the residual so the position terminates cleanly
+                    self._forget(pos.id)
 
     # ── shared exit application ────────────────────────────────────────────────
     def _apply_exit(self, acct, pos_id, dec, mark, ts, *, is_s1: bool) -> Optional[str]:
@@ -305,7 +308,7 @@ class PaperStrategyEngine:
             return "reduce"
         if action in ("EXIT_BATCH_33",):
             acct.reduce_position(pos_id, dec.partial_fraction or (1 / 3), mark, ts, dec.reason)
-            # if the position is now negligible, close the remainder
+            # caller (_manage_s2_exits) closes the residual after the third batch
             return "batch"
         # unknown action -> safest is full exit
         closed = acct.close_position(pos_id, mark, ts, dec.reason)

@@ -106,6 +106,15 @@ class TestProbabilisticAndDeflatedSharpe:
         assert dsr <= psr + 1e-9
         assert 0.0 <= dsr <= 1.0
 
+    def test_dsr_single_trial_equals_psr_not_one(self):
+        # n_trials=1 must NOT degenerate to 1.0 (which would trivially pass any DSR gate);
+        # with no selection bias it collapses to PSR vs 0.
+        rets = [0.01, -0.004, 0.006, 0.003, -0.002, 0.005, 0.001, -0.001, 0.004, 0.002]
+        dsr1 = deflated_sharpe_ratio(rets, n_trials=1)
+        psr = probabilistic_sharpe_ratio(rets, 0.0)
+        assert abs(dsr1 - psr) < 1e-9
+        assert dsr1 < 1.0
+
 
 class TestBootstrapCI:
     def test_ordering_and_determinism(self):

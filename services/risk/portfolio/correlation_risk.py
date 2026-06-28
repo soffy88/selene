@@ -130,7 +130,12 @@ def same_direction_correlated_exposure(candidate: str, cand_sign: int, cand_noti
         if sym == candidate:                      # candidate already has an open position
             total += float(pos.get("notional", 0.0))
             continue
-        if sym in idx and corr[idx[candidate]][idx[sym]] >= threshold:
+        if sym not in idx:
+            # a same-direction position has no return history → correlation is unknown.
+            # We must not silently drop it (that would under-count exposure), so signal the
+            # caller to fall back to the conservative static group check.
+            return None
+        if corr[idx[candidate]][idx[sym]] >= threshold:
             total += float(pos.get("notional", 0.0))
     return total
 

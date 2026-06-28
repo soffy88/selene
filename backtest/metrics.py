@@ -160,7 +160,9 @@ def deflated_sharpe_ratio(returns, n_trials: int, sr_trials_std: float | None = 
         std_sr_ann = math.sqrt(var_sr) * math.sqrt(periods_per_year)
     else:
         std_sr_ann = sr_trials_std
-    if std_sr_ann <= 0:
+    if std_sr_ann <= 0 or n_trials <= 1:
+        # A single trial has no selection bias to deflate → DSR collapses to PSR vs 0.
+        # (Guards _phi_inv(1 - 1/1) = _phi_inv(0) = -inf, which would otherwise yield DSR=1.0.)
         return probabilistic_sharpe_ratio(returns, 0.0, periods_per_year)
     # Expected max of N standard normals (Gumbel approximation).
     e_max = ((1 - EULER_MASCHERONI) * _phi_inv(1 - 1.0 / n_trials)

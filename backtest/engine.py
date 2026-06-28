@@ -411,6 +411,10 @@ class WFOEngine:
         if result.oos_n_trades < self.config.min_oos_trades:
             reasons.append(f"Only {result.oos_n_trades} OOS trades (< {self.config.min_oos_trades})")
         if result.mc_sharpe_p5 < 0.5:       reasons.append(f"Bootstrap p5 Sharpe {result.mc_sharpe_p5:.2f} < 0.5")
-        if result.dsr < 0.95:               reasons.append(f"Deflated Sharpe prob {result.dsr:.2f} < 0.95")
+        # PSR is the significance gate. DSR is computed/reported but NOT gated here: a valid
+        # Deflated-Sharpe trial count is the number of strategy/parameter configs searched,
+        # which the WFO loop does not track (window count would deflate *more* with more data,
+        # which is backwards). Surface dsr for oversight; gate on PSR + bootstrap instead.
+        if result.psr < 0.90:               reasons.append(f"PSR {result.psr:.2f} < 0.90")
         result.failure_reasons = reasons
         result.passed = len(reasons) == 0

@@ -48,7 +48,7 @@ MAX_DAILY_LOSS_PCT     = float(os.getenv("MAX_DAILY_LOSS_PCT",     "0.05"))   # 
 MAX_CORR_EXPOSURE      = float(os.getenv("MAX_CORR_EXPOSURE",      "0.30"))   # 同向暴露上限30%
 MIN_WIN_PROBABILITY    = float(os.getenv("MIN_WIN_PROBABILITY",    "0.55"))
 # Dynamic correlation gate (replaces the static CORR_GROUPS when return data is available).
-CORR_THRESHOLD         = float(os.getenv("CORR_THRESHOLD",         "0.6"))    # |ρ| to count as correlated
+CORR_THRESHOLD         = float(os.getenv("CORR_THRESHOLD",         "0.6"))    # signed ρ ≥ this ⇒ correlated (same-direction clustering)
 CORR_RETURNS_TTL_S     = float(os.getenv("CORR_RETURNS_TTL_S",     "300"))    # cache returns for 5 min
 CORR_RETURNS_INTERVAL  = os.getenv("CORR_RETURNS_INTERVAL",        "1h")
 CORR_RETURNS_BARS      = int(os.getenv("CORR_RETURNS_BARS",        "120"))
@@ -331,7 +331,10 @@ class RiskGate:
             return False, reason, None
 
         # ── Gate 6: 相关性暴露（动态相关矩阵，数据不足时回退静态分组）──
-        ok, reason = await self.check_corr_exposure_dynamic(symbol, side, allocated)
+        # Use the single-position-capped allocation so a lone (uncorrelated) order is bounded by
+        # Gate 4, not rejected here — this gate only guards *correlated* concentration.
+        eff_alloc = min(allocated, capped_alloc) if capped_alloc > 0 else allocated
+        ok, reason = await self.check_corr_exposure_dynamic(symbol, side, eff_alloc)
         if not ok:
             return False, reason, None
 

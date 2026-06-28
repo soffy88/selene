@@ -84,6 +84,19 @@ class TestSameDirectionCorrelatedExposure:
         exp = same_direction_correlated_exposure("ZZZ", 1, 50.0, positions, self.R, threshold=0.6)
         assert exp is None  # signals caller to fall back to static check
 
+    def test_none_when_same_dir_sibling_lacks_data(self):
+        # WWW (no return history) is open same-direction; correlation is unknown, so the gate
+        # must NOT silently drop it — it returns None to force the conservative static fallback.
+        positions = {"WWW": {"side": "LONG", "notional": 100.0}}
+        exp = same_direction_correlated_exposure("A", 1, 50.0, positions, self.R, threshold=0.6)
+        assert exp is None
+
+    def test_opposite_dir_sibling_without_data_is_ignored_not_fallback(self):
+        # a sibling with no data but OPPOSITE direction is irrelevant -> still computable.
+        positions = {"WWW": {"side": "SHORT", "notional": 100.0}}
+        exp = same_direction_correlated_exposure("A", 1, 50.0, positions, self.R, threshold=0.6)
+        assert exp == 50.0
+
 
 class TestVaR:
     def test_correlation_increases_var(self):
