@@ -7,7 +7,7 @@ import logging
 import math
 from typing import Optional
 
-from services.risk.portfolio.correlation_risk import funding_adjusted_cost
+from shared.quant import funding_adjusted_cost
 
 logger = logging.getLogger(__name__)
 

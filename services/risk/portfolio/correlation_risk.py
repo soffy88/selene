@@ -19,8 +19,9 @@ from __future__ import annotations
 import math
 from typing import Optional
 
-# Funding settles every 8h; a 4h bar therefore spans 0.5 funding periods.
-FUNDING_HOURS = 8.0
+# funding_adjusted_cost lives in shared/ (used by the portfolio service too); re-exported here
+# for backward compatibility with existing imports.
+from shared.quant import funding_adjusted_cost, FUNDING_HOURS  # noqa: F401
 
 
 def _mean(xs):
@@ -180,17 +181,3 @@ def stress_test(positions: dict, scenarios: dict):
     return out
 
 
-def funding_adjusted_cost(base_cost: float, funding_rate: Optional[float],
-                          hold_hours: float, side: str) -> float:
-    """Fold expected perpetual funding into a Kelly `cost` term.
-
-    Longs pay funding when the rate is positive; shorts receive it. Returns base_cost plus the
-    expected funding drag over the holding horizon (clamped at >= 0 — favorable funding is not
-    counted as negative cost, which would inflate Kelly).
-    """
-    if not funding_rate:
-        return base_cost
-    periods = max(0.0, hold_hours) / FUNDING_HOURS
-    sign = 1.0 if side.upper() in ("LONG", "BUY") else -1.0
-    drag = sign * funding_rate * periods
-    return base_cost + max(0.0, drag)
