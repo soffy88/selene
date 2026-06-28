@@ -47,6 +47,12 @@ body{background:
 .run-btn{padding:10px;border-radius:var(--r1);border:none;cursor:pointer;background:linear-gradient(180deg,var(--green),#00b886);color:#022;font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.06em;transition:filter .15s,transform .05s}
 .run-btn:hover{filter:brightness(1.08)}.run-btn:active{transform:translateY(1px)}
 .run-btn:disabled{opacity:.5;cursor:not-allowed;filter:none}
+.t-empty{text-align:center;padding:28px 24px;color:var(--text2);font-size:12px}
+.banner{padding:13px 16px;border-radius:var(--r2);margin-bottom:var(--s4);display:flex;align-items:center;gap:12px;background:var(--gd);border:1px solid rgba(0,229,160,.2);box-shadow:var(--sh1)}
+.mlabel{font-weight:600;font-size:12px;margin-top:5px}
+.progress{background:var(--bg2);border-radius:var(--r1);height:10px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.3)}
+/* keyboard focus visibility */
+.tab:focus-visible,.fbtn:focus-visible,.btn:focus-visible,.run-btn:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 
 /* Header */
 header{height:52px;background:linear-gradient(180deg,var(--bg1),rgba(13,19,28,.85));backdrop-filter:blur(8px);border-bottom:1px solid var(--b1);box-shadow:var(--sh1);display:flex;align-items:center;justify-content:space-between;padding:0 var(--s5);flex-shrink:0;position:sticky;top:0;z-index:100}
@@ -130,7 +136,7 @@ td.neu{color:var(--text1)}
 .ssym{font-family:var(--mono);font-weight:600;font-size:13px;color:var(--text0)}
 .sact{font-size:11px;color:var(--text1);margin-top:2px}
 .sinds{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
-.chip{font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:var(--bg4);color:var(--text1);border:1px solid var(--b1)}
+.chip{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:var(--r1);background:var(--bg3);color:var(--text1);border:1px solid var(--b1)}
 .sconf{font-family:var(--mono);font-size:13px;font-weight:700}
 .stime{font-size:10px;color:var(--text2);margin-top:2px;white-space:nowrap}
 .sregime{font-size:10px;margin-top:3px;font-family:var(--mono)}
@@ -184,8 +190,8 @@ td.neu{color:var(--text1)}
 .iv.g{color:var(--green)}.iv.r{color:var(--red)}.iv.a{color:var(--amber)}
 
 /* Empty state */
-.empty{text-align:center;padding:40px 20px;color:var(--text2)}
-.empty-icon{font-size:32px;margin-bottom:10px}
+.empty{text-align:center;padding:44px 20px;color:var(--text2);font-size:12px}
+.empty-icon{font-size:30px;margin-bottom:10px;opacity:.5}
 
 /* Filter row */
 .frow{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
@@ -193,6 +199,8 @@ td.neu{color:var(--text1)}
 .fbtn:hover{color:var(--text0);border-color:var(--text1)}
 .fbtn.active{background:var(--gd);color:var(--green);border-color:rgba(0,229,160,.3)}
 
+::selection{background:rgba(0,229,160,.28);color:#fff}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}
 ::-webkit-scrollbar{width:9px;height:9px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--b2);border-radius:5px;border:2px solid var(--bg0);background-clip:padding-box}
@@ -322,7 +330,7 @@ td.neu{color:var(--text1)}
     <div class="ch">近期订单 <span style="font-size:10px;color:var(--text2)" id="p-orders-count"></span></div>
     <div style="overflow-x:auto">
       <table><thead><tr><th>时间</th><th>币种</th><th>方向</th><th>状态</th><th>入场价</th><th>成交价</th><th>数量</th><th>PnL</th></tr></thead>
-      <tbody id="p-orders-table"><tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text2)">加载中...</td></tr></tbody></table>
+      <tbody id="p-orders-table"><tr><td colspan="8" class="t-empty">加载中...</td></tr></tbody></table>
     </div>
   </div>
 </div>
@@ -356,7 +364,7 @@ td.neu{color:var(--text1)}
 
 <!-- ── RISK ───────────────────────────────────────────────────────────── -->
 <div class="page" id="page-risk">
-  <div id="cb-banner" style="padding:12px 16px;border-radius:8px;margin-bottom:14px;display:flex;align-items:center;gap:12px;background:var(--gd);border:1px solid rgba(0,229,160,.2)">
+  <div id="cb-banner" class="banner">
     <span style="font-size:20px">🟢</span>
     <div><div style="font-weight:600;font-size:13px" id="cb-title">熔断器正常</div>
     <div style="font-size:11px;color:var(--text1)" id="cb-sub">所有交易可正常进行</div></div>
@@ -383,15 +391,15 @@ td.neu{color:var(--text1)}
   <div class="card"><div class="ch">执行模式 <span style="font-size:11px;font-weight:400;color:var(--text2);margin-left:6px">只读 — 由 EXEC_MODE 环境变量控制</span></div>
     <div class="cb" style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="mode-btn active" data-m="NOTIFY_ONLY" disabled title="只读：修改请重启容器并设置 EXEC_MODE=NOTIFY_ONLY">
-        <div style="font-size:18px">🔔</div><div style="font-weight:600;font-size:12px;margin-top:4px">NOTIFY_ONLY</div>
+        <div style="font-size:18px">🔔</div><div class="mlabel">NOTIFY_ONLY</div>
         <div style="font-size:10px;color:var(--text2)">仅通知，不下单</div>
       </button>
       <button class="mode-btn" data-m="CONFIRM_THEN_EXEC" disabled title="只读：修改请重启容器并设置 EXEC_MODE=CONFIRM_THEN_EXEC">
-        <div style="font-size:18px">✅</div><div style="font-weight:600;font-size:12px;margin-top:4px">CONFIRM</div>
+        <div style="font-size:18px">✅</div><div class="mlabel">CONFIRM</div>
         <div style="font-size:10px;color:var(--text2)">人工确认后执行</div>
       </button>
       <button class="mode-btn" data-m="AUTO_EXEC" disabled title="只读：修改请重启容器并设置 EXEC_MODE=AUTO_EXEC">
-        <div style="font-size:18px">⚡</div><div style="font-weight:600;font-size:12px;margin-top:4px">AUTO_EXEC</div>
+        <div style="font-size:18px">⚡</div><div class="mlabel">AUTO_EXEC</div>
         <div style="font-size:10px;color:var(--red)">全自动（谨慎）</div>
       </button>
     </div>
@@ -468,7 +476,7 @@ td.neu{color:var(--text1)}
   <div class="card">
     <div class="ch">冷启动进度 <span style="font-size:10px;color:var(--text2)">(需要180条4H数据)</span></div>
     <div class="cb">
-      <div style="background:var(--bg2);border-radius:6px;height:10px;overflow:hidden;margin-bottom:8px">
+      <div class="progress mt2" style="margin-bottom:8px">
         <div id="sel-prog-bar" style="height:100%;background:var(--green);transition:width .4s;width:0%"></div>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2)">
@@ -480,7 +488,7 @@ td.neu{color:var(--text1)}
     <div class="ch">状态历史（最近24h · BTCUSDT）</div>
     <div style="overflow-x:auto">
       <table><thead><tr><th>时间</th><th>状态</th><th>方向</th><th>置信度</th><th>特征完整性</th><th>冷启动</th></tr></thead>
-      <tbody id="sel-hist-table"><tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text2)">加载中...</td></tr></tbody></table>
+      <tbody id="sel-hist-table"><tr><td colspan="6" class="t-empty">加载中...</td></tr></tbody></table>
     </div>
   </div>
 </div>
@@ -628,7 +636,7 @@ function renderOrders(){
       <td>${(o.filled_qty||0).toFixed(2)}</td>
       <td>${pnl}</td>
     </tr>`;
-  }).join(''):'<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text2)">无订单记录</td></tr>';
+  }).join(''):'<tr><td colspan="8" class="t-empty">无订单记录</td></tr>';
 }
 
 function renderPortfolio(){
@@ -667,7 +675,7 @@ function renderPortfolio(){
     <td class="pos">$${fp(po.take_profit)}</td>
     <td class="${(po.unrealized_pnl||0)>=0?'pos':'neg'}">$${(po.unrealized_pnl||0).toFixed(2)}</td>
     <td class="neu">${po.strategy||'--'}</td>
-  </tr>`).join(''):'<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text2)">无持仓</td></tr>';
+  </tr>`).join(''):'<tr><td colspan="8" class="t-empty">无持仓</td></tr>';
 }
 
 // Regime
@@ -771,7 +779,7 @@ async function loadFunding(){
       <td>${p.periods_collected||0}</td>
       <td class="neu">${ft(p.opened_at)}</td>
       <td><button class="btn btn-r" style="font-size:10px;padding:2px 8px" onclick="closeArb('${p.symbol}')">平仓</button></td>
-    </tr>`).join(''):'<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text2)">无持仓</td></tr>';
+    </tr>`).join(''):'<tr><td colspan="8" class="t-empty">无持仓</td></tr>';
   }
 }
 
@@ -936,7 +944,7 @@ async function loadSel(){
       </tr>`;
     }).join('');
   }else{
-    document.getElementById('sel-hist-table').innerHTML='<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text2)">无数据（系统尚在冷启动）</td></tr>';
+    document.getElementById('sel-hist-table').innerHTML='<tr><td colspan="6" class="t-empty">无数据（系统尚在冷启动）</td></tr>';
   }
 }
 
