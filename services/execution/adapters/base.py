@@ -21,6 +21,34 @@ from typing import Optional, Callable, AsyncIterator
 logger = logging.getLogger("execution.adapter")
 
 
+# ── 幂等键工具 ────────────────────────────────────────
+
+def sanitize_client_id(client_order_id: str) -> str:
+    """Make an idempotency key safe for both OKX (clOrdId) and Binance (newClientOrderId):
+    alphanumeric only, <=32 chars. UUIDs become their 32 hex chars (dashes stripped)."""
+    if not client_order_id:
+        return ""
+    cleaned = "".join(ch for ch in client_order_id if ch.isalnum())
+    return cleaned[:32]
+
+
+# Substrings / codes that indicate "this order already exists" (idempotent retry hit).
+_DUPLICATE_MARKERS = ("duplicate", "already exist", "repeated", "clordid")
+_DUPLICATE_CODES = {"51020", "51603", "-2010", "-4015"}
+
+
+def is_duplicate_order(code: str, message: str) -> bool:
+    if code and str(code) in _DUPLICATE_CODES:
+        return True
+    msg = (message or "").lower()
+    return any(m in msg for m in _DUPLICATE_MARKERS)
+
+
+# Aliases used internally by adapters.
+_sanitize_client_id = sanitize_client_id
+_is_duplicate_order = is_duplicate_order
+
+
 # ── 统一结果模型 ──────────────────────────────────────
 
 @dataclass
@@ -32,6 +60,8 @@ class OrderResult:
     fee_paid:     float = 0.0
     status:       str   = ""   # NEW / PARTIALLY_FILLED / FILLED / CANCELLED
     error:        str   = ""
+    client_order_id: str = ""  # echoed idempotency key (clOrdId / newClientOrderId)
+    recovered:    bool  = False  # True = result reconstructed from a duplicate-order lookup
     raw:          dict  = field(default_factory=dict)
 
 
@@ -98,6 +128,8 @@ class BaseAdapter(ABC):
         price:      float = 0.0,
         reduce_only: bool = False,
         time_in_force: str = "GTC",
+        client_order_id: str = "",   # idempotency key; reused across retries so the
+                                     # exchange rejects duplicate placements (no double fills)
     ) -> OrderResult:
         """下单。返回 OrderResult，不抛异常。"""
 

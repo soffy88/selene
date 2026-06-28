@@ -7,6 +7,8 @@ import logging
 import math
 from typing import Optional
 
+from shared.quant import funding_adjusted_cost
+
 logger = logging.getLogger(__name__)
 
 
@@ -159,6 +161,9 @@ class CapitalAllocator:
         entry_price:     float,
         stop_price:      float,
         drawdown_scalar: float = 1.0,
+        funding_rate:    float | None = None,
+        side:            str = "LONG",
+        hold_hours:      float = 24.0,
     ) -> dict:
         """
         Full pipeline: Risk Parity allocation → Kelly fraction → quantity.
@@ -168,10 +173,13 @@ class CapitalAllocator:
         strategy_alloc = self._strategy_allocations.get(strategy, 1.0 / max(len(self._strategy_vols), 1))
         strategy_capital = self.equity * strategy_alloc
 
+        # Cost = round-trip fees/slippage + expected perpetual funding drag over the hold.
+        cost = funding_adjusted_cost(self.round_trip_cost, funding_rate, hold_hours, side)
+
         # Kelly fraction within strategy allocation (cost-adjusted)
         kf = kelly_fraction(
             win_probability, risk_reward, self.kelly_f,
-            cost=self.round_trip_cost,
+            cost=cost,
         )
 
         # Position size
@@ -196,6 +204,7 @@ class CapitalAllocator:
             "strategy_alloc":   round(strategy_alloc, 6),
             "strategy_capital": round(strategy_capital, 2),
             "drawdown_scalar":  drawdown_scalar,
+            "cost_with_funding": round(cost, 6),
         }
 
     def get_allocations(self) -> dict:

@@ -45,6 +45,7 @@ from services.signal.regime.hmm_detector import (
 from services.signal.weight_learner import (
     WeightLearner, read_dynamic_weights, get_learner_status,
 )
+from services.signal.ic_health import ic_health_scalar
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -370,6 +371,15 @@ class SignalService:
         ic_tracker_early = self._get_ic(symbol)
         self._scorer.set_sample_size(max(10, len(ic_tracker_early._records)))
 
+        # ── IC-decay closed loop ── throttle sizing as realized alpha (rolling IC) fades,
+        # restore it as IC recovers. Neutral until enough outcomes have accumulated.
+        _ic_stats = ic_tracker_early.calc_ic()
+        ic_scalar = ic_health_scalar(_ic_stats.get("ic"), _ic_stats.get("n", 0))
+        if ic_scalar < 1.0:
+            kelly_f = round(kelly_f * ic_scalar, 4)
+            logger.info(f"IC-decay throttle {symbol}: ic={_ic_stats.get('ic')} "
+                        f"n={_ic_stats.get('n')} kelly×{ic_scalar}")
+
         # 判断方向（基于综合得分）
         long_score  = self._scorer.score("LONG",  factors)
         short_score = self._scorer.score("SHORT", factors)
@@ -432,6 +442,7 @@ class SignalService:
         r = await get_redis()
         signal_dict = signal.to_dict()
         signal_dict["kelly_fraction"] = kelly_f
+        signal_dict["ic_scalar"] = ic_scalar   # IC-decay throttle applied to sizing
         # 保留 raw 评分用于后续 calibration refit
         signal_dict["raw"] = best_score.raw
         await r.xadd(STREAM_SIGNAL_SCORED, encode(signal_dict),

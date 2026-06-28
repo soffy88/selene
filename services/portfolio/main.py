@@ -86,6 +86,14 @@ class PortfolioEngine:
             vol  = math.sqrt(sum((r-mean)**2 for r in ret_history) / len(ret_history))
             self._allocator.update_strategy_volatility(strategy, vol * 16)  # 日化 → 年化
 
+        # Perpetual funding drag over the expected hold feeds the cost-adjusted Kelly.
+        funding_rate = None
+        try:
+            fr = signal.indicators.get("funding_rate")
+            funding_rate = float(fr) if fr is not None else None
+        except Exception:
+            funding_rate = None
+
         sizing = self._allocator.compute_position_size(
             strategy        = strategy,
             win_probability = signal.win_probability,
@@ -93,6 +101,9 @@ class PortfolioEngine:
             entry_price     = signal.entry_price,
             stop_price      = signal.stop_loss,
             drawdown_scalar = self._drawdown_scalar(),
+            funding_rate    = funding_rate,
+            side            = signal.direction.value,
+            hold_hours      = float(signal.max_hold_hours or 24),
         )
 
         signal_dict["allocated_capital"] = sizing["notional_usd"]

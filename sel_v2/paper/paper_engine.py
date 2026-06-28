@@ -22,6 +22,7 @@ class PaperEngine:
         self._strategy_params = {}
         self._open_positions = []
         self._degraded = False
+        self._engine = None
 
     async def _load_last_bar_ts(self) -> datetime | None:
         try:
@@ -46,10 +47,53 @@ class PaperEngine:
             self._strategy_params = {row['param_key']: row['param_value'] for row in rows}
         logger.info(f"Loaded {len(self._strategy_params)} strategy parameters")
 
+    async def _load_bars_df(self):
+        """Load the full 4H bar history for the symbol into a DataFrame."""
+        import pandas as pd
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT time, open, high, low, close, volume FROM v2_bars_4h "
+                "WHERE symbol=$1 ORDER BY time ASC", self._symbol)
+        if not rows:
+            return None
+        return pd.DataFrame([dict(r) for r in rows])
+
+    async def _reprocess(self):
+        """Replay the full bar history through the strategy engine. Positions are a pure
+        function of history, so a fresh engine each tick gives deterministic, idempotent state.
+        TDA is skipped unless `ripser` is installed; OI/funding are fed when available."""
+        from sel_v2.paper.strategy_engine import PaperStrategyEngine
+        df = await self._load_bars_df()
+        if df is None or len(df) < 180:
+            logger.info("not enough bars to run strategy engine (have %s)", 0 if df is None else len(df))
+            return
+        try:
+            import ripser  # noqa: F401
+            skip_tda = False
+        except Exception:
+            skip_tda = True
+        engine = PaperStrategyEngine(
+            total_nav_usdt=float(self._strategy_params.get("paper_total_nav", 100_000) or 100_000),
+            instrument=self._symbol, skip_tda=skip_tda,
+        )
+        summary = engine.process_frame(df)
+        self._engine = engine
+        await self._persist_summary(summary)
+        logger.info("strategy engine: bars=%s state=%s s1=%s s2=%s equity=%s",
+                    summary["bars"], list(summary["state_counts"])[-1:],
+                    summary["s1"], summary["s2"], summary["total_equity"])
+
+    async def _persist_summary(self, summary: dict):
+        """Publish the latest engine summary to Redis for the UI/monitoring layer."""
+        try:
+            import json
+            await self._redis.set("v2:paper:engine_summary", json.dumps(summary, default=str))
+        except Exception as e:
+            logger.warning("failed to persist engine summary: %s", e)
+
     async def _process_bar(self, bar):
-        # Stub for state evaluation and strategy logic
-        logger.info(f"bar_processed: ts={bar['time']} state=STUB")
-        # In actual implementation, call state machine and strategy filters here
+        # A new 4H bar closed — reprocess the full history through the strategy engine.
+        await self._reprocess()
 
     async def _process_backlog(self):
         persistent_ts = await self._load_last_bar_ts()
@@ -76,10 +120,11 @@ class PaperEngine:
                 self._symbol, persistent_ts, max_bar
             )
         logger.info(f"processing {len(backlog)} backlog bars")
-        for bar in backlog:
-            await self._process_bar(bar)
-            await self._persist_last_bar_ts(bar['time'])
+        # The engine replays full history internally, so reprocess once after advancing the
+        # cursor rather than per bar (which would be O(n²)).
+        await self._reprocess()
         self._last_bar_ts = max_bar
+        await self._persist_last_bar_ts(max_bar)
         logger.info(f"backlog complete, last_bar_ts = {max_bar}")
 
     async def _strategy1_4h_loop(self):

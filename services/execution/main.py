@@ -25,7 +25,12 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL","INFO"), format="%(asctime)s [%(
 EXEC_MODE        = os.getenv("EXEC_MODE", "NOTIFY_ONLY")
 PRIMARY_EXCHANGE = os.getenv("PRIMARY_EXCHANGE", "binance")
 MONITOR_INTERVAL = float(os.getenv("MONITOR_INTERVAL_S", "5"))
+MAX_SIGNAL_AGE_S = float(os.getenv("MAX_SIGNAL_AGE_S", "30"))   # quote-staleness guard
+RECONCILE_INTERVAL_S = float(os.getenv("RECONCILE_INTERVAL_S", "60"))  # exchange<->state reconcile
 CG_EXECUTION     = "execution-service"
+
+_last_reconcile = {"ts": 0.0, "divergences": 0}
+_fill_lock = asyncio.Lock()   # serializes fill application across WS + reconcile paths
 
 _slippage_model = SlippageModel()
 _router         = SmartRouter()
@@ -33,7 +38,30 @@ _orders:        dict[str, OrderFSM] = {}
 _exchange_map:  dict[str, str]      = {}
 _pending_risk:  dict[str, OrderFSM] = {}
 _recent_orders: deque               = deque(maxlen=500)
-_stats = {"queued":0,"filled":0,"failed":0,"cancelled":0,"risk_rejected":0}
+_stats = {"queued":0,"filled":0,"failed":0,"cancelled":0,"risk_rejected":0,"stale_dropped":0}
+
+
+def _signal_age_s(signal) -> "float | None":
+    """Age of a ScoredSignal in seconds (None if it carries no usable timestamp)."""
+    ts = getattr(signal, "timestamp", None)
+    if ts is None:
+        return None
+    try:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return (now - ts).total_seconds()
+    except Exception:
+        return None
+
+
+def _client_oid(order_id: str, kind: str = "O") -> str:
+    """Deterministic exchange idempotency key from the internal order id.
+    `kind` distinguishes the opening order ('O') from its reduce-only close ('C') so the two
+    never collide. Reused verbatim on any retry → the exchange dedupes duplicate placements."""
+    h = order_id.replace("-", "")[:31]
+    return f"{h}{kind}"
 
 
 def _init_adapters():
@@ -82,14 +110,12 @@ async def _estimate_daily_volume_usd(r, symbol: str, price: float) -> float:
     return majors.get(symbol, 2e8)
 
 
-async def on_fill(event: FillEvent):
-    order_id = _exchange_map.get(event.exchange_id)
-    if not order_id: return
-    fsm = _orders.get(order_id)
-    if not fsm: return
+async def _apply_fill_locked(fsm, qty: float, price: float, fee: float, is_final: bool):
+    """Apply a fill to the FSM and publish. Caller MUST hold _fill_lock so that the
+    WebSocket fill path and the reconcile path never interleave and double-count."""
     r = await get_redis()
-    fsm.on_fill(event.filled_qty, event.filled_price, event.fee)
-    if event.is_final or fsm.record.state == OrderState.FILLED:
+    fsm.on_fill(qty, price, fee)
+    if is_final or fsm.record.state == OrderState.FILLED:
         if fsm.record.state == OrderState.FILLED:
             fsm.transition(OrderState.MONITORING)
             _stats["filled"] += 1
@@ -100,6 +126,15 @@ async def on_fill(event: FillEvent):
         await _pub(r, fsm, "partial_fill")
 
 
+async def on_fill(event: FillEvent):
+    order_id = _exchange_map.get(event.exchange_id)
+    if not order_id: return
+    fsm = _orders.get(order_id)
+    if not fsm: return
+    async with _fill_lock:
+        await _apply_fill_locked(fsm, event.filled_qty, event.filled_price, event.fee, event.is_final)
+
+
 async def process_scored_signal(data: dict):
     if EXEC_MODE == "NOTIFY_ONLY":
         logger.info(f"[NOTIFY_ONLY] {data.get('signal_type')} {data.get('symbol')} p={float(data.get('win_probability',0)):.0%}")
@@ -107,6 +142,13 @@ async def process_scored_signal(data: dict):
     try: signal = ScoredSignal.from_dict(data)
     except Exception as e: logger.error(f"parse error: {e}"); return
     if not signal.is_actionable or signal.direction == Direction.NEUTRAL: return
+    # ── 报价/信号时效闸门 ── reject signals stale enough that the quote we'd trade
+    # against has likely moved; crypto marks go stale in seconds.
+    age = _signal_age_s(signal)
+    if age is not None and age > MAX_SIGNAL_AGE_S:
+        logger.warning(f"DROP stale signal {signal.symbol} age={age:.1f}s > {MAX_SIGNAL_AGE_S}s")
+        _stats["stale_dropped"] += 1
+        return
     # 必须已通过 portfolio sizing（position_size + allocated_capital）
     position_size = float(data.get("position_size", 0) or 0)
     allocated     = float(data.get("allocated_capital", 0) or 0)
@@ -115,6 +157,11 @@ async def process_scored_signal(data: dict):
         return
     side = "BUY" if signal.direction == Direction.LONG else "SELL"
     r = await get_redis()
+    # ── 执行级 HALT（对账发现幽灵敞口时熔断）──
+    if await r.get("cw4:execution:halt"):
+        logger.warning(f"EXECUTION HALT active — dropping signal {signal.id[:8]}")
+        _stats["risk_rejected"] += 1
+        return
     # ── 强制风控 Gate ──
     risk_raw = await r.get("cw4:risk:status")
     if risk_raw:
@@ -211,7 +258,8 @@ async def submit_to_exchange(fsm: OrderFSM):
     except RuntimeError as e:
         fsm.transition(OrderState.FAILED, note=str(e)); _stats["failed"] += 1
         await _pub(r, fsm, "no_adapter"); return
-    result = await adp.place_order(rec.symbol, rec.side, rec.quantity, rec.order_type, rec.limit_price or rec.entry_price)
+    result = await adp.place_order(rec.symbol, rec.side, rec.quantity, rec.order_type, rec.limit_price or rec.entry_price,
+                                   client_order_id=_client_oid(rec.id, "O"))
     if not result.success:
         fsm.transition(OrderState.FAILED, note=result.error); rec.reject_reason = result.error
         _stats["failed"] += 1; await _pub(r, fsm, "submit_failed"); await _audit(fsm, "ORDER_SUBMIT_FAILED")
@@ -257,6 +305,73 @@ async def monitoring_loop():
             await r.hset("cw4:orders:recent", mapping={k:json.dumps(v) for k,v in open_orders.items()})
 
 
+async def reconcile_loop():
+    """Periodically reconcile internal state against the exchange (Phase 7b):
+      - recover fills the WebSocket may have missed (poll get_order on open orders),
+      - detect exchange positions with no tracked order (phantom exposure),
+      - write an execution heartbeat for an external dead-man's switch,
+      - trip cw4:execution:halt on serious divergence so new orders are blocked.
+    """
+    while True:
+        await asyncio.sleep(RECONCILE_INTERVAL_S)
+        try:
+            r = await get_redis()
+            now = time.time()
+            open_n = len([f for f in _orders.values() if not f.record.is_terminal])
+            # dead-man heartbeat (external watcher alerts if this goes stale)
+            await r.set("cw4:execution:heartbeat", json.dumps({"ts": now, "open_orders": open_n}))
+
+            if EXEC_MODE == "PAPER":
+                continue   # no live exchange to reconcile against
+
+            # 1) recover missed fills on live, non-terminal orders
+            for fsm in list(_orders.values()):
+                rec = fsm.record
+                if rec.is_terminal or not rec.exchange_id or rec.exchange_id.startswith("paper-"):
+                    continue
+                try:
+                    adp = get_adapter(rec.exchange or PRIMARY_EXCHANGE)
+                    o = await adp.get_order(rec.symbol, rec.exchange_id)
+                except Exception:
+                    continue
+                if not o.success:
+                    continue
+                # Re-read the recorded fill and apply the delta under _fill_lock so a WS fill
+                # arriving between the get_order() above and here cannot be double-counted.
+                async with _fill_lock:
+                    recorded = rec.filled_qty or 0.0
+                    if o.filled_qty > recorded + 1e-9:
+                        logger.warning(f"RECONCILE missed fill {rec.id[:8]}: exch={o.filled_qty} recorded={recorded}")
+                        await _apply_fill_locked(
+                            fsm, o.filled_qty - recorded, o.filled_price, 0.0,
+                            str(o.status).upper() in ("FILLED", "EFFECTIVE"))
+                        await _audit(fsm, "RECONCILE_MISSED_FILL")
+
+            # 2) phantom-exposure detection: exchange position with no tracked order
+            divergences = 0
+            tracked = {f.record.symbol for f in _orders.values() if not f.record.is_terminal}
+            for name, adp in get_all_adapters().items():
+                try:
+                    positions = await adp.get_positions()
+                except Exception:
+                    continue
+                for pos in positions:
+                    if pos.size > 0 and pos.symbol not in tracked:
+                        divergences += 1
+                        logger.critical(f"RECONCILE divergence: {name} holds {pos.symbol} {pos.side} "
+                                        f"size={pos.size} with no tracked order")
+
+            _last_reconcile.update(ts=now, divergences=divergences)
+            await r.set("cw4:execution:reconcile", json.dumps(_last_reconcile))
+            if divergences > 0:
+                await r.set("cw4:execution:halt", json.dumps(
+                    {"reason": "position_divergence", "ts": now, "count": divergences}))
+                logger.critical(f"EXECUTION HALT set: {divergences} unreconciled exchange position(s); "
+                                "clear with POST /execution/halt/clear after manual review")
+        except Exception as e:
+            logger.error(f"reconcile_loop error: {e}")
+
+
 async def _close_position(fsm: OrderFSM, exit_price: float, reason: str):
     r = await get_redis(); rec = fsm.record
 
@@ -271,7 +386,8 @@ async def _close_position(fsm: OrderFSM, exit_price: float, reason: str):
     try:
         adp = get_adapter(rec.exchange or PRIMARY_EXCHANGE)
         close_side = "SELL" if rec.side=="BUY" else "BUY"
-        result = await adp.place_order(rec.symbol, close_side, rec.filled_qty or rec.quantity, "MARKET", reduce_only=True)
+        result = await adp.place_order(rec.symbol, close_side, rec.filled_qty or rec.quantity, "MARKET", reduce_only=True,
+                                       client_order_id=_client_oid(rec.id, "C"))
         if result.success:
             actual_exit = result.filled_price or exit_price
             pnl = fsm.calc_realized_pnl(actual_exit)
@@ -411,14 +527,29 @@ async def _recover_monitoring_orders():
         logger.error(f"DB order recovery failed: {e}")
 
 
+def _assert_safe_exec_mode():
+    """Fail-fast guard: refuse to auto-execute against a live (production) exchange unless an
+    operator has explicitly acknowledged it. Prevents an accidental AUTO_EXEC + production deploy
+    from trading real money. Override with I_UNDERSTAND_LIVE_AUTO_EXEC=yes."""
+    env = os.getenv("ENVIRONMENT", "development")
+    ack = os.getenv("I_UNDERSTAND_LIVE_AUTO_EXEC", "").lower() in ("1", "true", "yes")
+    if EXEC_MODE == "AUTO_EXEC" and env == "production" and not ack:
+        raise RuntimeError(
+            "Refusing to start: EXEC_MODE=AUTO_EXEC with ENVIRONMENT=production. "
+            "This would auto-trade real funds. Set I_UNDERSTAND_LIVE_AUTO_EXEC=yes to override."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _assert_safe_exec_mode()
     _init_adapters()
     for name, adp in get_all_adapters().items():
         adp.on_fill(on_fill); asyncio.create_task(adp.subscribe_fills())
         logger.info(f"Fill subscription: {name}")
     await _recover_monitoring_orders()
-    tasks = [asyncio.create_task(consume_loop()), asyncio.create_task(monitoring_loop())]
+    tasks = [asyncio.create_task(consume_loop()), asyncio.create_task(monitoring_loop()),
+             asyncio.create_task(reconcile_loop())]
     yield
     for t in tasks: t.cancel()
     for adp in get_all_adapters().values(): await adp.close()
@@ -435,6 +566,23 @@ async def health():
 @app.get("/orders/recent")
 async def recent_orders(limit: int = 50):
     return {"orders":[f.to_dict() for f in list(_recent_orders)[-limit:]]}
+
+@app.get("/execution/reconcile")
+async def reconcile_status():
+    r = await get_redis()
+    halt = await r.get("cw4:execution:halt")
+    hb = await r.get("cw4:execution:heartbeat")
+    return {"reconcile": _last_reconcile,
+            "halt": json.loads(halt) if halt else None,
+            "heartbeat": json.loads(hb) if hb else None}
+
+@app.post("/execution/halt/clear")
+async def clear_halt():
+    """Clear the execution halt after an operator has manually reconciled exchange positions."""
+    r = await get_redis()
+    await r.delete("cw4:execution:halt")
+    logger.warning("EXECUTION HALT cleared by operator")
+    return {"status": "cleared"}
 
 @app.post("/orders/{order_id}/confirm")
 async def confirm_order(order_id: str):
