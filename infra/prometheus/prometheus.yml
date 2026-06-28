@@ -13,6 +13,12 @@ scrape_configs:
     static_configs: [{targets: ['risk-service:8004']}]
   - job_name: 'execution-service'
     static_configs: [{targets: ['execution-service:8005']}]
+  - job_name: 'notification-service'
+    static_configs: [{targets: ['notification-service:8006']}]
+  - job_name: 'onchain-sentinel'
+    static_configs: [{targets: ['onchain-sentinel:8020']}]
+  - job_name: 'monitoring-service'
+    static_configs: [{targets: ['monitoring-service:8021']}]
   - job_name: 'gateway'
     static_configs: [{targets: ['gateway:5000']}]
   - job_name: 'redis'

@@ -25,6 +25,7 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL","INFO"), format="%(asctime)s [%(
 EXEC_MODE        = os.getenv("EXEC_MODE", "NOTIFY_ONLY")
 PRIMARY_EXCHANGE = os.getenv("PRIMARY_EXCHANGE", "binance")
 MONITOR_INTERVAL = float(os.getenv("MONITOR_INTERVAL_S", "5"))
+MAX_SIGNAL_AGE_S = float(os.getenv("MAX_SIGNAL_AGE_S", "30"))   # quote-staleness guard
 CG_EXECUTION     = "execution-service"
 
 _slippage_model = SlippageModel()
@@ -33,7 +34,22 @@ _orders:        dict[str, OrderFSM] = {}
 _exchange_map:  dict[str, str]      = {}
 _pending_risk:  dict[str, OrderFSM] = {}
 _recent_orders: deque               = deque(maxlen=500)
-_stats = {"queued":0,"filled":0,"failed":0,"cancelled":0,"risk_rejected":0}
+_stats = {"queued":0,"filled":0,"failed":0,"cancelled":0,"risk_rejected":0,"stale_dropped":0}
+
+
+def _signal_age_s(signal) -> "float | None":
+    """Age of a ScoredSignal in seconds (None if it carries no usable timestamp)."""
+    ts = getattr(signal, "timestamp", None)
+    if ts is None:
+        return None
+    try:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return (now - ts).total_seconds()
+    except Exception:
+        return None
 
 
 def _client_oid(order_id: str, kind: str = "O") -> str:
@@ -115,6 +131,13 @@ async def process_scored_signal(data: dict):
     try: signal = ScoredSignal.from_dict(data)
     except Exception as e: logger.error(f"parse error: {e}"); return
     if not signal.is_actionable or signal.direction == Direction.NEUTRAL: return
+    # ── 报价/信号时效闸门 ── reject signals stale enough that the quote we'd trade
+    # against has likely moved; crypto marks go stale in seconds.
+    age = _signal_age_s(signal)
+    if age is not None and age > MAX_SIGNAL_AGE_S:
+        logger.warning(f"DROP stale signal {signal.symbol} age={age:.1f}s > {MAX_SIGNAL_AGE_S}s")
+        _stats["stale_dropped"] += 1
+        return
     # 必须已通过 portfolio sizing（position_size + allocated_capital）
     position_size = float(data.get("position_size", 0) or 0)
     allocated     = float(data.get("allocated_capital", 0) or 0)
@@ -421,8 +444,22 @@ async def _recover_monitoring_orders():
         logger.error(f"DB order recovery failed: {e}")
 
 
+def _assert_safe_exec_mode():
+    """Fail-fast guard: refuse to auto-execute against a live (production) exchange unless an
+    operator has explicitly acknowledged it. Prevents an accidental AUTO_EXEC + production deploy
+    from trading real money. Override with I_UNDERSTAND_LIVE_AUTO_EXEC=yes."""
+    env = os.getenv("ENVIRONMENT", "development")
+    ack = os.getenv("I_UNDERSTAND_LIVE_AUTO_EXEC", "").lower() in ("1", "true", "yes")
+    if EXEC_MODE == "AUTO_EXEC" and env == "production" and not ack:
+        raise RuntimeError(
+            "Refusing to start: EXEC_MODE=AUTO_EXEC with ENVIRONMENT=production. "
+            "This would auto-trade real funds. Set I_UNDERSTAND_LIVE_AUTO_EXEC=yes to override."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _assert_safe_exec_mode()
     _init_adapters()
     for name, adp in get_all_adapters().items():
         adp.on_fill(on_fill); asyncio.create_task(adp.subscribe_fills())
