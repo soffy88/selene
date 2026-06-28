@@ -29,6 +29,7 @@ from shared.events.streams import (
 from services.risk.portfolio.var_engine import (
     calc_historical_var, DrawdownController, DRAWDOWN_LEVELS,
 )
+from services.risk.portfolio.correlation_risk import same_direction_correlated_exposure
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -46,6 +47,45 @@ MAX_LEVERAGE           = float(os.getenv("MAX_LEVERAGE",           "3.0"))
 MAX_DAILY_LOSS_PCT     = float(os.getenv("MAX_DAILY_LOSS_PCT",     "0.05"))   # 5% 日亏损熔断
 MAX_CORR_EXPOSURE      = float(os.getenv("MAX_CORR_EXPOSURE",      "0.30"))   # 同向暴露上限30%
 MIN_WIN_PROBABILITY    = float(os.getenv("MIN_WIN_PROBABILITY",    "0.55"))
+# Dynamic correlation gate (replaces the static CORR_GROUPS when return data is available).
+CORR_THRESHOLD         = float(os.getenv("CORR_THRESHOLD",         "0.6"))    # |ρ| to count as correlated
+CORR_RETURNS_TTL_S     = float(os.getenv("CORR_RETURNS_TTL_S",     "300"))    # cache returns for 5 min
+CORR_RETURNS_INTERVAL  = os.getenv("CORR_RETURNS_INTERVAL",        "1h")
+CORR_RETURNS_BARS      = int(os.getenv("CORR_RETURNS_BARS",        "120"))
+CORR_MIN_BARS          = int(os.getenv("CORR_MIN_BARS",            "30"))     # min bars to trust ρ
+
+_corr_returns_cache: dict = {"ts": 0.0, "data": {}}
+
+
+async def _get_corr_returns(symbols: set) -> dict:
+    """Per-symbol log-return series from the candles table, cached for CORR_RETURNS_TTL_S.
+    Returns {symbol: [log_returns]} for the symbols that have enough history."""
+    import math
+    now = time.time()
+    cache = _corr_returns_cache
+    if now - cache["ts"] < CORR_RETURNS_TTL_S and set(symbols) <= set(cache["data"]):
+        return {s: cache["data"][s] for s in symbols if s in cache["data"]}
+    out: dict = {}
+    try:
+        pg = await get_pg()
+        async with pg.acquire() as conn:
+            for s in symbols:
+                rows = await conn.fetch(
+                    "SELECT close FROM candles WHERE symbol=$1 AND interval=$2 "
+                    "ORDER BY time DESC LIMIT $3",
+                    s, CORR_RETURNS_INTERVAL, CORR_RETURNS_BARS + 1)
+                closes = [float(r["close"]) for r in rows][::-1]   # ascending
+                if len(closes) >= CORR_MIN_BARS:
+                    rets = [math.log(closes[i] / closes[i - 1])
+                            for i in range(1, len(closes)) if closes[i - 1] > 0]
+                    if rets:
+                        out[s] = rets
+    except Exception as e:
+        logger.warning(f"corr returns fetch failed: {e}")
+        return {}
+    cache["ts"] = now
+    cache["data"] = out
+    return out
 
 # 已知高相关资产组（防止 all-in 同一风险）
 CORR_GROUPS = [
@@ -161,6 +201,35 @@ class RiskGate:
             )
         return True, ""
 
+    async def check_corr_exposure_dynamic(
+        self, symbol: str, side: str, allocated: float
+    ) -> tuple[bool, str]:
+        """Correlation-exposure gate using *realized* correlations instead of the static
+        CORR_GROUPS. Sums the candidate plus existing same-direction positions whose realized
+        correlation with the candidate >= CORR_THRESHOLD and rejects if that exceeds
+        MAX_CORR_EXPOSURE × equity. Falls back to the static group check when return data
+        is unavailable (cold start), so the gate never silently weakens."""
+        equity = _get_equity()
+        if equity <= 0:
+            return True, ""
+        cand_sign = 1 if str(side).upper() in ("BUY", "LONG") else -1
+        positions = {s: p for s, p in _open_positions.items()
+                     if s != "__equity__" and "notional" in p}
+        universe = set(positions) | {symbol}
+        returns = await _get_corr_returns(universe)
+        cluster_notional = same_direction_correlated_exposure(
+            symbol, cand_sign, allocated, positions, returns, threshold=CORR_THRESHOLD)
+        if cluster_notional is None:
+            # no realized-correlation data for the candidate → static fallback
+            return self.check_corr_exposure(symbol, side)
+        exposure_pct = cluster_notional / equity
+        if exposure_pct > MAX_CORR_EXPOSURE:
+            return False, (
+                f"corr_exposure(dynamic): {symbol} correlated same-dir "
+                f"{exposure_pct:.1%} > {MAX_CORR_EXPOSURE:.1%}"
+            )
+        return True, ""
+
     def check_win_probability(self, win_prob: float) -> tuple[bool, str]:
         if win_prob < MIN_WIN_PROBABILITY:
             return False, f"win_prob {win_prob:.0%} < threshold {MIN_WIN_PROBABILITY:.0%}"
@@ -214,8 +283,8 @@ class RiskGate:
         if not ok:
             return False, reason, None
 
-        # ── Gate 6: 相关性暴露 ──
-        ok, reason = self.check_corr_exposure(symbol, side)
+        # ── Gate 6: 相关性暴露（动态相关矩阵，数据不足时回退静态分组）──
+        ok, reason = await self.check_corr_exposure_dynamic(symbol, side, allocated)
         if not ok:
             return False, reason, None
 

@@ -105,6 +105,35 @@ def correlated_exposure(positions: dict, returns_by_symbol: dict, threshold: flo
     return best
 
 
+def same_direction_correlated_exposure(candidate: str, cand_sign: int, cand_notional: float,
+                                       positions: dict, returns_by_symbol: dict,
+                                       threshold: float = 0.6):
+    """Notional of the candidate order plus every *existing* same-direction position whose
+    realized correlation with the candidate is >= threshold.
+
+    Drop-in dynamic replacement for the static correlation-group exposure gate: the caller
+    divides the result by equity and compares to the exposure cap. `cand_sign` is +1 (long/buy)
+    or -1 (short/sell). `positions` maps symbol -> {"side", "notional"} (the open-position
+    registry). Returns None when the candidate has no return history, signalling the caller to
+    fall back to the static group check rather than wave the order through.
+    """
+    syms, corr = correlation_matrix(returns_by_symbol)
+    idx = {s: i for i, s in enumerate(syms)}
+    if candidate not in idx:
+        return None
+    total = float(cand_notional)
+    for sym, pos in positions.items():
+        pos_sign = 1 if str(pos.get("side", "LONG")).upper() in ("BUY", "LONG") else -1
+        if pos_sign != cand_sign:
+            continue
+        if sym == candidate:                      # candidate already has an open position
+            total += float(pos.get("notional", 0.0))
+            continue
+        if sym in idx and corr[idx[candidate]][idx[sym]] >= threshold:
+            total += float(pos.get("notional", 0.0))
+    return total
+
+
 def parametric_var_correlated(positions: dict, returns_by_symbol: dict, confidence: float = 0.95):
     """Portfolio VaR (positive dollar loss) from w'Σw, capturing cross-asset correlation.
 

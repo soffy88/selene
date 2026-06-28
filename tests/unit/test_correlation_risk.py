@@ -6,6 +6,7 @@ import math
 from services.risk.portfolio.correlation_risk import (
     correlation_matrix, covariance_matrix, correlated_exposure,
     parametric_var_correlated, stress_test, funding_adjusted_cost,
+    same_direction_correlated_exposure,
 )
 
 
@@ -49,6 +50,39 @@ class TestCorrelatedExposure:
 
     def test_empty(self):
         assert correlated_exposure({}, {}, 0.6)["max_fraction"] == 0.0
+
+
+class TestSameDirectionCorrelatedExposure:
+    # A,B correlated (~1); C anti-correlated with A.
+    R = {"A": [0.01, -0.02, 0.03, -0.01, 0.02],
+         "B": [0.011, -0.019, 0.031, -0.009, 0.021],
+         "C": [-0.01, 0.02, -0.03, 0.01, -0.02]}
+
+    def test_includes_correlated_same_direction(self):
+        positions = {"B": {"side": "LONG", "notional": 100.0}}
+        # candidate A long, 50 notional; B is correlated & same dir -> 50 + 100
+        exp = same_direction_correlated_exposure("A", 1, 50.0, positions, self.R, threshold=0.6)
+        assert exp == 150.0
+
+    def test_excludes_opposite_direction(self):
+        positions = {"B": {"side": "SHORT", "notional": 100.0}}
+        exp = same_direction_correlated_exposure("A", 1, 50.0, positions, self.R, threshold=0.6)
+        assert exp == 50.0  # B is short, candidate long -> excluded
+
+    def test_excludes_uncorrelated(self):
+        positions = {"C": {"side": "LONG", "notional": 100.0}}
+        exp = same_direction_correlated_exposure("A", 1, 50.0, positions, self.R, threshold=0.6)
+        assert exp == 50.0  # C anti-correlated -> excluded
+
+    def test_adds_candidate_existing_position(self):
+        positions = {"A": {"side": "LONG", "notional": 70.0}}
+        exp = same_direction_correlated_exposure("A", 1, 50.0, positions, self.R, threshold=0.6)
+        assert exp == 120.0  # candidate's own open position counts
+
+    def test_none_when_no_return_data(self):
+        positions = {"B": {"side": "LONG", "notional": 100.0}}
+        exp = same_direction_correlated_exposure("ZZZ", 1, 50.0, positions, self.R, threshold=0.6)
+        assert exp is None  # signals caller to fall back to static check
 
 
 class TestVaR:
