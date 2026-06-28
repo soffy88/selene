@@ -7,70 +7,113 @@
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
 :root{
-  --bg0:#060a0f;--bg1:#0b1018;--bg2:#101620;--bg3:#161e2a;--bg4:#1c2535;
-  --b1:#1a2540;--b2:#243252;--text0:#dde6f5;--text1:#7a90b8;--text2:#3d5070;
-  --green:#00e5a0;--gd:rgba(0,229,160,.12);--red:#ff3d5a;--rd:rgba(255,61,90,.12);
-  --blue:#3d9eff;--bd:rgba(61,158,255,.12);--amber:#f5a623;--ad:rgba(245,166,35,.12);
-  --purple:#c084fc;--pd:rgba(192,132,252,.12);
+  /* surfaces — page → raised, with a clear but subtle elevation ladder */
+  --bg0:#070b11;--bg1:#0d131c;--bg2:#121a25;--bg3:#18222f;--bg4:#1f2a3a;
+  /* hairline + stronger borders */
+  --b1:#1b2636;--b2:#28384f;
+  /* text — text2 lifted for legibility */
+  --text0:#e4ebf7;--text1:#8497b6;--text2:#566b8e;
+  /* accents + dim fills */
+  --green:#00e5a0;--gd:rgba(0,229,160,.11);--red:#ff4d63;--rd:rgba(255,77,99,.11);
+  --blue:#46a6ff;--bd:rgba(70,166,255,.11);--amber:#f5a623;--ad:rgba(245,166,35,.11);
+  --purple:#c084fc;--pd:rgba(192,132,252,.11);
+  /* spacing scale */
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;
+  /* radii */
+  --r1:6px;--r2:9px;--r3:13px;
+  /* elevation */
+  --sh1:0 1px 2px rgba(0,0,0,.35);
+  --sh2:0 6px 22px -8px rgba(0,0,0,.55);
   --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg0);color:var(--text0);font-family:var(--sans);font-size:13px;overflow-x:hidden;min-height:100vh}
+body{background:
+  radial-gradient(1200px 600px at 80% -10%,rgba(70,166,255,.05),transparent 60%),
+  radial-gradient(1000px 500px at 0% 110%,rgba(0,229,160,.04),transparent 55%),
+  var(--bg0);
+  color:var(--text0);font-family:var(--sans);font-size:13px;overflow-x:hidden;min-height:100vh;
+  -webkit-font-smoothing:antialiased}
 .app{display:flex;flex-direction:column;height:100vh}
+/* tabular figures everywhere mono numbers appear */
+.mono,table,.stat-val,.iv,.mv,.sconf,.opp-rate,.opp-v{font-variant-numeric:tabular-nums}
+
+/* ── Utility classes (consolidate the scattered inline styles) ── */
+.section-label{font-size:10px;color:var(--text2);letter-spacing:.09em;text-transform:uppercase;margin-bottom:var(--s2);font-weight:600}
+.muted{color:var(--text2)}
+.mt2{margin-top:var(--s2)}.mt3{margin-top:var(--s3)}.mt4{margin-top:var(--s4)}
+.field{font-size:11px;color:var(--text1);display:block}
+.input,.select{display:block;width:100%;margin-top:var(--s1);padding:8px 11px;background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r1);color:var(--text0);font-family:var(--mono);font-size:12px;outline:none;transition:border-color .15s,box-shadow .15s}
+.input:focus,.select:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--bd)}
+.run-btn{padding:10px;border-radius:var(--r1);border:none;cursor:pointer;background:linear-gradient(180deg,var(--green),#00b886);color:#022;font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.06em;transition:filter .15s,transform .05s}
+.run-btn:hover{filter:brightness(1.08)}.run-btn:active{transform:translateY(1px)}
+.run-btn:disabled{opacity:.5;cursor:not-allowed;filter:none}
+.t-empty{text-align:center;padding:28px 24px;color:var(--text2);font-size:12px}
+.banner{padding:13px 16px;border-radius:var(--r2);margin-bottom:var(--s4);display:flex;align-items:center;gap:12px;background:var(--gd);border:1px solid rgba(0,229,160,.2);box-shadow:var(--sh1)}
+.mlabel{font-weight:600;font-size:12px;margin-top:5px}
+.progress{background:var(--bg2);border-radius:var(--r1);height:10px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.3)}
+/* keyboard focus visibility */
+.tab:focus-visible,.fbtn:focus-visible,.btn:focus-visible,.run-btn:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 
 /* Header */
-header{height:50px;background:var(--bg1);border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;padding:0 20px;flex-shrink:0;position:sticky;top:0;z-index:100}
-.logo{font-family:var(--mono);font-size:14px;font-weight:600;display:flex;align-items:center;gap:10px}
-.logo-mark{width:26px;height:26px;background:linear-gradient(135deg,var(--green),#00a87a);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px}
-.hrow{display:flex;align-items:center;gap:12px}
-.pill{display:flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;font-family:var(--mono);font-size:11px;background:var(--bg2);border:1px solid var(--b1)}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--text2)}
-.dot.live{background:var(--green);animation:pulse 2s infinite}
-.dot.warn{background:var(--amber)}
-.dot.err{background:var(--red)}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+header{height:52px;background:linear-gradient(180deg,var(--bg1),rgba(13,19,28,.85));backdrop-filter:blur(8px);border-bottom:1px solid var(--b1);box-shadow:var(--sh1);display:flex;align-items:center;justify-content:space-between;padding:0 var(--s5);flex-shrink:0;position:sticky;top:0;z-index:100}
+.logo{font-family:var(--mono);font-size:14px;font-weight:600;display:flex;align-items:center;gap:10px;letter-spacing:.01em}
+.logo-mark{width:27px;height:27px;background:linear-gradient(135deg,var(--green),#00a87a);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;color:#022;box-shadow:0 2px 8px -2px rgba(0,229,160,.5)}
+.hrow{display:flex;align-items:center;gap:10px}
+.pill{display:flex;align-items:center;gap:6px;padding:4px 11px;border-radius:20px;font-family:var(--mono);font-size:11px;background:var(--bg2);border:1px solid var(--b1)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--text2);box-shadow:0 0 0 3px transparent}
+.dot.live{background:var(--green);box-shadow:0 0 0 3px var(--gd);animation:pulse 2s infinite}
+.dot.warn{background:var(--amber);box-shadow:0 0 0 3px var(--ad)}
+.dot.err{background:var(--red);box-shadow:0 0 0 3px var(--rd)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
 .badge{font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:3px;letter-spacing:.06em}
 .badge.notify{background:var(--bd);color:var(--blue);border:1px solid rgba(61,158,255,.2)}
 .badge.confirm{background:var(--ad);color:var(--amber);border:1px solid rgba(245,166,35,.2)}
 .badge.auto{background:var(--rd);color:var(--red);border:1px solid rgba(255,61,90,.2)}
 
 /* Tabs */
-nav{background:var(--bg1);border-bottom:1px solid var(--b1);padding:0 20px;display:flex;gap:2px;flex-shrink:0;overflow-x:auto}
-.tab{padding:10px 14px;font-size:12px;font-weight:500;color:var(--text1);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;letter-spacing:.02em;user-select:none}
-.tab:hover{color:var(--text0)}
+nav{background:var(--bg1);border-bottom:1px solid var(--b1);padding:0 var(--s5);display:flex;gap:2px;flex-shrink:0;overflow-x:auto}
+.tab{padding:11px 15px;font-size:12px;font-weight:500;color:var(--text1);cursor:pointer;border-bottom:2px solid transparent;transition:color .15s,border-color .15s,background .15s;white-space:nowrap;letter-spacing:.02em;user-select:none;border-radius:var(--r1) var(--r1) 0 0}
+.tab:hover{color:var(--text0);background:var(--bg2)}
 .tab.active{color:var(--green);border-bottom-color:var(--green)}
 .nb{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--red);color:#fff;font-size:10px;font-weight:700;margin-left:5px}
 
 /* Pages */
 .main{flex:1;overflow:hidden;position:relative}
-.page{display:none;height:100%;overflow-y:auto;padding:16px 20px}
-.page.active{display:block}
+.page{display:none;height:100%;overflow-y:auto;padding:var(--s4) var(--s5)}
+.page.active{display:block;animation:fadeUp .25s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 
 /* Stats row */
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
-.stat{background:var(--bg1);border:1px solid var(--b1);border-radius:8px;padding:14px 16px}
-.stat-label{font-size:10px;color:var(--text2);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
-.stat-val{font-family:var(--mono);font-size:20px;font-weight:600;color:var(--text0)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s3);margin-bottom:var(--s4)}
+.stat{position:relative;background:linear-gradient(180deg,var(--bg1),var(--bg0));border:1px solid var(--b1);border-radius:var(--r2);padding:15px 17px;box-shadow:var(--sh1);overflow:hidden}
+.stat::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--b2);opacity:.7}
+.stat-label{font-size:10px;color:var(--text2);letter-spacing:.09em;text-transform:uppercase;margin-bottom:7px;font-weight:600}
+.stat-val{font-family:var(--mono);font-size:21px;font-weight:600;color:var(--text0);line-height:1.1}
 .stat-val.g{color:var(--green)}.stat-val.r{color:var(--red)}.stat-val.b{color:var(--blue)}.stat-val.a{color:var(--amber)}
-.stat-sub{font-size:11px;color:var(--text2);margin-top:3px}
+.stat:has(.stat-val.g)::before{background:var(--green)}.stat:has(.stat-val.r)::before{background:var(--red)}
+.stat:has(.stat-val.b)::before{background:var(--blue)}.stat:has(.stat-val.a)::before{background:var(--amber)}
+.stat-sub{font-size:11px;color:var(--text2);margin-top:4px}
 
 /* Cards */
-.card{background:var(--bg1);border:1px solid var(--b1);border-radius:8px;overflow:hidden;margin-bottom:12px}
-.ch{padding:10px 16px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;font-size:10px;font-weight:600;color:var(--text2);letter-spacing:.07em;text-transform:uppercase}
-.cb{padding:14px 16px}
+.card{background:var(--bg1);border:1px solid var(--b1);border-radius:var(--r2);overflow:hidden;margin-bottom:var(--s3);box-shadow:var(--sh1)}
+.ch{padding:11px 17px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;font-size:10px;font-weight:600;color:var(--text1);letter-spacing:.08em;text-transform:uppercase;background:linear-gradient(180deg,rgba(255,255,255,.015),transparent)}
+.cb{padding:var(--s4) 17px}
 
 /* Grid */
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
-.ga{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
-.split{display:grid;grid-template-columns:1fr 360px;gap:12px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--s3)}
+.ga{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:var(--s3)}
+.split{display:grid;grid-template-columns:1fr 360px;gap:var(--s3)}
+@media(max-width:880px){.stats{grid-template-columns:repeat(2,1fr)}.g2,.g3,.split{grid-template-columns:1fr}}
 
 /* Table */
 table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
-th{text-align:left;padding:7px 12px;font-size:10px;font-weight:600;color:var(--text2);letter-spacing:.07em;text-transform:uppercase;border-bottom:1px solid var(--b1);white-space:nowrap}
-td{padding:7px 12px;border-bottom:1px solid var(--b1);color:var(--text1);white-space:nowrap}
+thead th{position:sticky;top:0;z-index:1;background:var(--bg2)}
+th{text-align:left;padding:9px 13px;font-size:10px;font-weight:600;color:var(--text2);letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--b1);white-space:nowrap}
+td{padding:8px 13px;border-bottom:1px solid rgba(27,38,54,.6);color:var(--text1);white-space:nowrap}
+tbody tr:nth-child(even) td{background:rgba(255,255,255,.012)}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:var(--bg2)}
+tbody tr:hover td{background:var(--bd)}
 td.sym{color:var(--text0);font-weight:500}
 td.pos{color:var(--green)}
 td.neg{color:var(--red)}
@@ -78,7 +121,8 @@ td.neu{color:var(--text1)}
 
 /* Signal cards */
 .sfeed{display:flex;flex-direction:column;gap:8px}
-.sc{background:var(--bg3);border:1px solid var(--b1);border-radius:7px;padding:11px 13px;display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start;animation:slIn .22s ease;position:relative;overflow:hidden}
+.sc{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);padding:12px 14px;display:grid;grid-template-columns:auto 1fr auto;gap:11px;align-items:start;animation:slIn .22s ease;position:relative;overflow:hidden;transition:border-color .15s,transform .1s}
+.sc:hover{border-color:var(--b2);transform:translateX(2px)}
 .sc::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
 .sc.LONG_SETUP::before,.sc.BEAR_SQUEEZE::before,.sc.TREND_CONFIRM::before,.sc.CROWD_SHORT::before{background:var(--green)}
 .sc.SHORT_SETUP::before,.sc.CROWD_LONG::before{background:var(--red)}
@@ -92,13 +136,14 @@ td.neu{color:var(--text1)}
 .ssym{font-family:var(--mono);font-weight:600;font-size:13px;color:var(--text0)}
 .sact{font-size:11px;color:var(--text1);margin-top:2px}
 .sinds{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
-.chip{font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:var(--bg4);color:var(--text1);border:1px solid var(--b1)}
+.chip{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:var(--r1);background:var(--bg3);color:var(--text1);border:1px solid var(--b1)}
 .sconf{font-family:var(--mono);font-size:13px;font-weight:700}
 .stime{font-size:10px;color:var(--text2);margin-top:2px;white-space:nowrap}
 .sregime{font-size:10px;margin-top:3px;font-family:var(--mono)}
 
 /* Action buttons */
-.btn{font-family:var(--mono);font-size:11px;font-weight:600;padding:4px 10px;border-radius:4px;border:none;cursor:pointer;transition:all .15s;letter-spacing:.04em}
+.btn{font-family:var(--mono);font-size:11px;font-weight:600;padding:5px 11px;border-radius:var(--r1);border:none;cursor:pointer;transition:background .15s,color .15s,transform .05s;letter-spacing:.04em}
+.btn:active{transform:translateY(1px)}
 .btn-g{background:var(--gd);color:var(--green);border:1px solid rgba(0,229,160,.25)}.btn-g:hover{background:var(--green);color:#000}
 .btn-r{background:var(--rd);color:var(--red);border:1px solid rgba(255,61,90,.25)}.btn-r:hover{background:var(--red);color:#fff}
 .btn-a{background:var(--ad);color:var(--amber);border:1px solid rgba(245,166,35,.25)}.btn-a:hover{background:var(--amber);color:#000}
@@ -130,9 +175,9 @@ td.neu{color:var(--text1)}
 .fbar-fill.neg{background:linear-gradient(90deg,var(--red),#ff8c00)}
 
 /* WFO result card */
-.wfo-card{background:var(--bg2);border:1px solid var(--b1);border-radius:7px;padding:14px;transition:border-color .2s}
-.wfo-card.pass{border-color:rgba(0,229,160,.3)}
-.wfo-card.fail{border-color:rgba(255,61,90,.3)}
+.wfo-card{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);padding:15px;transition:border-color .2s,box-shadow .2s;box-shadow:var(--sh1)}
+.wfo-card.pass{border-color:rgba(0,229,160,.32);box-shadow:0 0 0 1px rgba(0,229,160,.08),var(--sh1)}
+.wfo-card.fail{border-color:rgba(255,77,99,.32)}
 .metric-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--b1);font-size:12px}
 .metric-row:last-child{border-bottom:none}
 .mk{color:var(--text2)}.mv{font-family:var(--mono);color:var(--text0)}
@@ -145,8 +190,8 @@ td.neu{color:var(--text1)}
 .iv.g{color:var(--green)}.iv.r{color:var(--red)}.iv.a{color:var(--amber)}
 
 /* Empty state */
-.empty{text-align:center;padding:40px 20px;color:var(--text2)}
-.empty-icon{font-size:32px;margin-bottom:10px}
+.empty{text-align:center;padding:44px 20px;color:var(--text2);font-size:12px}
+.empty-icon{font-size:30px;margin-bottom:10px;opacity:.5}
 
 /* Filter row */
 .frow{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
@@ -154,9 +199,24 @@ td.neu{color:var(--text1)}
 .fbtn:hover{color:var(--text0);border-color:var(--text1)}
 .fbtn.active{background:var(--gd);color:var(--green);border-color:rgba(0,229,160,.3)}
 
-::-webkit-scrollbar{width:4px;height:4px}
-::-webkit-scrollbar-track{background:var(--bg1)}
-::-webkit-scrollbar-thumb{background:var(--b2);border-radius:3px}
+::selection{background:rgba(0,229,160,.28);color:#fff}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--b2);border-radius:5px;border:2px solid var(--bg0);background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:#34486a;background-clip:padding-box}
+
+/* Execution-mode selector + funding opportunity cards */
+.mode-btn{flex:1;min-width:120px;padding:15px;border-radius:var(--r2);border:1px solid var(--b1);background:var(--bg2);color:var(--text1);cursor:default;text-align:center;transition:border-color .15s,background .15s;opacity:.62}
+.mode-btn.active{border-color:rgba(0,229,160,.4);background:var(--gd);color:var(--green);opacity:1;box-shadow:inset 0 0 0 1px rgba(0,229,160,.12)}
+.mode-btn:disabled{pointer-events:none}
+.opp-card{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);padding:14px;transition:border-color .2s,transform .1s;box-shadow:var(--sh1)}
+.opp-card:hover{border-color:rgba(245,166,35,.35);transform:translateY(-1px)}
+.opp-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.opp-sym{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text0)}
+.opp-rate{font-family:var(--mono);font-size:15px;font-weight:700}
+.opp-r{display:flex;justify-content:space-between;font-size:11px;padding:3px 0}
+.opp-k{color:var(--text2)}.opp-v{font-family:var(--mono);color:var(--text1)}
 </style>
 </head>
 <body>
@@ -179,14 +239,14 @@ td.neu{color:var(--text1)}
 </header>
 
 <nav>
-  <div class="tab active" data-p="market">📊 市场</div>
-  <div class="tab" data-p="signals">⚡ 信号<span class="nb" id="sig-nb" style="display:none">0</span></div>
-  <div class="tab" data-p="portfolio">💼 组合</div>
-  <div class="tab" data-p="regime">🌊 Regime</div>
-  <div class="tab" data-p="risk">🛡 风控</div>
-  <div class="tab" data-p="funding">💰 套利</div>
-  <div class="tab" data-p="backtest">📈 回测</div>
-  <div class="tab" data-p="sel">🌙 sel</div>
+  <div class="tab active" data-p="market">市场</div>
+  <div class="tab" data-p="signals">信号<span class="nb" id="sig-nb" style="display:none">0</span></div>
+  <div class="tab" data-p="portfolio">组合</div>
+  <div class="tab" data-p="regime">Regime</div>
+  <div class="tab" data-p="risk">风控</div>
+  <div class="tab" data-p="funding">套利</div>
+  <div class="tab" data-p="backtest">回测</div>
+  <div class="tab" data-p="sel">SEL</div>
 </nav>
 
 <div class="main">
@@ -235,7 +295,7 @@ td.neu{color:var(--text1)}
       <div class="sfeed" id="sfeed"></div>
     </div>
     <div>
-      <div style="font-size:10px;color:var(--text2);letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px">待确认队列</div>
+      <div class="section-label">待确认队列</div>
       <div id="pfeed"><div class="empty"><div class="empty-icon">✅</div>无待确认信号</div></div>
     </div>
   </div>
@@ -270,7 +330,7 @@ td.neu{color:var(--text1)}
     <div class="ch">近期订单 <span style="font-size:10px;color:var(--text2)" id="p-orders-count"></span></div>
     <div style="overflow-x:auto">
       <table><thead><tr><th>时间</th><th>币种</th><th>方向</th><th>状态</th><th>入场价</th><th>成交价</th><th>数量</th><th>PnL</th></tr></thead>
-      <tbody id="p-orders-table"><tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text2)">加载中...</td></tr></tbody></table>
+      <tbody id="p-orders-table"><tr><td colspan="8" class="t-empty">加载中...</td></tr></tbody></table>
     </div>
   </div>
 </div>
@@ -304,7 +364,7 @@ td.neu{color:var(--text1)}
 
 <!-- ── RISK ───────────────────────────────────────────────────────────── -->
 <div class="page" id="page-risk">
-  <div id="cb-banner" style="padding:12px 16px;border-radius:8px;margin-bottom:14px;display:flex;align-items:center;gap:12px;background:var(--gd);border:1px solid rgba(0,229,160,.2)">
+  <div id="cb-banner" class="banner">
     <span style="font-size:20px">🟢</span>
     <div><div style="font-weight:600;font-size:13px" id="cb-title">熔断器正常</div>
     <div style="font-size:11px;color:var(--text1)" id="cb-sub">所有交易可正常进行</div></div>
@@ -331,15 +391,15 @@ td.neu{color:var(--text1)}
   <div class="card"><div class="ch">执行模式 <span style="font-size:11px;font-weight:400;color:var(--text2);margin-left:6px">只读 — 由 EXEC_MODE 环境变量控制</span></div>
     <div class="cb" style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="mode-btn active" data-m="NOTIFY_ONLY" disabled title="只读：修改请重启容器并设置 EXEC_MODE=NOTIFY_ONLY">
-        <div style="font-size:18px">🔔</div><div style="font-weight:600;font-size:12px;margin-top:4px">NOTIFY_ONLY</div>
+        <div style="font-size:18px">🔔</div><div class="mlabel">NOTIFY_ONLY</div>
         <div style="font-size:10px;color:var(--text2)">仅通知，不下单</div>
       </button>
       <button class="mode-btn" data-m="CONFIRM_THEN_EXEC" disabled title="只读：修改请重启容器并设置 EXEC_MODE=CONFIRM_THEN_EXEC">
-        <div style="font-size:18px">✅</div><div style="font-weight:600;font-size:12px;margin-top:4px">CONFIRM</div>
+        <div style="font-size:18px">✅</div><div class="mlabel">CONFIRM</div>
         <div style="font-size:10px;color:var(--text2)">人工确认后执行</div>
       </button>
       <button class="mode-btn" data-m="AUTO_EXEC" disabled title="只读：修改请重启容器并设置 EXEC_MODE=AUTO_EXEC">
-        <div style="font-size:18px">⚡</div><div style="font-weight:600;font-size:12px;margin-top:4px">AUTO_EXEC</div>
+        <div style="font-size:18px">⚡</div><div class="mlabel">AUTO_EXEC</div>
         <div style="font-size:10px;color:var(--red)">全自动（谨慎）</div>
       </button>
     </div>
@@ -355,9 +415,9 @@ td.neu{color:var(--text1)}
     <div class="stat"><div class="stat-label">累计净收益</div><div class="stat-val g" id="f-pnl">$0.00</div><div class="stat-sub">资金费率收入</div></div>
     <div class="stat"><div class="stat-label">8h 预期</div><div class="stat-val" id="f-next">--</div><div class="stat-sub">下次结算</div></div>
   </div>
-  <div style="font-size:10px;color:var(--text2);letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px">当前机会</div>
+  <div class="section-label">当前机会</div>
   <div class="ga" id="f-grid"><div class="empty"><div class="empty-icon">🔍</div>正在扫描费率...</div></div>
-  <div style="font-size:10px;color:var(--text2);letter-spacing:.07em;text-transform:uppercase;margin:14px 0 8px">持仓中</div>
+  <div class="section-label mt4">持仓中</div>
   <div class="card">
     <table><thead><tr><th>币种</th><th>方向</th><th>费率</th><th>仓位</th><th>已收益</th><th>周期数</th><th>开仓时间</th><th>操作</th></tr></thead>
     <tbody id="f-pos-table"></tbody></table>
@@ -366,27 +426,27 @@ td.neu{color:var(--text1)}
 
 <!-- ── BACKTEST ───────────────────────────────────────────────────────── -->
 <div class="page" id="page-backtest">
-  <div class="g2" style="margin-bottom:14px">
+  <div class="g2 mt4" style="margin-bottom:var(--s4)">
     <div class="card"><div class="ch">WFO 回测配置</div>
-      <div class="cb" style="display:flex;flex-direction:column;gap:10px">
-        <label style="font-size:11px;color:var(--text1)">交易对（逗号分隔）
-          <input id="bt-sym" value="BTCUSDT,ETHUSDT,SOLUSDT" style="display:block;width:100%;margin-top:4px;padding:7px 10px;background:var(--bg2);border:1px solid var(--b1);border-radius:5px;color:var(--text0);font-family:var(--mono);font-size:12px;outline:none">
+      <div class="cb" style="display:flex;flex-direction:column;gap:var(--s3)">
+        <label class="field">交易对（逗号分隔）
+          <input id="bt-sym" class="input" value="BTCUSDT,ETHUSDT,SOLUSDT">
         </label>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <label style="font-size:11px;color:var(--text1)">时间框架
-            <select id="bt-int" style="display:block;width:100%;margin-top:4px;padding:7px 10px;background:var(--bg2);border:1px solid var(--b1);border-radius:5px;color:var(--text0);font-family:var(--mono);font-size:12px;outline:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)">
+          <label class="field">时间框架
+            <select id="bt-int" class="select">
               <option value="1h" selected>1h</option><option value="4h">4h</option><option value="1d">1d</option>
             </select>
           </label>
-          <label style="font-size:11px;color:var(--text1)">回测天数
-            <input id="bt-days" type="number" value="180" min="90" max="365" style="display:block;width:100%;margin-top:4px;padding:7px 10px;background:var(--bg2);border:1px solid var(--b1);border-radius:5px;color:var(--text0);font-family:var(--mono);font-size:12px;outline:none">
+          <label class="field">回测天数
+            <input id="bt-days" class="input" type="number" value="180" min="90" max="365">
           </label>
         </div>
-        <button onclick="runWFO()" id="bt-btn" style="padding:9px;border-radius:6px;border:none;cursor:pointer;background:var(--green);color:#000;font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.06em">▶ 运行 WFO 回测</button>
+        <button onclick="runWFO()" id="bt-btn" class="run-btn">▶ 运行 WFO 回测</button>
       </div>
     </div>
     <div class="card"><div class="ch">WFO 说明</div>
-      <div class="cb" style="font-size:12px;color:var(--text1);line-height:1.8">
+      <div class="cb" style="font-size:12px;color:var(--text1);line-height:1.85">
         <p>• 训练窗口: 90天 · 测试窗口: 30天 · 步进: 30天</p>
         <p>• 结果仅报告 OOS（样本外）绩效</p>
         <p>• 包含三分量滑点模型（spread + impact + timing）</p>
@@ -400,7 +460,7 @@ td.neu{color:var(--text1)}
     <div style="font-size:11px;color:var(--text2);margin-top:6px">每个 symbol 约需 1-2 分钟</div>
   </div>
   <div id="bt-results" style="display:none">
-    <div style="font-size:10px;color:var(--text2);letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px">WFO 结果（OOS）</div>
+    <div class="section-label">WFO 结果（OOS）</div>
     <div class="ga" id="bt-grid"></div>
   </div>
 </div>
@@ -416,7 +476,7 @@ td.neu{color:var(--text1)}
   <div class="card">
     <div class="ch">冷启动进度 <span style="font-size:10px;color:var(--text2)">(需要180条4H数据)</span></div>
     <div class="cb">
-      <div style="background:var(--bg2);border-radius:6px;height:10px;overflow:hidden;margin-bottom:8px">
+      <div class="progress mt2" style="margin-bottom:8px">
         <div id="sel-prog-bar" style="height:100%;background:var(--green);transition:width .4s;width:0%"></div>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2)">
@@ -428,27 +488,13 @@ td.neu{color:var(--text1)}
     <div class="ch">状态历史（最近24h · BTCUSDT）</div>
     <div style="overflow-x:auto">
       <table><thead><tr><th>时间</th><th>状态</th><th>方向</th><th>置信度</th><th>特征完整性</th><th>冷启动</th></tr></thead>
-      <tbody id="sel-hist-table"><tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text2)">加载中...</td></tr></tbody></table>
+      <tbody id="sel-hist-table"><tr><td colspan="6" class="t-empty">加载中...</td></tr></tbody></table>
     </div>
   </div>
 </div>
 
 </div><!-- .main -->
 </div><!-- .app -->
-
-<style>
-.mode-btn{flex:1;min-width:120px;padding:14px;border-radius:7px;border:1px solid var(--b1);background:var(--bg2);color:var(--text1);cursor:default;text-align:center;transition:all .15s;opacity:0.6}
-.mode-btn:hover{border-color:var(--b1);color:var(--text1)}
-.mode-btn.active{border-color:var(--green);background:var(--gd);color:var(--green);opacity:1}
-.mode-btn:disabled{pointer-events:none}
-.opp-card{background:var(--bg2);border:1px solid var(--b1);border-radius:7px;padding:13px;transition:border-color .2s}
-.opp-card:hover{border-color:var(--amber)}
-.opp-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
-.opp-sym{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text0)}
-.opp-rate{font-family:var(--mono);font-size:15px;font-weight:700}
-.opp-r{display:flex;justify-content:space-between;font-size:11px;padding:3px 0}
-.opp-k{color:var(--text2)}.opp-v{font-family:var(--mono);color:var(--text1)}
-</style>
 
 <script>
 const API='/api/v4'; const st={signals:[],prices:{},fr:{},regimes:{},portfolio:null,pending:[],arbOpps:[],btRunId:null,sigFilter:'ALL',orders:[]};
@@ -590,7 +636,7 @@ function renderOrders(){
       <td>${(o.filled_qty||0).toFixed(2)}</td>
       <td>${pnl}</td>
     </tr>`;
-  }).join(''):'<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text2)">无订单记录</td></tr>';
+  }).join(''):'<tr><td colspan="8" class="t-empty">无订单记录</td></tr>';
 }
 
 function renderPortfolio(){
@@ -629,7 +675,7 @@ function renderPortfolio(){
     <td class="pos">$${fp(po.take_profit)}</td>
     <td class="${(po.unrealized_pnl||0)>=0?'pos':'neg'}">$${(po.unrealized_pnl||0).toFixed(2)}</td>
     <td class="neu">${po.strategy||'--'}</td>
-  </tr>`).join(''):'<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text2)">无持仓</td></tr>';
+  </tr>`).join(''):'<tr><td colspan="8" class="t-empty">无持仓</td></tr>';
 }
 
 // Regime
@@ -733,7 +779,7 @@ async function loadFunding(){
       <td>${p.periods_collected||0}</td>
       <td class="neu">${ft(p.opened_at)}</td>
       <td><button class="btn btn-r" style="font-size:10px;padding:2px 8px" onclick="closeArb('${p.symbol}')">平仓</button></td>
-    </tr>`).join(''):'<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text2)">无持仓</td></tr>';
+    </tr>`).join(''):'<tr><td colspan="8" class="t-empty">无持仓</td></tr>';
   }
 }
 
@@ -898,7 +944,7 @@ async function loadSel(){
       </tr>`;
     }).join('');
   }else{
-    document.getElementById('sel-hist-table').innerHTML='<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text2)">无数据（系统尚在冷启动）</td></tr>';
+    document.getElementById('sel-hist-table').innerHTML='<tr><td colspan="6" class="t-empty">无数据（系统尚在冷启动）</td></tr>';
   }
 }
 
@@ -912,11 +958,6 @@ async function loadSel(){
     if(document.getElementById('page-signals').classList.contains('active'))loadSignals();
     if(document.getElementById('page-portfolio').classList.contains('active'))loadPortfolio();
   },10000);
-})();
-</script>
-</body>
-</html>
-},10000);
 })();
 </script>
 </body>
