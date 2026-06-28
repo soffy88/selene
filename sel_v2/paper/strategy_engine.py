@@ -143,6 +143,14 @@ class PaperStrategyEngine:
         return runner, sigma_series, log_returns
 
     @staticmethod
+    def _strategy_label(state: str) -> str:
+        """Adapt the recognizer's StateLabel value to the label convention the strategy
+        entry/exit modules compare against. The recognizer emits 'Drifting_Calm'/'Drifting_Charged'
+        (underscore) but the strategies test for 'Drifting-Calm'/'Drifting-Charged' (hyphen);
+        without this bridge S1 can never enter via Drifting-Charged and exit branches misfire."""
+        return state.replace("Drifting_", "Drifting-")
+
+    @staticmethod
     def _zscore(log_return: float, sigma: float) -> float:
         if not np.isfinite(sigma) or sigma <= 0:
             return 0.0
@@ -172,7 +180,8 @@ class PaperStrategyEngine:
 
         for i in range(n):
             rec = runner.process_bar(i)
-            state = rec.state.value
+            raw_state = rec.state.value
+            state = self._strategy_label(raw_state)   # strategy-convention label
             ts = rec.timestamp
             mark = float(df["close"].iloc[i])
             z_t = self._zscore(float(log_returns[i]), float(sigma_series[i]))
@@ -199,7 +208,7 @@ class PaperStrategyEngine:
                     self._forget(closed.position.id)
 
             self._prev_state = state
-            states.append(state)
+            states.append(raw_state)
 
         return self._summary(df, states)
 
