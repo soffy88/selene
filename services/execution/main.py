@@ -26,7 +26,10 @@ EXEC_MODE        = os.getenv("EXEC_MODE", "NOTIFY_ONLY")
 PRIMARY_EXCHANGE = os.getenv("PRIMARY_EXCHANGE", "binance")
 MONITOR_INTERVAL = float(os.getenv("MONITOR_INTERVAL_S", "5"))
 MAX_SIGNAL_AGE_S = float(os.getenv("MAX_SIGNAL_AGE_S", "30"))   # quote-staleness guard
+RECONCILE_INTERVAL_S = float(os.getenv("RECONCILE_INTERVAL_S", "60"))  # exchange<->state reconcile
 CG_EXECUTION     = "execution-service"
+
+_last_reconcile = {"ts": 0.0, "divergences": 0}
 
 _slippage_model = SlippageModel()
 _router         = SmartRouter()
@@ -146,6 +149,11 @@ async def process_scored_signal(data: dict):
         return
     side = "BUY" if signal.direction == Direction.LONG else "SELL"
     r = await get_redis()
+    # ── 执行级 HALT（对账发现幽灵敞口时熔断）──
+    if await r.get("cw4:execution:halt"):
+        logger.warning(f"EXECUTION HALT active — dropping signal {signal.id[:8]}")
+        _stats["risk_rejected"] += 1
+        return
     # ── 强制风控 Gate ──
     risk_raw = await r.get("cw4:risk:status")
     if risk_raw:
@@ -287,6 +295,72 @@ async def monitoring_loop():
         open_orders = {f.record.id: f.to_dict() for f in _orders.values() if not f.record.is_terminal}
         if open_orders:
             await r.hset("cw4:orders:recent", mapping={k:json.dumps(v) for k,v in open_orders.items()})
+
+
+async def reconcile_loop():
+    """Periodically reconcile internal state against the exchange (Phase 7b):
+      - recover fills the WebSocket may have missed (poll get_order on open orders),
+      - detect exchange positions with no tracked order (phantom exposure),
+      - write an execution heartbeat for an external dead-man's switch,
+      - trip cw4:execution:halt on serious divergence so new orders are blocked.
+    """
+    while True:
+        await asyncio.sleep(RECONCILE_INTERVAL_S)
+        try:
+            r = await get_redis()
+            now = time.time()
+            open_n = len([f for f in _orders.values() if not f.record.is_terminal])
+            # dead-man heartbeat (external watcher alerts if this goes stale)
+            await r.set("cw4:execution:heartbeat", json.dumps({"ts": now, "open_orders": open_n}))
+
+            if EXEC_MODE == "PAPER":
+                continue   # no live exchange to reconcile against
+
+            # 1) recover missed fills on live, non-terminal orders
+            for fsm in list(_orders.values()):
+                rec = fsm.record
+                if rec.is_terminal or not rec.exchange_id or rec.exchange_id.startswith("paper-"):
+                    continue
+                try:
+                    adp = get_adapter(rec.exchange or PRIMARY_EXCHANGE)
+                    o = await adp.get_order(rec.symbol, rec.exchange_id)
+                except Exception:
+                    continue
+                if not o.success:
+                    continue
+                recorded = rec.filled_qty or 0.0
+                if o.filled_qty > recorded + 1e-9:
+                    logger.warning(f"RECONCILE missed fill {rec.id[:8]}: exch={o.filled_qty} recorded={recorded}")
+                    await on_fill(FillEvent(
+                        exchange_id=rec.exchange_id, symbol=rec.symbol, side=rec.side,
+                        filled_qty=o.filled_qty - recorded, filled_price=o.filled_price, fee=0.0,
+                        is_final=str(o.status).upper() in ("FILLED", "EFFECTIVE"),
+                    ))
+                    await _audit(fsm, "RECONCILE_MISSED_FILL")
+
+            # 2) phantom-exposure detection: exchange position with no tracked order
+            divergences = 0
+            tracked = {f.record.symbol for f in _orders.values() if not f.record.is_terminal}
+            for name, adp in get_all_adapters().items():
+                try:
+                    positions = await adp.get_positions()
+                except Exception:
+                    continue
+                for pos in positions:
+                    if pos.size > 0 and pos.symbol not in tracked:
+                        divergences += 1
+                        logger.critical(f"RECONCILE divergence: {name} holds {pos.symbol} {pos.side} "
+                                        f"size={pos.size} with no tracked order")
+
+            _last_reconcile.update(ts=now, divergences=divergences)
+            await r.set("cw4:execution:reconcile", json.dumps(_last_reconcile))
+            if divergences > 0:
+                await r.set("cw4:execution:halt", json.dumps(
+                    {"reason": "position_divergence", "ts": now, "count": divergences}))
+                logger.critical(f"EXECUTION HALT set: {divergences} unreconciled exchange position(s); "
+                                "clear with POST /execution/halt/clear after manual review")
+        except Exception as e:
+            logger.error(f"reconcile_loop error: {e}")
 
 
 async def _close_position(fsm: OrderFSM, exit_price: float, reason: str):
@@ -465,7 +539,8 @@ async def lifespan(app: FastAPI):
         adp.on_fill(on_fill); asyncio.create_task(adp.subscribe_fills())
         logger.info(f"Fill subscription: {name}")
     await _recover_monitoring_orders()
-    tasks = [asyncio.create_task(consume_loop()), asyncio.create_task(monitoring_loop())]
+    tasks = [asyncio.create_task(consume_loop()), asyncio.create_task(monitoring_loop()),
+             asyncio.create_task(reconcile_loop())]
     yield
     for t in tasks: t.cancel()
     for adp in get_all_adapters().values(): await adp.close()
@@ -482,6 +557,23 @@ async def health():
 @app.get("/orders/recent")
 async def recent_orders(limit: int = 50):
     return {"orders":[f.to_dict() for f in list(_recent_orders)[-limit:]]}
+
+@app.get("/execution/reconcile")
+async def reconcile_status():
+    r = await get_redis()
+    halt = await r.get("cw4:execution:halt")
+    hb = await r.get("cw4:execution:heartbeat")
+    return {"reconcile": _last_reconcile,
+            "halt": json.loads(halt) if halt else None,
+            "heartbeat": json.loads(hb) if hb else None}
+
+@app.post("/execution/halt/clear")
+async def clear_halt():
+    """Clear the execution halt after an operator has manually reconciled exchange positions."""
+    r = await get_redis()
+    await r.delete("cw4:execution:halt")
+    logger.warning("EXECUTION HALT cleared by operator")
+    return {"status": "cleared"}
 
 @app.post("/orders/{order_id}/confirm")
 async def confirm_order(order_id: str):
