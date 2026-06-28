@@ -26,6 +26,7 @@ import websockets
 
 from services.execution.adapters.base import (
     BaseAdapter, OrderResult, CancelResult, PositionResult, FillEvent,
+    _sanitize_client_id, _is_duplicate_order,
 )
 
 logger = logging.getLogger("adapter.binance")
@@ -110,13 +111,17 @@ class BinanceAdapter(BaseAdapter):
         price: float = 0.0,
         reduce_only: bool = False,
         time_in_force: str = "GTC",
+        client_order_id: str = "",
     ) -> OrderResult:
+        cl_ord_id = _sanitize_client_id(client_order_id)
         params = {
             "symbol":   symbol,
             "side":     side.upper(),
             "type":     order_type.upper(),
             "quantity": f"{qty:.6f}".rstrip("0").rstrip("."),
         }
+        if cl_ord_id:
+            params["newClientOrderId"] = cl_ord_id
         if order_type.upper() == "LIMIT":
             params["price"]        = f"{price:.4f}"
             params["timeInForce"]  = time_in_force
@@ -129,8 +134,15 @@ class BinanceAdapter(BaseAdapter):
 
         if "code" in data:
             err = data.get("msg", str(data["code"]))
+            # Idempotency: duplicate newClientOrderId means a prior attempt already landed.
+            # Recover its real state rather than failing hard or risking a second placement.
+            if cl_ord_id and _is_duplicate_order(str(data.get("code", "")), err):
+                logger.warning(f"Binance duplicate clientOrderId={cl_ord_id}; recovering existing order")
+                recovered = await self._get_order_by_client_id(symbol, cl_ord_id)
+                if recovered:
+                    return recovered
             logger.error(f"place_order error: {err}")
-            return OrderResult(success=False, error=err)
+            return OrderResult(success=False, error=err, client_order_id=cl_ord_id)
 
         # 立即成交（MARKET or IOC）
         filled_price = float(data.get("avgPrice", 0) or 0)
@@ -149,6 +161,24 @@ class BinanceAdapter(BaseAdapter):
             filled_qty=filled_qty,
             fee_paid=fee,
             status=status,
+            client_order_id=str(data.get("clientOrderId", cl_ord_id)),
+            raw=data,
+        )
+
+    async def _get_order_by_client_id(self, symbol: str, cl_ord_id: str) -> Optional[OrderResult]:
+        data = await self._request("GET", "/fapi/v1/order", {
+            "symbol": symbol, "origClientOrderId": cl_ord_id,
+        })
+        if not data or "code" in data:
+            return None
+        return OrderResult(
+            success=True,
+            exchange_id=str(data.get("orderId", "")),
+            filled_price=float(data.get("avgPrice", 0) or 0),
+            filled_qty=float(data.get("executedQty", 0) or 0),
+            status=data.get("status", ""),
+            client_order_id=str(data.get("clientOrderId", cl_ord_id)),
+            recovered=True,
             raw=data,
         )
 

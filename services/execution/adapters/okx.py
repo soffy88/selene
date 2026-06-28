@@ -20,6 +20,7 @@ import websockets
 
 from services.execution.adapters.base import (
     BaseAdapter, OrderResult, CancelResult, PositionResult, FillEvent,
+    _sanitize_client_id, _is_duplicate_order,
 )
 
 logger = logging.getLogger("adapter.okx")
@@ -110,12 +111,14 @@ class OKXAdapter(BaseAdapter):
         self, symbol: str, side: str, qty: float,
         order_type: str = "limit", price: float = 0.0,
         reduce_only: bool = False, time_in_force: str = "GTC",
+        client_order_id: str = "",
     ) -> OrderResult:
         # OKX instId format: BTC-USDT-SWAP
         inst_id = symbol.replace("USDT", "-USDT-SWAP") if "USDT" in symbol else symbol
         if not self._ct_val:
             await self._load_ct_val()
         contracts = self._to_contracts(inst_id, qty)
+        cl_ord_id = _sanitize_client_id(client_order_id)
         payload = {
             "instId":  inst_id,
             "tdMode":  "cross",
@@ -123,6 +126,8 @@ class OKXAdapter(BaseAdapter):
             "ordType": order_type.lower(),
             "sz":      str(contracts),
         }
+        if cl_ord_id:
+            payload["clOrdId"] = cl_ord_id
         if order_type.lower() == "limit":
             payload["px"] = str(price)
         if reduce_only:
@@ -135,20 +140,50 @@ class OKXAdapter(BaseAdapter):
         code = data.get("code", "")
         if code != "0":
             inner = (data.get("data") or [{}])[0]
+            s_code = inner.get("sCode", "")
             s_msg = inner.get("sMsg", "")
             err = s_msg or data.get("msg", f"code={code}")
-            logger.error(f"OKX order error code={code} msg={data.get('msg')} sCode={inner.get('sCode')} sMsg={s_msg} payload={payload}")
-            return OrderResult(success=False, error=err)
+            # Idempotency: a duplicate clOrdId means a prior attempt already reached the
+            # exchange. Recover its real state instead of double-sending or failing hard.
+            if cl_ord_id and _is_duplicate_order(s_code, err):
+                logger.warning(f"OKX duplicate clOrdId={cl_ord_id}; recovering existing order")
+                recovered = await self._get_order_by_client_id(inst_id, cl_ord_id)
+                if recovered:
+                    return recovered
+            logger.error(f"OKX order error code={code} msg={data.get('msg')} sCode={s_code} sMsg={s_msg} payload={payload}")
+            return OrderResult(success=False, error=err, client_order_id=cl_ord_id)
 
         order = data["data"][0]
         if order.get("sCode", "0") != "0":
+            if cl_ord_id and _is_duplicate_order(order.get("sCode", ""), order.get("sMsg", "")):
+                logger.warning(f"OKX duplicate clOrdId={cl_ord_id}; recovering existing order")
+                recovered = await self._get_order_by_client_id(inst_id, cl_ord_id)
+                if recovered:
+                    return recovered
             logger.error(f"OKX order item error sCode={order['sCode']} sMsg={order.get('sMsg')} payload={payload}")
-            return OrderResult(success=False, error=order.get("sMsg", f"sCode={order['sCode']}"))
+            return OrderResult(success=False, error=order.get("sMsg", f"sCode={order['sCode']}"), client_order_id=cl_ord_id)
         return OrderResult(
             success=True,
             exchange_id=order.get("ordId", ""),
             status="NEW",
+            client_order_id=order.get("clOrdId", cl_ord_id),
             raw=order,
+        )
+
+    async def _get_order_by_client_id(self, inst_id: str, cl_ord_id: str) -> Optional[OrderResult]:
+        data = await self._request("GET", f"/api/v5/trade/order?instId={inst_id}&clOrdId={cl_ord_id}")
+        if not data or data.get("code") != "0" or not data.get("data"):
+            return None
+        o = data["data"][0]
+        return OrderResult(
+            success=True,
+            exchange_id=o.get("ordId", ""),
+            filled_price=float(o.get("avgPx") or 0),
+            filled_qty=float(o.get("fillSz") or 0),
+            status=o.get("state", ""),
+            client_order_id=o.get("clOrdId", cl_ord_id),
+            recovered=True,
+            raw=o,
         )
 
     async def cancel_order(self, symbol: str, exchange_id: str) -> CancelResult:

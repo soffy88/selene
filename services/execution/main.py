@@ -36,6 +36,14 @@ _recent_orders: deque               = deque(maxlen=500)
 _stats = {"queued":0,"filled":0,"failed":0,"cancelled":0,"risk_rejected":0}
 
 
+def _client_oid(order_id: str, kind: str = "O") -> str:
+    """Deterministic exchange idempotency key from the internal order id.
+    `kind` distinguishes the opening order ('O') from its reduce-only close ('C') so the two
+    never collide. Reused verbatim on any retry → the exchange dedupes duplicate placements."""
+    h = order_id.replace("-", "")[:31]
+    return f"{h}{kind}"
+
+
 def _init_adapters():
     from services.execution.adapters.binance import BinanceAdapter
     from services.execution.adapters.okx import OKXAdapter
@@ -211,7 +219,8 @@ async def submit_to_exchange(fsm: OrderFSM):
     except RuntimeError as e:
         fsm.transition(OrderState.FAILED, note=str(e)); _stats["failed"] += 1
         await _pub(r, fsm, "no_adapter"); return
-    result = await adp.place_order(rec.symbol, rec.side, rec.quantity, rec.order_type, rec.limit_price or rec.entry_price)
+    result = await adp.place_order(rec.symbol, rec.side, rec.quantity, rec.order_type, rec.limit_price or rec.entry_price,
+                                   client_order_id=_client_oid(rec.id, "O"))
     if not result.success:
         fsm.transition(OrderState.FAILED, note=result.error); rec.reject_reason = result.error
         _stats["failed"] += 1; await _pub(r, fsm, "submit_failed"); await _audit(fsm, "ORDER_SUBMIT_FAILED")
@@ -271,7 +280,8 @@ async def _close_position(fsm: OrderFSM, exit_price: float, reason: str):
     try:
         adp = get_adapter(rec.exchange or PRIMARY_EXCHANGE)
         close_side = "SELL" if rec.side=="BUY" else "BUY"
-        result = await adp.place_order(rec.symbol, close_side, rec.filled_qty or rec.quantity, "MARKET", reduce_only=True)
+        result = await adp.place_order(rec.symbol, close_side, rec.filled_qty or rec.quantity, "MARKET", reduce_only=True,
+                                       client_order_id=_client_oid(rec.id, "C"))
         if result.success:
             actual_exit = result.filled_price or exit_price
             pnl = fsm.calc_realized_pnl(actual_exit)

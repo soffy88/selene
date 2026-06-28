@@ -21,9 +21,11 @@ logger = logging.getLogger(__name__)
 WFO_TRAIN_DAYS  = 90
 WFO_TEST_DAYS   = 30
 WFO_STEP_DAYS   = 30
+WFO_EMBARGO_DAYS = 2     # purge gap between train end and test start (avoid label spillover)
 ATR_STOP_MULT   = 2.0
 ATR_TAKE_MULT   = 3.0
 MAX_HOLD_HOURS  = 24
+MIN_OOS_TRADES  = 100   # below this the Sharpe/DD estimates are statistically unreliable
 
 
 @dataclass
@@ -31,9 +33,11 @@ class WFOConfig:
     train_days:     int   = WFO_TRAIN_DAYS
     test_days:      int   = WFO_TEST_DAYS
     step_days:      int   = WFO_STEP_DAYS
+    embargo_days:   int   = WFO_EMBARGO_DAYS
     initial_capital: float = 10_000.0
     risk_pct:       float = 0.02        # 2% risk per trade
-    mc_runs:        int   = 1000        # Monte Carlo iterations
+    mc_runs:        int   = 1000        # bootstrap iterations
+    min_oos_trades: int   = MIN_OOS_TRADES
 
 
 @dataclass
@@ -42,13 +46,14 @@ class TradeRecord:
     entry_price: float; exit_price: float; quantity: float
     entry_time: int; exit_time: int; exit_reason: str
     slippage_pct: float = 0.0; fee_pct: float = 0.0004
+    funding_cost_pct: float = 0.0   # signed fraction of notional; +ve = cost to the position
 
     @property
     def pnl_pct(self) -> float:
         gross = ((self.exit_price - self.entry_price) / self.entry_price
                  if self.side == "LONG"
                  else (self.entry_price - self.exit_price) / self.entry_price)
-        return gross - self.slippage_pct / 100 - self.fee_pct * 2
+        return gross - self.slippage_pct / 100 - self.fee_pct * 2 - self.funding_cost_pct
 
     @property
     def pnl_usd(self) -> float:
@@ -85,8 +90,10 @@ class WFOResult:
     oos_calmar:     float = 0.0
     oos_n_trades:   int   = 0
 
-    # Monte Carlo
-    mc_sharpe_p5:   float = 0.0    # 5th percentile Sharpe (stress test)
+    # Significance / robustness
+    psr:            float = 0.0    # Probabilistic Sharpe Ratio (vs SR=0)
+    dsr:            float = 0.0    # Deflated Sharpe Ratio (vs expected max over n_wfo trials)
+    mc_sharpe_p5:   float = 0.0    # bootstrap 5th percentile annualized Sharpe
     mc_sharpe_p50:  float = 0.0
     mc_sharpe_p95:  float = 0.0
 
@@ -102,6 +109,8 @@ class WFOResult:
             "oos_total_return": round(self.oos_total_return, 4),
             "oos_calmar": round(self.oos_calmar, 4),
             "oos_n_trades": self.oos_n_trades,
+            "psr": round(self.psr, 4),
+            "dsr": round(self.dsr, 4),
             "mc_sharpe_p5": round(self.mc_sharpe_p5, 4),
             "mc_sharpe_p50": round(self.mc_sharpe_p50, 4),
             "mc_sharpe_p95": round(self.mc_sharpe_p95, 4),
@@ -146,30 +155,33 @@ class WFOEngine:
         times    = [c["open_time"] for c in candles]
         fr_map   = {d["funding_time"]: d["funding_rate"] for d in funding_rates}
 
-        train_bars = self.config.train_days * 24   # assuming 1h candles
-        test_bars  = self.config.test_days  * 24
-        step_bars  = self.config.step_days  * 24
+        train_bars   = self.config.train_days   * 24   # assuming 1h candles
+        test_bars    = self.config.test_days     * 24
+        step_bars    = self.config.step_days     * 24
+        embargo_bars = self.config.embargo_days  * 24
 
         all_oos_trades: list[TradeRecord] = []
         periods: list[PeriodMetrics] = []
 
-        # Slide the window
+        # Slide the window. An embargo gap purges bars between train end and test start so
+        # that momentum/label spillover from the (in-sample) train window cannot leak into OOS.
         start = 0
-        while start + train_bars + test_bars <= len(candles):
+        while start + train_bars + embargo_bars + test_bars <= len(candles):
             train_end = start + train_bars
-            test_end  = train_end + test_bars
+            test_start = train_end + embargo_bars
+            test_end   = test_start + test_bars
 
-            # OOS test period
+            # OOS test period (starts after the embargo gap)
             oos_candles = {
-                "closes":  closes[train_end:test_end],
-                "highs":   highs[train_end:test_end],
-                "lows":    lows[train_end:test_end],
-                "times":   times[train_end:test_end],
+                "closes":  closes[test_start:test_end],
+                "highs":   highs[test_start:test_end],
+                "lows":    lows[test_start:test_end],
+                "times":   times[test_start:test_end],
             }
-            # Need lookback context for indicators
-            context_closes = closes[max(0, train_end-200):train_end]
-            context_highs  = highs[max(0, train_end-200):train_end]
-            context_lows   = lows[max(0, train_end-200):train_end]
+            # Need lookback context for indicators (taken from just before the test window)
+            context_closes = closes[max(0, test_start-200):test_start]
+            context_highs  = highs[max(0, test_start-200):test_start]
+            context_lows   = lows[max(0, test_start-200):test_start]
 
             oos_trades = self._simulate_period(
                 symbol=symbol, candles=oos_candles,
@@ -182,7 +194,7 @@ class WFOEngine:
 
             if oos_trades:
                 all_oos_trades.extend(oos_trades)
-                pm = self._calc_period_metrics(oos_trades, times[train_end], times[test_end-1], True)
+                pm = self._calc_period_metrics(oos_trades, times[test_start], times[test_end-1], True)
                 periods.append(pm)
 
             start += step_bars
@@ -236,6 +248,9 @@ class WFOEngine:
             if open_pos:
                 trade = self._check_exit(open_pos, highs[ci], lows[ci], price, t, ci - open_pos["entry_ci"])
                 if trade:
+                    from backtest.metrics import funding_cost_pct
+                    trade.funding_cost_pct = funding_cost_pct(
+                        fr_map, trade.entry_time, trade.exit_time, trade.side)
                     equity += trade.pnl_usd
                     trades.append(trade)
                     open_pos = None
@@ -332,82 +347,70 @@ class WFOEngine:
         return None
 
     def _calc_period_metrics(self, trades: list[TradeRecord], t_start: int, t_end: int, is_oos: bool) -> PeriodMetrics:
-        import math
+        from backtest import metrics
+        cap = self.config.initial_capital
         pnls = [t.pnl_usd for t in trades]
+        n = len(pnls)
         wins = [p for p in pnls if p > 0]
         losses = [p for p in pnls if p <= 0]
-        n = len(pnls)
         win_rate = len(wins) / n if n else 0
         avg_win  = sum(wins) / len(wins) if wins else 0
         avg_loss = abs(sum(losses) / len(losses)) if losses else 1
         pl_ratio = avg_win / avg_loss if avg_loss > 0 else 0
 
-        # Simple Sharpe from daily PnL
-        if len(pnls) > 1:
-            mean = sum(pnls) / n
-            std  = math.sqrt(sum((p - mean)**2 for p in pnls) / n)
-            sharpe = mean / std * math.sqrt(252) if std > 0 else 0
-        else:
-            sharpe = 0
-
-        # Max drawdown
-        equity = 0.0; peak = 0.0; max_dd = 0.0
-        for p in pnls:
-            equity += p
-            peak = max(peak, equity)
-            dd = (peak - equity) / peak if peak > 0 else 0
-            max_dd = max(max_dd, dd)
+        # Sharpe from *daily*-aggregated returns, annualized with 365 (crypto, 24/7).
+        daily = metrics.daily_returns_from_trades(trades, cap)
+        sharpe = metrics.sharpe_ratio(daily)
+        max_dd = metrics.max_drawdown_net(trades, cap)
 
         return PeriodMetrics(period_start=t_start, period_end=t_end, n_trades=n,
                              win_rate=win_rate, pl_ratio=pl_ratio, sharpe=sharpe,
                              max_drawdown=max_dd, total_return=sum(pnls), is_oos=is_oos)
 
     def _aggregate_metrics(self, result: WFOResult) -> None:
-        import math
+        from backtest import metrics
         trades = result.all_trades
         if not trades: return
+        cap = self.config.initial_capital
         pnls = [t.pnl_usd for t in trades]
         n = len(pnls)
         wins = [p for p in pnls if p > 0]
-        losses = [p for p in pnls if p <= 0]
         result.oos_n_trades = n
         result.oos_win_rate = len(wins) / n if n else 0
-        avg_win  = sum(wins) / len(wins) if wins else 0
-        avg_loss = abs(sum(losses) / len(losses)) if losses else 1
-        if len(pnls) > 1:
-            mean = sum(pnls)/n; std = math.sqrt(sum((p-mean)**2 for p in pnls)/n)
-            result.oos_sharpe = mean/std*math.sqrt(252) if std > 0 else 0
-        equity = 0.0; peak = 0.0; max_dd = 0.0
-        for p in pnls:
-            equity += p; peak = max(peak, equity)
-            dd = (peak-equity)/peak if peak > 0 else 0; max_dd = max(max_dd, dd)
-        result.oos_max_dd = max_dd
-        result.oos_total_return = sum(pnls) / self.config.initial_capital
-        result.oos_calmar = result.oos_total_return / max_dd if max_dd > 0 else 0
+
+        daily = metrics.daily_returns_from_trades(trades, cap)
+        result.oos_sharpe = metrics.sharpe_ratio(daily)
+        result.oos_max_dd = metrics.max_drawdown_net(trades, cap)
+        result.oos_total_return = sum(pnls) / cap
+        result.oos_calmar = result.oos_total_return / result.oos_max_dd if result.oos_max_dd > 0 else 0
+
+        # Significance: PSR vs 0, and DSR deflated by the number of WFO trials evaluated.
+        n_trials = max(1, len([p for p in result.periods if p.is_oos]))
+        result.psr = metrics.probabilistic_sharpe_ratio(daily)
+        result.dsr = metrics.deflated_sharpe_ratio(daily, n_trials=n_trials)
 
     def _monte_carlo(self, result: WFOResult, runs: int = 1000) -> None:
-        """Shuffle trade order N times → Sharpe distribution."""
-        import random, math
+        """Bootstrap CI for annualized Sharpe by resampling daily returns with replacement.
+
+        (Replaces the previous trade-order shuffle, which preserved the return set and so
+        left Sharpe almost unchanged — it tested nothing about edge significance.)
+        """
+        from backtest import metrics
         trades = result.all_trades
-        if len(trades) < 10: return
-        pnls = [t.pnl_usd for t in trades]
-        sharpes = []
-        for _ in range(runs):
-            shuffled = random.sample(pnls, len(pnls))
-            n = len(shuffled); mean = sum(shuffled)/n
-            std = math.sqrt(sum((p-mean)**2 for p in shuffled)/n)
-            sharpes.append(mean/std*math.sqrt(252) if std > 0 else 0)
-        sharpes.sort()
-        result.mc_sharpe_p5  = sharpes[int(0.05 * runs)]
-        result.mc_sharpe_p50 = sharpes[int(0.50 * runs)]
-        result.mc_sharpe_p95 = sharpes[int(0.95 * runs)]
+        if len(trades) < 10:
+            return
+        daily = metrics.daily_returns_from_trades(trades, self.config.initial_capital)
+        p5, p50, p95 = metrics.bootstrap_sharpe_ci(daily, n_boot=runs)
+        result.mc_sharpe_p5, result.mc_sharpe_p50, result.mc_sharpe_p95 = p5, p50, p95
 
     def _check_pass(self, result: WFOResult) -> None:
         reasons = []
         if result.oos_win_rate < 0.55:      reasons.append(f"Win rate {result.oos_win_rate:.1%} < 55%")
         if result.oos_sharpe < 1.0:         reasons.append(f"Sharpe {result.oos_sharpe:.2f} < 1.0")
         if result.oos_max_dd > 0.15:        reasons.append(f"Max DD {result.oos_max_dd:.1%} > 15%")
-        if result.oos_n_trades < 30:        reasons.append(f"Only {result.oos_n_trades} OOS trades")
-        if result.mc_sharpe_p5 < 0.5:       reasons.append(f"MC p5 Sharpe {result.mc_sharpe_p5:.2f} < 0.5")
+        if result.oos_n_trades < self.config.min_oos_trades:
+            reasons.append(f"Only {result.oos_n_trades} OOS trades (< {self.config.min_oos_trades})")
+        if result.mc_sharpe_p5 < 0.5:       reasons.append(f"Bootstrap p5 Sharpe {result.mc_sharpe_p5:.2f} < 0.5")
+        if result.dsr < 0.95:               reasons.append(f"Deflated Sharpe prob {result.dsr:.2f} < 0.95")
         result.failure_reasons = reasons
         result.passed = len(reasons) == 0
