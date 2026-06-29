@@ -75,6 +75,46 @@ class PaperEngine:
             return None
         return pd.DataFrame([dict(r) for r in rows])
 
+    async def _load_derivatives_series(self, df):
+        """As-of-join OI + funding from v2_derivatives_snapshots onto the 4H bar grid.
+
+        Without these the state machine collapses to Drifting_Calm and never opens a
+        position; feeding them unlocks the Coiling/Surging/Drifting_Charged entry
+        states (the reason the live engine never traded). NaN where no snapshot
+        exists at/before a bar — the engine treats NaN as 'unknown' (conservative)."""
+        import bisect
+        import numpy as np
+        n = len(df)
+        oi = np.full(n, np.nan)
+        funding = np.full(n, np.nan)
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT timestamp, open_interest, funding_rate FROM v2_derivatives_snapshots "
+                "WHERE symbol=$1 ORDER BY timestamp ASC", self._symbol)
+        if not rows:
+            return oi, funding
+        ts = [r["timestamp"] for r in rows]
+        ois = [float(r["open_interest"]) if r["open_interest"] is not None else np.nan for r in rows]
+        frs = [float(r["funding_rate"]) if r["funding_rate"] is not None else np.nan for r in rows]
+        for i, bt in enumerate(df["time"]):
+            j = bisect.bisect_right(ts, bt) - 1   # most recent snapshot <= bar time
+            if j >= 0:
+                oi[i] = ois[j]
+                funding[i] = frs[j]
+        return oi, funding
+
+    @staticmethod
+    def _ofi_proxy(df):
+        """Bar-level signed-volume OFI proxy (sign(return) x volume). Coarse but
+        always available from OHLCV, so Surging's flow signal can fire even before
+        the LOB/taker-flow collectors are live. Replace with true OFI when available."""
+        import numpy as np
+        close = df["close"].values.astype(float)
+        vol = (df["volume"].values.astype(float) if "volume" in df
+               else np.ones(len(df)))
+        sign = np.sign(np.diff(close, prepend=close[0]))
+        return sign * vol
+
     async def _reprocess(self):
         """Replay the full bar history through the strategy engine. Positions are a pure
         function of history, so a fresh engine each tick gives deterministic, idempotent state.
@@ -93,7 +133,12 @@ class PaperEngine:
             total_nav_usdt=float(self._strategy_params.get("paper_total_nav", 100_000) or 100_000),
             instrument=self._symbol, skip_tda=skip_tda,
         )
-        summary = engine.process_frame(df)
+        # Feed OI/funding (real, from v2_derivatives_snapshots) + a bar-derived OFI
+        # proxy so the trading states can fire and the engine actually opens positions.
+        oi_series, funding_series = await self._load_derivatives_series(df)
+        ofi_series = self._ofi_proxy(df)
+        summary = engine.process_frame(
+            df, oi_series=oi_series, funding_series=funding_series, ofi_series=ofi_series)
         self._engine = engine
         await self._persist_summary(summary)
         await self._persist_results(engine)
