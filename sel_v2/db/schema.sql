@@ -48,6 +48,12 @@ SELECT create_hypertable('v2_lob_snapshots', 'timestamp',
     if_not_exists => TRUE);
 CREATE UNIQUE INDEX IF NOT EXISTS uix_v2_lob_snapshots
     ON v2_lob_snapshots (timestamp, symbol);
+-- Storage (item #20): LOB is by far the largest table; compress after 2 days.
+ALTER TABLE v2_lob_snapshots SET (timescaledb.compress,
+    timescaledb.compress_segmentby = 'symbol');
+SELECT add_compression_policy('v2_lob_snapshots', INTERVAL '2 days', if_not_exists => TRUE);
+-- Retention deletes raw history — opt in deliberately (uncomment to enable):
+-- SELECT add_retention_policy('v2_lob_snapshots', INTERVAL '90 days', if_not_exists => TRUE);
 
 -- Derivatives snapshots (OI / funding / mark / index price)
 CREATE TABLE IF NOT EXISTS v2_derivatives_snapshots (
@@ -62,6 +68,10 @@ SELECT create_hypertable('v2_derivatives_snapshots', 'timestamp',
     if_not_exists => TRUE);
 CREATE UNIQUE INDEX IF NOT EXISTS uix_v2_derivatives_snapshots
     ON v2_derivatives_snapshots (timestamp, symbol);
+-- Storage (item #20)
+ALTER TABLE v2_derivatives_snapshots SET (timescaledb.compress,
+    timescaledb.compress_segmentby = 'symbol');
+SELECT add_compression_policy('v2_derivatives_snapshots', INTERVAL '7 days', if_not_exists => TRUE);
 
 -- Liquidation events
 CREATE TABLE IF NOT EXISTS v2_liquidations (
@@ -76,6 +86,10 @@ SELECT create_hypertable('v2_liquidations', 'timestamp',
     if_not_exists => TRUE);
 CREATE UNIQUE INDEX IF NOT EXISTS uix_v2_liquidations
     ON v2_liquidations (timestamp, symbol, side, size, price);
+-- Storage (item #20)
+ALTER TABLE v2_liquidations SET (timescaledb.compress,
+    timescaledb.compress_segmentby = 'symbol');
+SELECT add_compression_policy('v2_liquidations', INTERVAL '7 days', if_not_exists => TRUE);
 
 -- On-chain exchange flows (minimum set: large BTC in/out)
 CREATE TABLE IF NOT EXISTS v2_onchain_exchange_flows (
