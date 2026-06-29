@@ -26,6 +26,32 @@ ATR_STOP_MULT   = 2.0
 ATR_TAKE_MULT   = 3.0
 MAX_HOLD_HOURS  = 24
 MIN_OOS_TRADES  = 100   # below this the Sharpe/DD estimates are statistically unreliable
+MIN_TRAIN_TRADES = 10   # a param config needs at least this many train trades to be selectable
+
+
+def default_param_grid() -> list[dict]:
+    """The parameter space WFO searches on each train window.
+
+    These are the knobs of the built-in signal/exit rules (see ``default_signal_fn``
+    and ``_check_exit``). WFO fits them in-sample per window and evaluates the
+    winner OOS — and the grid size is the honest ``n_trials`` for the Deflated
+    Sharpe Ratio (item #3).
+    """
+    grid = []
+    for rsi_long in (30.0, 35.0):
+        for rsi_short in (65.0, 70.0):
+            for atr_stop in (1.5, 2.0):
+                for atr_take in (3.0,):
+                    grid.append({
+                        "rsi_long": rsi_long,
+                        "rsi_short": rsi_short,
+                        "rsi_trend": 55.0,
+                        "funding_long": -0.05,
+                        "funding_short": 0.10,
+                        "atr_stop": atr_stop,
+                        "atr_take": atr_take,
+                    })
+    return grid
 
 
 @dataclass
@@ -38,6 +64,7 @@ class WFOConfig:
     risk_pct:       float = 0.02        # 2% risk per trade
     mc_runs:        int   = 1000        # bootstrap iterations
     min_oos_trades: int   = MIN_OOS_TRADES
+    param_grid:     list  = field(default_factory=default_param_grid)
 
 
 @dataclass
@@ -81,6 +108,8 @@ class WFOResult:
     config:         WFOConfig = field(default_factory=WFOConfig)
     periods:        list = field(default_factory=list)   # list[PeriodMetrics]
     all_trades:     list = field(default_factory=list)   # list[TradeRecord]
+    selected_params: list = field(default_factory=list)  # winning params per OOS window
+    n_trials:       int  = 1                              # param configs searched (for DSR)
 
     # Aggregated OOS metrics
     oos_win_rate:   float = 0.0
@@ -116,6 +145,8 @@ class WFOResult:
             "mc_sharpe_p95": round(self.mc_sharpe_p95, 4),
             "passed": self.passed,
             "failure_reasons": self.failure_reasons,
+            "n_trials": self.n_trials,
+            "selected_params": self.selected_params,
             "n_wfo_periods": len([p for p in self.periods if p.is_oos]),
             "period_details": [
                 {"start": p.period_start, "end": p.period_end,
@@ -133,8 +164,12 @@ class WFOEngine:
     Reports only OOS (out-of-sample) performance.
     """
 
-    def __init__(self, config: WFOConfig = None):
+    def __init__(self, config: WFOConfig = None, signal_fn=None):
         self.config = config or WFOConfig()
+        # signal_fn(closes, highs, lows, price, funding_rate, regime, params) -> list[dict]
+        # Defaults to the built-in parameterised rules; inject an adapter here to
+        # backtest a different strategy (e.g. a sel_v2 strategy wrapper).
+        self.signal_fn = signal_fn or self.default_signal_fn
 
     async def run(
         self,
@@ -162,6 +197,10 @@ class WFOEngine:
 
         all_oos_trades: list[TradeRecord] = []
         periods: list[PeriodMetrics] = []
+        selected_params: list[dict] = []
+
+        grid = self.config.param_grid or [default_param_grid()[0]]
+        result.n_trials = len(grid)
 
         # Slide the window. An embargo gap purges bars between train end and test start so
         # that momentum/label spillover from the (in-sample) train window cannot leak into OOS.
@@ -171,14 +210,28 @@ class WFOEngine:
             test_start = train_end + embargo_bars
             test_end   = test_start + test_bars
 
-            # OOS test period (starts after the embargo gap)
+            # ── IN-SAMPLE: fit parameters on the train window ──────────────────
+            train_candles = {
+                "closes":  closes[start:train_end],
+                "highs":   highs[start:train_end],
+                "lows":    lows[start:train_end],
+                "times":   times[start:train_end],
+            }
+            train_ctx_lo = max(0, start - 200)
+            best_params = self._optimize_params(
+                symbol, train_candles,
+                closes[train_ctx_lo:start], highs[train_ctx_lo:start], lows[train_ctx_lo:start],
+                fr_map, grid,
+            )
+            selected_params.append(best_params)
+
+            # ── OUT-OF-SAMPLE: evaluate the winning params (after the embargo) ──
             oos_candles = {
                 "closes":  closes[test_start:test_end],
                 "highs":   highs[test_start:test_end],
                 "lows":    lows[test_start:test_end],
                 "times":   times[test_start:test_end],
             }
-            # Need lookback context for indicators (taken from just before the test window)
             context_closes = closes[max(0, test_start-200):test_start]
             context_highs  = highs[max(0, test_start-200):test_start]
             context_lows   = lows[max(0, test_start-200):test_start]
@@ -190,6 +243,7 @@ class WFOEngine:
                 context_lows=context_lows,
                 fr_map=fr_map,
                 initial_capital=self.config.initial_capital,
+                params=best_params,
             )
 
             if oos_trades:
@@ -201,6 +255,7 @@ class WFOEngine:
 
         result.periods = periods
         result.all_trades = all_oos_trades
+        result.selected_params = selected_params
 
         if all_oos_trades:
             self._aggregate_metrics(result)
@@ -212,11 +267,13 @@ class WFOEngine:
     def _simulate_period(
         self, symbol: str, candles: dict,
         context_closes: list, context_highs: list, context_lows: list,
-        fr_map: dict, initial_capital: float,
+        fr_map: dict, initial_capital: float, params: dict,
     ) -> list[TradeRecord]:
-        """Simulate trading in one OOS window."""
+        """Simulate trading over one window with a fixed parameter set."""
         from services.signal.regime.detector import RegimeDetector, _calc_atr
         from shared.models.signal import Regime
+        atr_stop = params["atr_stop"]
+        atr_take = params["atr_take"]
 
         closes = context_closes[:] + candles["closes"]
         highs  = context_highs[:] + candles["highs"]
@@ -259,9 +316,9 @@ class WFOEngine:
                 continue   # one position at a time in this simplified version
 
             # Generate signals
-            signals = self._check_signals(
+            signals = self.signal_fn(
                 closes[:ci+1], highs[:ci+1], lows[:ci+1], price,
-                fr_map.get(t, 0.0), regime
+                fr_map.get(t, 0.0), regime, params
             )
 
             for sig in signals:
@@ -274,10 +331,10 @@ class WFOEngine:
                     continue
 
                 side = sig["side"]
-                stop = price - atr * ATR_STOP_MULT if side == "LONG" else price + atr * ATR_STOP_MULT
-                take = price + atr * ATR_TAKE_MULT if side == "LONG" else price - atr * ATR_TAKE_MULT
+                stop = price - atr * atr_stop if side == "LONG" else price + atr * atr_stop
+                take = price + atr * atr_take if side == "LONG" else price - atr * atr_take
 
-                qty = (equity * self.config.risk_pct) / (atr * ATR_STOP_MULT)
+                qty = (equity * self.config.risk_pct) / (atr * atr_stop)
                 open_pos = {
                     "symbol": symbol, "type": sig["type"], "side": side,
                     "entry_price": price, "stop": stop, "take": take,
@@ -288,16 +345,16 @@ class WFOEngine:
 
         return trades
 
-    def _check_signals(self, closes, highs, lows, price, funding_rate, regime) -> list[dict]:
-        """Simple rule-based signal generation for backtesting speed."""
-        from services.signal.regime.detector import _calc_atr
+    @staticmethod
+    def default_signal_fn(closes, highs, lows, price, funding_rate, regime, params) -> list[dict]:
+        """Built-in parameterised rule set. The thresholds in ``params`` are what
+        WFO optimises in-sample (see ``default_param_grid``)."""
         from shared.models.signal import Regime
 
         if len(closes) < 20:
             return []
 
         # Fast RSI
-        from services.signal.factors.composite import score_rsi
         deltas = [closes[i] - closes[i-1] for i in range(-15, 0)]
         gains  = [max(d, 0) for d in deltas]; losses = [max(-d, 0) for d in deltas]
         ag = sum(gains)/14; al = sum(losses)/14
@@ -307,19 +364,41 @@ class WFOEngine:
 
         # LONG_SETUP (disabled in TRENDING_DOWN / HIGH_VOLATILITY)
         if regime not in (Regime.TRENDING_DOWN, Regime.HIGH_VOLATILITY):
-            if funding_rate < -0.05 and rsi < 35:
+            if funding_rate < params["funding_long"] and rsi < params["rsi_long"]:
                 signals.append({"type": "LONG_SETUP", "side": "LONG"})
 
         # SHORT_SETUP (disabled in TRENDING_UP / ACCUMULATION)
         if regime not in (Regime.TRENDING_UP, Regime.ACCUMULATION):
-            if funding_rate > 0.10 and rsi > 70:
+            if funding_rate > params["funding_short"] and rsi > params["rsi_short"]:
                 signals.append({"type": "SHORT_SETUP", "side": "SHORT"})
 
         # TREND_CONFIRM (only in TRENDING_UP)
-        if regime == Regime.TRENDING_UP and rsi > 55 and abs(funding_rate) < 0.05:
+        if regime == Regime.TRENDING_UP and rsi > params["rsi_trend"] and abs(funding_rate) < 0.05:
             signals.append({"type": "TREND_CONFIRM", "side": "LONG"})
 
         return signals
+
+    def _optimize_params(self, symbol, train_candles, ctx_closes, ctx_highs, ctx_lows,
+                         fr_map, grid) -> dict:
+        """Search the grid on the in-sample train window; return the params with the
+        best train Sharpe (requiring a minimum trade count). Falls back to the first
+        grid entry if nothing clears the bar."""
+        from backtest import metrics
+        best = None
+        best_sharpe = float("-inf")
+        for params in grid:
+            trades = self._simulate_period(
+                symbol=symbol, candles=train_candles,
+                context_closes=ctx_closes, context_highs=ctx_highs, context_lows=ctx_lows,
+                fr_map=fr_map, initial_capital=self.config.initial_capital, params=params,
+            )
+            if len(trades) < MIN_TRAIN_TRADES:
+                continue
+            daily = metrics.daily_returns_from_trades(trades, self.config.initial_capital)
+            sharpe = metrics.sharpe_ratio(daily)
+            if sharpe > best_sharpe:
+                best_sharpe, best = sharpe, params
+        return best if best is not None else grid[0]
 
     def _check_exit(self, pos: dict, high: float, low: float, close: float,
                     current_time: int, bars_held: int) -> Optional[TradeRecord]:
@@ -384,10 +463,11 @@ class WFOEngine:
         result.oos_total_return = sum(pnls) / cap
         result.oos_calmar = result.oos_total_return / result.oos_max_dd if result.oos_max_dd > 0 else 0
 
-        # Significance: PSR vs 0, and DSR deflated by the number of WFO trials evaluated.
-        n_trials = max(1, len([p for p in result.periods if p.is_oos]))
+        # Significance: PSR vs 0, and DSR deflated by the number of parameter
+        # configurations actually searched (result.n_trials = grid size). This is
+        # the statistically correct trial count for the Deflated Sharpe Ratio.
         result.psr = metrics.probabilistic_sharpe_ratio(daily)
-        result.dsr = metrics.deflated_sharpe_ratio(daily, n_trials=n_trials)
+        result.dsr = metrics.deflated_sharpe_ratio(daily, n_trials=max(1, result.n_trials))
 
     def _monte_carlo(self, result: WFOResult, runs: int = 1000) -> None:
         """Bootstrap CI for annualized Sharpe by resampling daily returns with replacement.
@@ -411,10 +491,10 @@ class WFOEngine:
         if result.oos_n_trades < self.config.min_oos_trades:
             reasons.append(f"Only {result.oos_n_trades} OOS trades (< {self.config.min_oos_trades})")
         if result.mc_sharpe_p5 < 0.5:       reasons.append(f"Bootstrap p5 Sharpe {result.mc_sharpe_p5:.2f} < 0.5")
-        # PSR is the significance gate. DSR is computed/reported but NOT gated here: a valid
-        # Deflated-Sharpe trial count is the number of strategy/parameter configs searched,
-        # which the WFO loop does not track (window count would deflate *more* with more data,
-        # which is backwards). Surface dsr for oversight; gate on PSR + bootstrap instead.
+        # PSR (vs SR=0) and DSR (deflated by the number of parameter configs searched,
+        # n_trials = grid size) are both significance gates. Now that WFO performs a real
+        # in-sample search, the DSR trial count is meaningful and can be gated on.
         if result.psr < 0.90:               reasons.append(f"PSR {result.psr:.2f} < 0.90")
+        if result.dsr < 0.90:               reasons.append(f"DSR {result.dsr:.2f} < 0.90 (overfit risk)")
         result.failure_reasons = reasons
         result.passed = len(reasons) == 0
