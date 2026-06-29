@@ -356,7 +356,7 @@ services:
       - gateway
     # Healthcheck via the nginx /healthz location added in item #21.
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz || exit 1"]
       interval: 30s
       start_period: 5s
     deploy:
