@@ -127,6 +127,45 @@ async def health():
     }
 
 
+# ── Prometheus metrics (item #12) ───────────────────────────────────────────────
+@app.get("/metrics")
+async def metrics():
+    """Prometheus exposition of key system gauges derived from Redis. Real metrics
+    (no fake data); a Prometheus server scrapes this once added to compose."""
+    from fastapi.responses import PlainTextResponse
+    from shared.metrics import render_prometheus
+    from shared.db.redis_client import health_check
+
+    out = []
+    redis_ok = await health_check()
+    out.append({"name": "selene_up", "value": 1, "help": "gateway process is up"})
+    out.append({"name": "selene_redis_up", "value": redis_ok, "help": "redis reachable"})
+    out.append({"name": "selene_ws_clients", "value": ws_manager.count,
+                "help": "connected websocket clients"})
+    try:
+        pf = await get_json("cw4:portfolio:state") or {}
+        if "total_equity" in pf:
+            out.append({"name": "selene_portfolio_equity_usd", "value": pf.get("total_equity", 0),
+                        "help": "portfolio mark-to-market equity"})
+        if "current_drawdown" in pf:
+            out.append({"name": "selene_portfolio_drawdown", "value": pf.get("current_drawdown", 0),
+                        "help": "current drawdown fraction"})
+        if "position_count" in pf:
+            out.append({"name": "selene_open_positions", "value": pf.get("position_count", 0),
+                        "help": "open position count"})
+        risk = await get_json("cw4:risk:status") or {}
+        if "daily_pnl" in risk:
+            out.append({"name": "selene_daily_pnl_usd", "value": risk.get("daily_pnl", 0),
+                        "help": "realized daily PnL"})
+        r = get_redis()
+        halted = bool(await r.get("cw4:execution:halt"))
+        out.append({"name": "selene_execution_halted", "value": halted,
+                    "help": "1 if execution halt is engaged"})
+    except Exception as e:
+        logger.warning(f"/metrics partial: {e}")
+    return PlainTextResponse(render_prometheus(out))
+
+
 # ── Market ─────────────────────────────────────────────────────────────────────
 @app.get("/api/v4/market")
 async def market_snapshot():
