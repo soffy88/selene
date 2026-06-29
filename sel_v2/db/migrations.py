@@ -43,10 +43,22 @@ def _is_tolerable(stmt: str) -> bool:
     return False
 
 
+def _split_statements(sql: str) -> list[str]:
+    """Split schema SQL into executable statements.
+
+    Strips '--' comments to end-of-line FIRST, so a semicolon inside a comment
+    (e.g. "-- compress after 2 days; ...") can't create a comment-only fragment —
+    executing a pure-comment string via asyncpg raised
+    AttributeError('NoneType'...decode) and crashed the collector on startup.
+    """
+    no_comments = "\n".join(line.split("--", 1)[0] for line in sql.splitlines())
+    return [s.strip() for s in no_comments.split(";") if s.strip()]
+
+
 async def apply_schema(pool: asyncpg.Pool) -> None:
     """Execute schema.sql against the connected database (idempotent)."""
     sql = _SCHEMA_PATH.read_text()
-    statements = [s.strip() for s in sql.split(";") if s.strip()]
+    statements = _split_statements(sql)
     async with pool.acquire() as conn:
         for stmt in statements:
             try:
