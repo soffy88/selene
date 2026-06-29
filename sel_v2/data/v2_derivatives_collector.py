@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 import aiohttp
 import asyncpg
 
+from sel_v2.db.migrations import apply_schema
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("v2_derivatives_collector")
 
@@ -21,6 +23,7 @@ async def fetch_data(session, path):
 
 async def main():
     pool = await asyncpg.create_pool(DB_URL)
+    await apply_schema(pool)
     insert_count = 0
     
     async with aiohttp.ClientSession(trust_env=True) as session:

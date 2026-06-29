@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 import asyncpg
 from websockets_proxy import proxy_connect, Proxy
 
+from sel_v2.db.migrations import apply_schema
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("v2_tick_collector")
 
@@ -52,6 +54,7 @@ async def collect_ticks(pool):
 
 async def main():
     pool = await asyncpg.create_pool(DB_URL)
+    await apply_schema(pool)
     retry_delay = 1
     while True:
         try:

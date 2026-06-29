@@ -11,53 +11,71 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- RAW TIME-SERIES (hypertable)
 -- ============================================================
 
+-- NOTE: columns below MUST match the collector INSERTs in sel_v2/data/*.
+-- (Reconciled in optimization item #1 — the prior schema diverged from the
+--  collectors, which silently failed every INSERT and left these tables empty.)
 CREATE TABLE IF NOT EXISTS v2_ticks (
     timestamp   TIMESTAMPTZ NOT NULL,
+    symbol      TEXT        NOT NULL DEFAULT 'BTC-USDT',
     price       NUMERIC     NOT NULL,
-    volume      NUMERIC     NOT NULL,
-    side        TEXT        NOT NULL,  -- 'buy' / 'sell' / 'unknown'
-    exchange    TEXT        NOT NULL DEFAULT 'okx'
+    size        NUMERIC     NOT NULL,
+    side        TEXT        NOT NULL,  -- 'buy' / 'sell'
+    trade_id    TEXT                   -- exchange tradeId (string)
 );
 SELECT create_hypertable('v2_ticks', 'timestamp',
     chunk_time_interval => INTERVAL '1 day',
     if_not_exists => TRUE);
+-- Dedup key for WS-reconnect replays (item #6): same trade can't land twice.
+CREATE UNIQUE INDEX IF NOT EXISTS uix_v2_ticks
+    ON v2_ticks (timestamp, symbol, trade_id);
 ALTER TABLE v2_ticks SET (timescaledb.compress,
-    timescaledb.compress_segmentby = 'exchange');
+    timescaledb.compress_segmentby = 'symbol');
 SELECT add_compression_policy('v2_ticks', INTERVAL '7 days',
     if_not_exists => TRUE);
 
 -- LOB snapshots (compressed at 6h chunks)
 CREATE TABLE IF NOT EXISTS v2_lob_snapshots (
     timestamp   TIMESTAMPTZ NOT NULL,
+    symbol      TEXT        NOT NULL DEFAULT 'BTC-USDT',
     bids        JSONB       NOT NULL,  -- [[price, size], ...]
     asks        JSONB       NOT NULL,
-    exchange    TEXT        NOT NULL DEFAULT 'okx'
+    bid_depth   NUMERIC,
+    ask_depth   NUMERIC,
+    entropy     NUMERIC
 );
 SELECT create_hypertable('v2_lob_snapshots', 'timestamp',
     chunk_time_interval => INTERVAL '6 hours',
     if_not_exists => TRUE);
+CREATE UNIQUE INDEX IF NOT EXISTS uix_v2_lob_snapshots
+    ON v2_lob_snapshots (timestamp, symbol);
 
--- Derivatives snapshots (OI / funding / mark price)
+-- Derivatives snapshots (OI / funding / mark / index price)
 CREATE TABLE IF NOT EXISTS v2_derivatives_snapshots (
     timestamp       TIMESTAMPTZ NOT NULL,
-    instrument      TEXT        NOT NULL,  -- 'BTC-USDT-PERP'
-    oi              NUMERIC,
+    symbol          TEXT        NOT NULL,  -- 'BTC-USDT'
     funding_rate    NUMERIC,
-    next_funding    TIMESTAMPTZ
+    open_interest   NUMERIC,
+    mark_price      NUMERIC,
+    index_price     NUMERIC
 );
 SELECT create_hypertable('v2_derivatives_snapshots', 'timestamp',
     if_not_exists => TRUE);
+CREATE UNIQUE INDEX IF NOT EXISTS uix_v2_derivatives_snapshots
+    ON v2_derivatives_snapshots (timestamp, symbol);
 
 -- Liquidation events
 CREATE TABLE IF NOT EXISTS v2_liquidations (
     timestamp   TIMESTAMPTZ NOT NULL,
-    instrument  TEXT        NOT NULL,
+    symbol      TEXT        NOT NULL,
     side        TEXT        NOT NULL,
-    size_usd    NUMERIC     NOT NULL,
-    price       NUMERIC     NOT NULL
+    size        NUMERIC     NOT NULL,
+    price       NUMERIC     NOT NULL,
+    loss        NUMERIC
 );
 SELECT create_hypertable('v2_liquidations', 'timestamp',
     if_not_exists => TRUE);
+CREATE UNIQUE INDEX IF NOT EXISTS uix_v2_liquidations
+    ON v2_liquidations (timestamp, symbol, side, size, price);
 
 -- On-chain exchange flows (minimum set: large BTC in/out)
 CREATE TABLE IF NOT EXISTS v2_onchain_exchange_flows (
@@ -83,6 +101,8 @@ CREATE TABLE IF NOT EXISTS v2_bars_4h (
     low         NUMERIC     NOT NULL,
     close       NUMERIC     NOT NULL,
     volume      NUMERIC     NOT NULL,
+    vwap        NUMERIC,                 -- written by v2_bar_aggregator / okx_backfill
+    tick_count  INTEGER,                 -- ticks aggregated into this bar
     source      TEXT        NOT NULL DEFAULT 'okx'
 );
 SELECT create_hypertable('v2_bars_4h', 'time',

@@ -4,6 +4,8 @@ import os
 from datetime import datetime, timezone, timedelta
 import asyncpg
 
+from sel_v2.db.migrations import apply_schema
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("v2_bar_aggregator")
 
@@ -49,7 +51,8 @@ async def aggregate_bar(pool, start: datetime, end: datetime):
 
 async def main():
     pool = await asyncpg.create_pool(DB_URL)
-    
+    await apply_schema(pool)
+
     # Check max bar
     async with pool.acquire() as conn:
         max_bar = await conn.fetchval("SELECT MAX(time) FROM v2_bars_4h WHERE symbol=$1", SYMBOL)
