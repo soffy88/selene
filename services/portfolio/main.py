@@ -47,8 +47,9 @@ class PortfolioEngine:
 
     def __init__(self):
         self._positions:  dict[str, Position] = {}   # signal_id → Position
-        self._equity      = INITIAL_CAPITAL
-        self._peak_equity = INITIAL_CAPITAL
+        self._equity      = INITIAL_CAPITAL          # realized equity
+        self._last_unrealized = 0.0                  # latest mark-to-market open PnL
+        self._peak_equity = INITIAL_CAPITAL          # high-water mark on MTM equity
         self._daily_pnl   = 0.0
         self._realized_pnl = 0.0
         self._allocator   = CapitalAllocator(
@@ -74,7 +75,9 @@ class PortfolioEngine:
             logger.error(f"ScoredSignal parse: {e}")
             return signal_dict
 
-        self._allocator.update_equity(self._equity)
+        # Size against mark-to-market equity (incl. open PnL), not realized-only,
+        # so sizing shrinks when we're in open drawdown (item #5).
+        self._allocator.update_equity(self.equity_mtm)
 
         strategy = signal.signal_type.value
 
@@ -163,6 +166,11 @@ class PortfolioEngine:
                         self._strategy_returns[strategy].pop(0)
                 logger.info(f"Position CLOSED {symbol} pnl={pnl:+.4f}")
 
+    @property
+    def equity_mtm(self) -> float:
+        """Mark-to-market equity = realized equity + latest open PnL."""
+        return self._equity + self._last_unrealized
+
     # ── 更新持仓浮盈 ──────────────────────────────────
     async def mark_to_market(self, prices: dict):
         total_unrealized = 0.0
@@ -171,6 +179,9 @@ class PortfolioEngine:
             if price:
                 pos.update_unrealized(price)
                 total_unrealized += pos.unrealized_pnl
+        self._last_unrealized = total_unrealized
+        # High-water mark tracks MTM equity so open drawdown is captured.
+        self._peak_equity = max(self._peak_equity, self.equity_mtm)
         return total_unrealized
 
     # ── 构建 PortfolioState ───────────────────────────
@@ -179,10 +190,13 @@ class PortfolioEngine:
             pos.entry_price * pos.quantity
             for pos in self._positions.values()
         )
-        leverage = total_exposure / self._equity if self._equity > 0 else 0
+        mtm_equity = self._equity + unrealized
+        leverage = total_exposure / mtm_equity if mtm_equity > 0 else 0
 
-        drawdown = (self._peak_equity - self._equity) / self._peak_equity \
+        # Drawdown measured on MTM equity vs the high-water mark (item #5).
+        drawdown = (self._peak_equity - mtm_equity) / self._peak_equity \
                    if self._peak_equity > 0 else 0.0
+        drawdown = max(drawdown, 0.0)
 
         state = PortfolioState(
             total_equity      = round(self._equity + unrealized, 2),
@@ -202,7 +216,8 @@ class PortfolioEngine:
     def _drawdown_scalar(self) -> float:
         if self._peak_equity <= 0:
             return 1.0
-        dd = (self._peak_equity - self._equity) / self._peak_equity
+        # Use MTM equity so deep open drawdown throttles new sizing (item #5).
+        dd = (self._peak_equity - self.equity_mtm) / self._peak_equity
         if   dd < 0.05: return 1.00
         elif dd < 0.10: return 0.50
         elif dd < 0.15: return 0.25
