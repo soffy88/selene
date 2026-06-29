@@ -32,8 +32,10 @@ def mock_params_loader():
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _fake_rows(param_map: dict) -> list[dict]:
-    """Simulate asyncpg fetch() returning a list of dict-like records."""
-    return [{"param_name": k, "param_value": str(v)} for k, v in param_map.items()]
+    """Simulate asyncpg fetch() returning rows from the flat v2_strategy_params
+    schema: param_key (strategy-prefixed) / param_value (jsonb-as-string). Tests
+    use strategy='h2', so keys are 'h2_<name>'."""
+    return [{"param_key": f"h2_{k}", "param_value": str(v)} for k, v in param_map.items()]
 
 
 def _patch_asyncpg_connect(fetch_rows: list):

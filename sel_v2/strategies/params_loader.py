@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import json
 import os
 from typing import Optional
 
@@ -48,22 +49,25 @@ def load_strategy_params(
     """
     url = db_url or _default_db_url()
 
+    # The live v2_strategy_params is a flat key/value table: param_key (text) /
+    # param_value (jsonb), with the strategy encoded as a key prefix
+    # (e.g. 'h2_branching_threshold'). Map (strategy, name) -> '{strategy}_{name}'.
+    key_for = {f"{strategy}_{n}": n for n in param_names}
+
+    def _as_float(v) -> float:
+        if isinstance(v, str):
+            v = json.loads(v)   # jsonb arrives as a JSON string
+        return float(v)
+
     async def _fetch() -> dict[str, float]:
         conn = await asyncpg.connect(url)
         try:
             rows = await conn.fetch(
-                """
-                SELECT param_name, param_value
-                FROM v2_strategy_params
-                WHERE strategy = $1
-                  AND param_name = ANY($2)
-                  AND valid_to IS NULL
-                ORDER BY param_name
-                """,
-                strategy,
-                param_names,
+                "SELECT param_key, param_value FROM v2_strategy_params "
+                "WHERE param_key = ANY($1)",
+                list(key_for.keys()),
             )
-            return {row["param_name"]: float(row["param_value"]) for row in rows}
+            return {key_for[r["param_key"]]: _as_float(r["param_value"]) for r in rows}
         finally:
             await conn.close()
 
