@@ -184,6 +184,20 @@ class PortfolioEngine:
         self._peak_equity = max(self._peak_equity, self.equity_mtm)
         return total_unrealized
 
+    def _var_es_usd(self, exposure: float) -> tuple[float, float]:
+        """Historical 95% VaR and Expected Shortfall (CVaR) in USD from the pooled
+        realized strategy-return distribution, scaled by current exposure (item #17).
+        Returns (0,0) until enough return history exists."""
+        pooled = [r for rs in self._strategy_returns.values() for r in rs]
+        if len(pooled) < 20 or exposure <= 0:
+            return 0.0, 0.0
+        losses = sorted(pooled)               # ascending; left tail = worst losses
+        k = max(1, int(len(losses) * 0.05))
+        tail = losses[:k]
+        var_ret = -losses[k - 1]              # 95% VaR as a positive loss fraction
+        es_ret = -(sum(tail) / len(tail))     # CVaR = mean of the worst 5%
+        return max(0.0, var_ret) * exposure, max(0.0, es_ret) * exposure
+
     # ── 构建 PortfolioState ───────────────────────────
     def build_state(self, unrealized: float) -> PortfolioState:
         total_exposure = sum(
@@ -198,6 +212,12 @@ class PortfolioEngine:
                    if self._peak_equity > 0 else 0.0
         drawdown = max(drawdown, 0.0)
 
+        # Risk fields that were previously left at 0 (item #17).
+        largest_notional = max((pos.entry_price * pos.quantity
+                                for pos in self._positions.values()), default=0.0)
+        largest_position_pct = largest_notional / mtm_equity if mtm_equity > 0 else 0.0
+        var_95, es = self._var_es_usd(total_exposure)
+
         state = PortfolioState(
             total_equity      = round(self._equity + unrealized, 2),
             available_capital = round(self._equity - total_exposure + unrealized, 2),
@@ -207,6 +227,9 @@ class PortfolioEngine:
             position_count    = len(self._positions),
             current_drawdown  = round(drawdown, 4),
             max_drawdown      = round(max(drawdown, 0), 4),
+            largest_position_pct = round(largest_position_pct, 4),
+            portfolio_var_95  = round(var_95, 2),
+            expected_shortfall = round(es, 2),
             daily_pnl         = round(self._daily_pnl, 2),
             total_pnl         = round(self._realized_pnl + unrealized, 2),
             strategy_allocations = self._allocator.get_allocations().get("weights", {}),
