@@ -7,10 +7,11 @@ WebSocket endpoint for real-time push to frontend.
 import asyncio
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -95,7 +96,25 @@ async def lifespan(app: FastAPI):
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="CryptoWatch v4 Gateway", version="4.0.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# CORS: tightened off "*" (item #21). Set GATEWAY_CORS_ORIGINS (comma-separated)
+# to your dashboard origin(s); defaults to localhost only.
+_cors_origins = [o.strip() for o in os.getenv(
+    "GATEWAY_CORS_ORIGINS", "http://localhost,http://localhost:80").split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_origins=_cors_origins,
+                   allow_methods=["*"], allow_headers=["*"])
+
+
+# ── Auth for state-changing routes (item #21) ───────────────────────────────────
+# Enforced only when GATEWAY_API_KEY is set, so dev stays open but a deployment
+# locks down trade-affecting endpoints by setting the env var.
+GATEWAY_API_KEY = os.getenv("GATEWAY_API_KEY", "")
+
+
+async def require_api_key(x_api_key: str = Header(default="")):
+    if GATEWAY_API_KEY and x_api_key != GATEWAY_API_KEY:
+        raise HTTPException(status_code=401, detail="invalid or missing X-API-Key")
+    return True
 
 try:
     from sel_engine.paper_interface.api import router as sel_router
@@ -206,7 +225,7 @@ async def pending_signals():
     return {"pending": list(raw.values()), "count": len(raw)}
 
 
-@app.post("/api/v4/signals/{signal_id}/confirm")
+@app.post("/api/v4/signals/{signal_id}/confirm", dependencies=[Depends(require_api_key)])
 async def confirm_signal(signal_id: str):
     r = get_redis()
     await r.hset("cw4:signals:confirmed", signal_id, json.dumps({"action": "confirm", "ts": datetime.utcnow().isoformat()}))
@@ -214,7 +233,7 @@ async def confirm_signal(signal_id: str):
     return {"status": "confirmed", "id": signal_id}
 
 
-@app.post("/api/v4/signals/{signal_id}/reject")
+@app.post("/api/v4/signals/{signal_id}/reject", dependencies=[Depends(require_api_key)])
 async def reject_signal(signal_id: str):
     r = get_redis()
     await r.hdel("cw4:signals:pending", signal_id)
@@ -268,11 +287,10 @@ async def risk_status():
     return status
 
 
-@app.post("/api/v4/risk/circuit-breaker/reset")
-async def reset_circuit_breaker():
-    r = get_redis()
-    await r.publish("cw4:commands", json.dumps({"cmd": "reset_circuit_breaker"}))
-    return {"status": "reset_command_sent"}
+# NOTE (item #21): the duplicate simple reset route that lived here was removed.
+# FastAPI keeps the first registration for a path, so it shadowed the richer
+# circuit_breaker_reset() below (which calls risk-service + writes a PG audit).
+# That richer handler is now the single active reset route.
 
 
 # ── Execution / Orders ──────────────────────────────────────────────────────────
@@ -339,7 +357,7 @@ async def funding_positions():
     return {"positions": list(positions.values()), "count": len(positions)}
 
 
-@app.post("/api/v4/funding/execute/{symbol}")
+@app.post("/api/v4/funding/execute/{symbol}", dependencies=[Depends(require_api_key)])
 async def execute_funding_arb(symbol: str):
     r = get_redis()
     await r.publish("cw4:commands", json.dumps({"cmd": "open_funding_arb", "symbol": symbol}))
@@ -475,7 +493,7 @@ async def monitor_report():
     return json.loads(raw)
 
 
-@app.post("/api/v4/monitor/trigger")
+@app.post("/api/v4/monitor/trigger", dependencies=[Depends(require_api_key)])
 async def monitor_trigger(days: int = Query(1)):
     """手动触发立即生成简报"""
     import asyncio
@@ -598,7 +616,7 @@ async def circuit_breaker_status():
     }
 
 
-@app.post("/api/v4/risk/circuit-breaker/reset")
+@app.post("/api/v4/risk/circuit-breaker/reset", dependencies=[Depends(require_api_key)])
 async def circuit_breaker_reset():
     """手动解除熔断（同时清除 Redis + 写 PG 审计）"""
     import aiohttp
