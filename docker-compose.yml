@@ -476,6 +476,13 @@ services:
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
       - REDIS_URL=redis://helios-redis:6379/3
+      # Strategy params_loader uses POSTGRES_* (not DB_URL); point them at the platform DB
+      # so the paper engine can load H2/strategy params instead of failing to localhost.
+      - POSTGRES_HOST=platform-postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=selene_app
+      - POSTGRES_PASSWORD=${SELENE_APP_PASSWORD}
+      - POSTGRES_DB=selene
       - SYMBOLS=BTC-USDT
     volumes:
       - ./sel_v2:/app/sel_v2:ro

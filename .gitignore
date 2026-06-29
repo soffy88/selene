@@ -61,3 +61,6 @@ htmlcov/
 # Backup files
 *.bak
 *.bak.*
+
+# Vendored private quant stack (oprim/oskill) — local build only; not committed
+vendor/

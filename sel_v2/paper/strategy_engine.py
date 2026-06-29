@@ -103,13 +103,24 @@ class PaperStrategyEngine:
     def __post_init__(self) -> None:
         self.accounts = DualSubAccountEngine(total_nav_usdt=self.total_nav_usdt)
         self._s1_filter = Strategy1EntryFilter()
-        if self.hawkes_params is not None:
-            from sel_v2.strategies.hawkes_intensity import HawkesParams, HawkesIntensityTracker
-            mu, alpha, beta = self.hawkes_params
-            tracker = HawkesIntensityTracker(HawkesParams(mu=mu, alpha=alpha, beta=beta))
-            self._s2_filter = Strategy2EntryFilter(hawkes_tracker=tracker)
-        else:
-            self._s2_filter = Strategy2EntryFilter()   # loads H2 params from DB (production)
+        # Strategy 2 needs H2 Hawkes calibration (mu/alpha/beta) from v2_strategy_params.
+        # If those rows are absent (Wave 1 calibration not run), DISABLE S2 loudly rather
+        # than crash the whole engine or silently fabricate params (the design forbids a
+        # silent fallback). Strategy 1 (CUSUM + state machine) does not need them and runs.
+        self._s2_enabled = True
+        try:
+            if self.hawkes_params is not None:
+                from sel_v2.strategies.hawkes_intensity import HawkesParams, HawkesIntensityTracker
+                mu, alpha, beta = self.hawkes_params
+                tracker = HawkesIntensityTracker(HawkesParams(mu=mu, alpha=alpha, beta=beta))
+                self._s2_filter = Strategy2EntryFilter(hawkes_tracker=tracker)
+            else:
+                self._s2_filter = Strategy2EntryFilter()   # loads H2 params from DB (production)
+        except Exception as exc:  # noqa: BLE001
+            self._s2_enabled = False
+            self._s2_filter = None
+            logger.warning("Strategy 2 disabled — H2 Hawkes params unavailable (%s). "
+                           "Run Wave 1 hawkes_calibration to enable S2; S1 continues.", exc)
         self._s2_cusum = CUSUMShort()
 
     # ── feature pipeline (mirrors replay.run_replay) ───────────────────────────
@@ -200,9 +211,10 @@ class PaperStrategyEngine:
             self._maybe_open_s1(s1_dec, state, mark, ts)
 
             # ── Strategy 2: engine-owned CUSUM-Short feeds the filter and exits ──
-            s2_trig = self._s2_cusum.update(z_t, t_unix)
-            self._manage_s2_exits(state, mark, ts, s2_trig)
-            self._maybe_open_s2(t_unix, s2_trig, state, mark, ts)
+            if self._s2_enabled:
+                s2_trig = self._s2_cusum.update(z_t, t_unix)
+                self._manage_s2_exits(state, mark, ts, s2_trig)
+                self._maybe_open_s2(t_unix, s2_trig, state, mark, ts)
 
             # ── portfolio-wide cascade red line ──
             if state == "Cascade":

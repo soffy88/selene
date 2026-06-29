@@ -64,6 +64,24 @@ def test_engine_opens_positions_with_flow_inputs():
     assert total_trades > 0, "engine placed no orders despite flow inputs"
 
 
+def test_s2_disabled_gracefully_when_hawkes_params_unavailable(monkeypatch):
+    # When Strategy2EntryFilter can't initialise (e.g. H2 Hawkes calibration absent
+    # in v2_strategy_params), the engine must DISABLE S2 loudly and keep running S1,
+    # not crash. Force the failure deterministically.
+    import sel_v2.paper.strategy_engine as se
+
+    def _boom(*a, **k):
+        raise RuntimeError("H2 params missing")
+    monkeypatch.setattr(se, "Strategy2EntryFilter", _boom)
+
+    df = _bars(200)
+    eng = se.PaperStrategyEngine(total_nav_usdt=100_000, skip_tda=True)
+    assert eng._s2_enabled is False
+    summary = eng.process_frame(df)   # must not raise
+    assert summary["bars"] == len(df)
+    assert len(eng.records) == len(df)
+
+
 def test_engine_no_orders_without_flow_inputs():
     # Price-only (the old behaviour) → collapses to Drifting_Calm, no orders.
     df = _bars()
