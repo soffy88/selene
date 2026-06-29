@@ -28,9 +28,19 @@ _TIMESCALE_MARKERS = (
 )
 
 
-def _is_timescale_only(stmt: str) -> bool:
+def _is_tolerable(stmt: str) -> bool:
+    """Statements whose failure must NOT abort startup:
+    - TimescaleDB-only calls (extension may be absent on dev/CI), and
+    - index creation (a UNIQUE index can't be built over a table that already
+      contains duplicate rows; the collectors' INSERT ... ON CONFLICT DO NOTHING
+      still works without the index — it just won't dedup until dupes are cleaned).
+      Crashing the collector here would be far worse than skipping the index."""
     low = stmt.lower()
-    return any(m in low for m in _TIMESCALE_MARKERS)
+    if any(m in low for m in _TIMESCALE_MARKERS):
+        return True
+    if low.startswith("create unique index") or low.startswith("create index"):
+        return True
+    return False
 
 
 async def apply_schema(pool: asyncpg.Pool) -> None:
@@ -44,9 +54,9 @@ async def apply_schema(pool: asyncpg.Pool) -> None:
             except asyncpg.exceptions.DuplicateTableError:
                 pass  # idempotent
             except Exception as exc:  # noqa: BLE001
-                if _is_timescale_only(stmt):
+                if _is_tolerable(stmt):
                     logger.warning(
-                        "Skipping TimescaleDB-only statement (extension absent?): %s\n%s",
+                        "Skipping non-critical statement (timescale absent / dup rows?): %s\n%s",
                         exc, stmt[:120],
                     )
                     continue
