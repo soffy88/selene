@@ -69,6 +69,7 @@ class OrderRecord:
     reject_reason: str   = ""
     close_reason:  str   = ""
     realized_pnl:  Optional[float] = None
+    exit_price:    Optional[float] = None
     created_at:    datetime = field(default_factory=datetime.utcnow)
     closed_at:     Optional[datetime] = None
 
@@ -123,6 +124,7 @@ class OrderFSM:
             pnl = (self.record.filled_price - exit_price) * self.record.filled_qty
         pnl -= self.record.fee_paid
         self.record.realized_pnl = round(pnl, 8)
+        self.record.exit_price = exit_price
         return self.record.realized_pnl
 
     def to_dict(self) -> dict:
@@ -135,7 +137,8 @@ class OrderFSM:
             "stop_loss": r.stop_loss, "take_profit": r.take_profit,
             "slippage_pct": r.slippage_pct, "fee_paid": r.fee_paid,
             "state": r.state.value, "reject_reason": r.reject_reason,
-            "realized_pnl": r.realized_pnl, "kelly_fraction": r.kelly_fraction,
+            "realized_pnl": r.realized_pnl, "exit_price": r.exit_price,
+            "kelly_fraction": r.kelly_fraction,
             "created_at": r.created_at.isoformat(),
             "closed_at": r.closed_at.isoformat() if r.closed_at else None,
             "history": r.history,

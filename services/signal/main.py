@@ -25,7 +25,7 @@ from fastapi import FastAPI
 from shared.db.connections import get_redis, redis_health
 from shared.events.streams import (
     STREAM_MARKET_CANDLES, STREAM_MARKET_RAW, STREAM_SIGNAL_SCORED,
-    CG_SIGNAL, encode, decode,
+    STREAM_ORDER_LIFECYCLE, CG_SIGNAL, encode, decode,
 )
 from shared.models.signal import (
     ScoredSignal, SignalType, Direction, Regime,
@@ -197,6 +197,13 @@ def _rank(values: list) -> list:
     return rankdata(values, method='ordinal').tolist()
 
 
+def _to_float(v):
+    try:
+        return float(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 # ── Signal Service 核心 ────────────────────────────────────────────────────────
 
 class SignalService:
@@ -229,6 +236,22 @@ class SignalService:
         if symbol not in self._ic_trackers:
             self._ic_trackers[symbol] = ICTracker(symbol)
         return self._ic_trackers[symbol]
+
+    def record_signal_outcome(self, signal_id: str, exit_price: float) -> bool:
+        """Backfill a closed trade's realized exit into the IC tracker that holds
+        the originating signal (item #4 — closes the IC-decay feedback loop).
+
+        Dispatches to every tracker; record_outcome is a no-op on trackers that
+        don't hold the signal_id, so we don't need to know the symbol format used
+        by the execution service. Returns True if a tracker recorded it."""
+        if not signal_id or exit_price is None or exit_price <= 0:
+            return False
+        recorded = False
+        for tracker in self._ic_trackers.values():
+            if signal_id in tracker._pending:
+                tracker.record_outcome(signal_id, exit_price)
+                recorded = True
+        return recorded
 
     # ── 处理 K 线数据 ──────────────────────────────────
     async def handle_candle(self, data: dict):
@@ -642,7 +665,7 @@ async def calibration_refit_loop():
 async def consume_loop():
     r = await get_redis()
 
-    for stream in [STREAM_MARKET_CANDLES, STREAM_MARKET_RAW]:
+    for stream in [STREAM_MARKET_CANDLES, STREAM_MARKET_RAW, STREAM_ORDER_LIFECYCLE]:
         try:
             await r.xgroup_create(stream, CG, id="0", mkstream=True)
         except Exception as e:
@@ -675,6 +698,23 @@ async def consume_loop():
                     await r.xack(STREAM_MARKET_RAW, CG, msg_id)
                 except Exception as e:
                     logger.error(f"market_raw: {e}", exc_info=True)
+
+        # Order lifecycle → close the IC loop (item #4): on a CLOSED position,
+        # backfill the realized exit price into the originating signal's IC tracker.
+        lifecycle_results = await r.xreadgroup(
+            CG, "signal-lifecycle", {STREAM_ORDER_LIFECYCLE: ">"},
+            count=50, block=500,
+        )
+        for _, messages in (lifecycle_results or []):
+            for msg_id, fields in messages:
+                try:
+                    ev = decode(fields)
+                    if ev.get("event") == "closed" or ev.get("state") == "CLOSED":
+                        _svc.record_signal_outcome(
+                            ev.get("signal_id", ""), _to_float(ev.get("exit_price")))
+                    await r.xack(STREAM_ORDER_LIFECYCLE, CG, msg_id)
+                except Exception as e:
+                    logger.error(f"lifecycle: {e}", exc_info=True)
 
 
 @asynccontextmanager
