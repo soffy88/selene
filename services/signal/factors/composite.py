@@ -263,26 +263,62 @@ async def save_calibration(
     await redis_client.set(REDIS_CALIBRATION_KEY, json.dumps(payload))
 
 
-def platt_fit(scores: list[float], outcomes: list[int]) -> tuple[float, float]:
-    """
-    简易 Platt scaling：fit sigmoid((x-center)*scale) 使负对数似然最小化。
-    coarse grid search (center∈[-0.5,0.5], scale∈[0.5,6.0])，足以在 O(200) 样本下收敛。
-    """
-    if not scores or len(scores) != len(outcomes) or len(scores) < 20:
-        return 0.0, 2.5
-    best = (0.0, 2.5, 1e18)
+DEFAULT_CALIBRATION = (0.0, 2.5)
+
+
+def _platt_nll(scores: list[float], outcomes: list[int], c: float, s: float) -> float:
+    """Negative log-likelihood of sigmoid((x-c)*s) vs binary outcomes."""
+    nll = 0.0
+    for x, y in zip(scores, outcomes):
+        p = 1.0 / (1.0 + math.exp(-(x - c) * s))
+        p = min(max(p, 1e-6), 1 - 1e-6)
+        nll -= y * math.log(p) + (1 - y) * math.log(1 - p)
+    return nll
+
+
+def _platt_grid_fit(scores: list[float], outcomes: list[int]) -> tuple[float, float]:
+    """Coarse grid search (center∈[-0.5,0.5], scale∈[0.5,6.0]) minimising NLL."""
+    best = (*DEFAULT_CALIBRATION, 1e18)
     for c_int in range(-20, 21):                      # -0.5 ~ 0.5 step 0.025
         c = c_int * 0.025
         for s_int in range(2, 25):                    # 0.5 ~ 6.0 step 0.25
             s = s_int * 0.25
-            nll = 0.0
-            for x, y in zip(scores, outcomes):
-                p = 1.0 / (1.0 + math.exp(-(x - c) * s))
-                p = min(max(p, 1e-6), 1 - 1e-6)
-                nll -= y * math.log(p) + (1 - y) * math.log(1 - p)
+            nll = _platt_nll(scores, outcomes, c, s)
             if nll < best[2]:
                 best = (c, s, nll)
     return round(best[0], 4), round(best[1], 4)
+
+
+def platt_fit(scores: list[float], outcomes: list[int]) -> tuple[float, float]:
+    """Platt scaling: fit sigmoid((x-center)*scale) to map raw scores → P(win).
+
+    Overfitting control (item #16): with enough samples the grid search is fit on
+    a chronological TRAIN split and validated on a held-out TEST split — the fitted
+    calibration is adopted only if it beats the default on the holdout (per-sample
+    NLL), otherwise we keep the neutral default. This stops an in-sample grid search
+    from adopting parameters that don't generalise.
+    """
+    if not scores or len(scores) != len(outcomes) or len(scores) < 20:
+        return DEFAULT_CALIBRATION
+
+    n = len(scores)
+    if n < 40:
+        # Too few to split meaningfully — plain in-sample fit (legacy behaviour).
+        return _platt_grid_fit(scores, outcomes)
+
+    # Chronological holdout (data is time-ordered): first 70% train, last 30% test.
+    cut = int(n * 0.7)
+    tr_s, tr_o = scores[:cut], outcomes[:cut]
+    te_s, te_o = scores[cut:], outcomes[cut:]
+
+    c, s = _platt_grid_fit(tr_s, tr_o)
+    fitted_test_nll = _platt_nll(te_s, te_o, c, s) / len(te_s)
+    default_test_nll = _platt_nll(te_s, te_o, *DEFAULT_CALIBRATION) / len(te_s)
+    if fitted_test_nll <= default_test_nll:
+        return c, s
+    logger.info("platt_fit: fitted calibration failed holdout (%.4f > %.4f); keeping default",
+                fitted_test_nll, default_test_nll)
+    return DEFAULT_CALIBRATION
 
 
 # ── Onchain Factor Bridge ─────────────────────────────────────────────────────
