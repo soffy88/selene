@@ -442,17 +442,11 @@ services:
       - helios-net
     restart: unless-stopped
 
-  v2-onchain-collector:
-    build:
-      context: .
-      dockerfile: sel_v2/Dockerfile
-    command: python -m sel_v2.data.v2_onchain_collector
-    env_file: .env
-    environment:
-      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
-    networks:
-      - helios-net
-    restart: unless-stopped
+  # v2-onchain-collector REMOVED (item #24): on-chain exchange-flow ingestion is
+  # formally out-of-scope. The collector was a no-op stub (no paid data source) and
+  # v2_onchain_exchange_flows has zero state-machine impact per DATA_FOUNDATION_ROADMAP
+  # §6. Re-add this service only after funding a real source (Glassnode/Nansen/
+  # CryptoQuant) and implementing sel_v2/data/v2_onchain_collector.
 
   v2-bar-aggregator:
     build:
