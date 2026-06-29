@@ -11,7 +11,9 @@ pool = None
 async def get_pool():
     global pool
     if pool is None:
-        db_url = os.environ.get("DB_URL", "postgresql://selene_app:sel_app_2026@platform-postgres:5432/selene")
+        db_url = os.environ.get("DB_URL")
+        if not db_url:
+            raise RuntimeError("DB_URL must be set (no hardcoded credential fallback)")
         pool = await asyncpg.create_pool(db_url)
     return pool
 

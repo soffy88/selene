@@ -30,7 +30,7 @@ def _selene_url() -> str:
     host = os.getenv("POSTGRES_HOST", "platform-postgres")
     port = os.getenv("POSTGRES_PORT", "5432")
     user = os.getenv("POSTGRES_USER", "selene_app")
-    pw = os.getenv("POSTGRES_PASSWORD", "2eb0eac6f7a01f5c41de2dacffa928474fb575c884365ac5")
+    pw = os.getenv("POSTGRES_PASSWORD", "")
     return f"postgresql://{user}:{pw}@{host}:{port}/selene"
 
 
@@ -40,7 +40,7 @@ def _helixa_url() -> str:
     host = os.getenv("POSTGRES_HOST", "platform-postgres")
     port = os.getenv("POSTGRES_PORT", "5432")
     user = os.getenv("POSTGRES_USER", "selene_app")
-    pw = os.getenv("POSTGRES_PASSWORD", "2eb0eac6f7a01f5c41de2dacffa928474fb575c884365ac5")
+    pw = os.getenv("POSTGRES_PASSWORD", "")
     return f"postgresql://{user}:{pw}@{host}:{port}/helixa"
 
 

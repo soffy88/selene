@@ -31,7 +31,7 @@ def _default_db_url() -> str:
     host = os.getenv("POSTGRES_HOST", "localhost")
     port = os.getenv("POSTGRES_PORT", "5434")
     user = os.getenv("POSTGRES_USER", "selene_app")
-    password = os.getenv("POSTGRES_PASSWORD", "2eb0eac6f7a01f5c41de2dacffa928474fb575c884365ac5")
+    password = os.getenv("POSTGRES_PASSWORD", "")
     dbname = os.getenv("POSTGRES_DB", "selene")
     return f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
 
