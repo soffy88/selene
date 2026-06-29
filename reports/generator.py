@@ -1,6 +1,9 @@
 """
 WeeklyReportGenerator — Wave 5.
 
+DEPRECATED (item #18): consolidate onto `sel_v2/reports/`. Neither report
+scheduler is wired into compose. Kept for reference. See docs/CONSOLIDATION.md.
+
 Generates honest markdown reports from one week of DecisionTrail records.
 No beautifying: cold-start, failures, low N — all reported as-is.
 """
