@@ -47,7 +47,7 @@ async def collect_liquidations(pool):
                         
                         try:
                             await pool.execute(
-                                "INSERT INTO v2_liquidations (timestamp, symbol, side, size, price, loss) VALUES ($1, $2, $3, $4, $5, $6)",
+                                "INSERT INTO v2_liquidations (timestamp, symbol, side, size, price, loss) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
                                 ts, "BTC-USDT", side, size, price, loss
                             )
                             _guard.ok()

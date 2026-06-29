@@ -50,7 +50,7 @@ async def main():
                     
                     try:
                         await pool.execute(
-                            "INSERT INTO v2_derivatives_snapshots (timestamp, symbol, funding_rate, open_interest, mark_price, index_price) VALUES ($1, $2, $3, $4, $5, $6)",
+                            "INSERT INTO v2_derivatives_snapshots (timestamp, symbol, funding_rate, open_interest, mark_price, index_price) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
                             ts, "BTC-USDT", funding_rate, open_interest, mark_price, index_price
                         )
                         _guard.ok()

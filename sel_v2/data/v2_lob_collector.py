@@ -54,7 +54,7 @@ async def collect_lob(pool):
                     
                     try:
                         await pool.execute(
-                            "INSERT INTO v2_lob_snapshots (timestamp, symbol, bids, asks, bid_depth, ask_depth, entropy) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                            "INSERT INTO v2_lob_snapshots (timestamp, symbol, bids, asks, bid_depth, ask_depth, entropy) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING",
                             ts, SYMBOL, json.dumps(bids), json.dumps(asks), bid_depth, ask_depth, entropy
                         )
                         _guard.ok()

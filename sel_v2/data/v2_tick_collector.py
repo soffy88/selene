@@ -44,7 +44,7 @@ async def collect_ticks(pool):
                     
                     try:
                         await pool.execute(
-                            "INSERT INTO v2_ticks (timestamp, symbol, price, size, side, trade_id) VALUES ($1, $2, $3, $4, $5, $6)",
+                            "INSERT INTO v2_ticks (timestamp, symbol, price, size, side, trade_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
                             ts, SYMBOL, price, size, side, trade_id
                         )
                         _guard.ok()
