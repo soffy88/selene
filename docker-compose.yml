@@ -3,8 +3,6 @@
 # 基础设施: platform-postgres(selene DB) / helios-redis(DB 3) / helios-net (外部)
 # 启动: helios-secrets up selene
 
-version: '3.9'
-
 x-service-defaults: &defaults
   restart: unless-stopped
   networks: [helios-net]
@@ -30,7 +28,9 @@ services:
     build:
       context: .
       dockerfile: services/data/Dockerfile
-    command: python -m services.data.main
+    # services/data has no main.py (never implemented); real ingestion is done by the
+    # v2-*-collector services. No-op placeholder to stop the crash loop until removed.
+    command: sh -c "echo '[data-service] no implementation — placeholder; real data via v2-*-collectors'; tail -f /dev/null"
     environment:
       <<: *common_env
       SERVICE_NAME: data-service
