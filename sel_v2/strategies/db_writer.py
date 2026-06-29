@@ -327,6 +327,61 @@ class DBWriter:
             logger.warning("DBWriter.write_trade_entry failed: %s", exc)
             return False
 
+    async def upsert_trade(
+        self,
+        *,
+        trade_id: str,
+        strategy: str,
+        sub_account: str,
+        entry_time: datetime,
+        entry_price: float,
+        direction: str,
+        size: float,
+        leverage: float,
+        instrument: str,
+        entry_state: str,
+        exit_time: Optional[datetime] = None,
+        exit_price: Optional[float] = None,
+        exit_reason: Optional[str] = None,
+        pnl_usdt: Optional[float] = None,
+        pnl_pct: Optional[float] = None,
+        fees_paid: float = 0.0,
+    ) -> bool:
+        """Idempotent insert-or-update of a v2_trades row keyed by a deterministic id.
+
+        The paper engine replays the full bar history every tick, so the same
+        logical trade is re-emitted each cycle; a deterministic ``trade_id`` plus
+        ON CONFLICT DO UPDATE makes persistence idempotent (open trades upsert with
+        NULL exits; a later cycle fills the exit fields when the position closes)."""
+        if self._conn is None:
+            logger.warning("DBWriter.upsert_trade: not connected, skipping")
+            return False
+        try:
+            await self._conn.execute(
+                """
+                INSERT INTO v2_trades
+                    (id, strategy, sub_account, entry_time, entry_price,
+                     direction, size, leverage, instrument, entry_state,
+                     exit_time, exit_price, exit_reason, pnl_usdt, pnl_pct, fees_paid)
+                VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                        $11, $12, $13, $14, $15, $16)
+                ON CONFLICT (id) DO UPDATE SET
+                    exit_time = EXCLUDED.exit_time,
+                    exit_price = EXCLUDED.exit_price,
+                    exit_reason = EXCLUDED.exit_reason,
+                    pnl_usdt = EXCLUDED.pnl_usdt,
+                    pnl_pct = EXCLUDED.pnl_pct,
+                    fees_paid = EXCLUDED.fees_paid
+                """,
+                trade_id, strategy, sub_account, entry_time, entry_price,
+                direction, size, leverage, instrument, entry_state,
+                exit_time, exit_price, exit_reason, pnl_usdt, pnl_pct, fees_paid,
+            )
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("DBWriter.upsert_trade failed: %s", exc)
+            return False
+
     async def write_trade_exit(
         self,
         trade_id: str,

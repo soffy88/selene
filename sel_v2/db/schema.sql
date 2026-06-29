@@ -122,6 +122,9 @@ CREATE TABLE IF NOT EXISTS v2_state_history (
 );
 SELECT create_hypertable('v2_state_history', 'timestamp',
     if_not_exists => TRUE);
+-- One state record per 4H bar; makes the paper engine's full-replay persistence
+-- idempotent (write_states_bulk uses ON CONFLICT DO NOTHING). (item #6)
+CREATE UNIQUE INDEX IF NOT EXISTS uix_v2_state_history ON v2_state_history (timestamp);
 
 -- CUSUM events
 CREATE TABLE IF NOT EXISTS v2_cusum_events (

@@ -177,9 +177,11 @@ class PaperStrategyEngine:
         runner, sigma_series, log_returns = self._build_runner(df, oi_series, funding_series, ofi_series)
         n = len(df)
         states: list[str] = []
+        self.records = []   # StateRecord per bar, for DB persistence (item #6)
 
         for i in range(n):
             rec = runner.process_bar(i)
+            self.records.append(rec)
             raw_state = rec.state.value
             state = self._strategy_label(raw_state)   # strategy-convention label
             ts = rec.timestamp

@@ -2,12 +2,28 @@ import asyncio
 import json
 import logging
 import os
+import uuid
 from datetime import datetime, timezone, timedelta
 import asyncpg
 import redis.asyncio as redis
 
+from sel_v2.strategies.db_writer import DBWriter
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("paper_engine")
+
+# Fixed namespace so a logical paper trade maps to the same v2_trades.id across the
+# engine's full-history replays (item #6 — makes persistence idempotent).
+_TRADE_NS = uuid.UUID("6f1a7e2c-0b3d-4a5e-9c8b-2d1f0a3b4c5d")
+
+
+def _trade_id(strategy: str, sub_account: str, entry_time, direction: str, entry_price: float) -> str:
+    key = f"{strategy}|{sub_account}|{entry_time}|{direction}|{entry_price}"
+    return str(uuid.uuid5(_TRADE_NS, key))
+
+
+def _dir_str(direction) -> str:
+    return getattr(direction, "value", direction)
 
 class PaperEngine:
     REDIS_KEY_LAST_BAR_TS = "v2:paper:last_bar_ts"
@@ -23,6 +39,7 @@ class PaperEngine:
         self._open_positions = []
         self._degraded = False
         self._engine = None
+        self._writer = None
 
     async def _load_last_bar_ts(self) -> datetime | None:
         try:
@@ -79,6 +96,7 @@ class PaperEngine:
         summary = engine.process_frame(df)
         self._engine = engine
         await self._persist_summary(summary)
+        await self._persist_results(engine)
         logger.info("strategy engine: bars=%s state=%s s1=%s s2=%s equity=%s",
                     summary["bars"], list(summary["state_counts"])[-1:],
                     summary["s1"], summary["s2"], summary["total_equity"])
@@ -90,6 +108,43 @@ class PaperEngine:
             await self._redis.set("v2:paper:engine_summary", json.dumps(summary, default=str))
         except Exception as e:
             logger.warning("failed to persist engine summary: %s", e)
+
+    async def _persist_results(self, engine) -> None:
+        """Persist the engine's state history and trades to the v2_* tables that the
+        paper API (sel_v2/paper_interface/api.py) reads (item #6). Idempotent: state
+        rows ON CONFLICT DO NOTHING by timestamp, trades upserted by deterministic id.
+        Non-blocking — a write failure logs and does not stop the engine."""
+        if self._writer is None:
+            return
+        try:
+            records = getattr(engine, "records", None)
+            if records:
+                await self._writer.write_states_bulk(records)
+
+            for acct in (engine.accounts.subaccount_1, engine.accounts.subaccount_2):
+                for cp in acct.closed_positions:
+                    p = cp.position
+                    d = _dir_str(p.direction)
+                    await self._writer.upsert_trade(
+                        trade_id=_trade_id(p.strategy, p.sub_account, p.entry_time, d, p.entry_price),
+                        strategy=p.strategy, sub_account=p.sub_account,
+                        entry_time=p.entry_time, entry_price=p.entry_price, direction=d,
+                        size=p.size_usdt, leverage=p.leverage, instrument=p.instrument,
+                        entry_state=p.entry_state,
+                        exit_time=cp.exit_time, exit_price=cp.exit_price,
+                        exit_reason=cp.exit_reason, pnl_usdt=cp.pnl_usdt, pnl_pct=cp.pnl_pct,
+                    )
+                for p in acct.open_positions:
+                    d = _dir_str(p.direction)
+                    await self._writer.upsert_trade(
+                        trade_id=_trade_id(p.strategy, p.sub_account, p.entry_time, d, p.entry_price),
+                        strategy=p.strategy, sub_account=p.sub_account,
+                        entry_time=p.entry_time, entry_price=p.entry_price, direction=d,
+                        size=p.size_usdt, leverage=p.leverage, instrument=p.instrument,
+                        entry_state=p.entry_state,
+                    )
+        except Exception as e:
+            logger.warning("failed to persist engine results: %s", e)
 
     async def _process_bar(self, bar):
         # A new 4H bar closed — reprocess the full history through the strategy engine.
@@ -146,6 +201,8 @@ class PaperEngine:
     async def run(self):
         self._pool = await asyncpg.create_pool(self._db_url)
         self._redis = redis.from_url(self._redis_url)
+        self._writer = DBWriter(self._db_url)
+        await self._writer.connect()
         await self._load_strategy_params()
         # await self._load_open_positions()
         await self._process_backlog()
