@@ -14,6 +14,8 @@ DB_URL = os.environ.get("DB_URL")
 REDIS_URL = os.environ.get("REDIS_URL", "redis://helios-redis:6379/3")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+# Dead-man's switch: if the execution heartbeat goes stale, alert and halt trading.
+DEADMAN_STALE_S = float(os.environ.get("DEADMAN_STALE_S", "180"))
 
 async def send_telegram(message: str):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -31,6 +33,11 @@ async def send_telegram(message: str):
             }, timeout=10)
     except Exception as e:
         logger.error(f"Failed to send Telegram alert: {e}")
+
+def deadman_age(hb: dict, now_epoch: float) -> float:
+    """Seconds since the execution heartbeat. Pure helper for testing (item #10)."""
+    return now_epoch - float(hb.get("ts", 0))
+
 
 async def check_rules(pool, r):
     alerts = []
@@ -67,6 +74,26 @@ async def check_rules(pool, r):
         last_paper_ts = datetime.fromisoformat(last_paper_ts_raw.decode() if isinstance(last_paper_ts_raw, bytes) else last_paper_ts_raw)
         if last_paper_ts < max_bar and (now - max_bar).total_seconds() > 3600 * 5: # 5 hours behind
             alerts.append(("CRITICAL", "paper_stuck", f"paper_engine stuck, last processed {last_paper_ts}, DB has {max_bar}"))
+
+    # Rule 6: execution dead-man's switch (item #10). The execution reconcile loop
+    # writes cw4:execution:heartbeat each cycle; if it exists but is stale the service
+    # has wedged/crashed while positions may be open → alert AND trip the halt so no
+    # new orders are placed until an operator clears it.
+    hb_raw = await r.get("cw4:execution:heartbeat")
+    if hb_raw:
+        try:
+            hb = json.loads(hb_raw.decode() if isinstance(hb_raw, bytes) else hb_raw)
+            age = deadman_age(hb, now.timestamp())
+            if age > DEADMAN_STALE_S:
+                alerts.append(("CRITICAL", "exec_deadman",
+                               f"execution heartbeat stale {age:.0f}s (>{DEADMAN_STALE_S:.0f}s) — halting trading"))
+                if not await r.get("cw4:execution:halt"):
+                    await r.set("cw4:execution:halt", json.dumps(
+                        {"reason": "deadman_heartbeat_stale", "age_s": round(age, 1),
+                         "tripped_by": "healthcheck", "ts": now.timestamp()}))
+                    logger.error(f"dead-man switch tripped: execution heartbeat stale {age:.0f}s")
+        except Exception as e:
+            logger.warning(f"dead-man check failed to parse heartbeat: {e}")
 
     # Deduplicate and send
     for severity, rule_id, msg in alerts:
