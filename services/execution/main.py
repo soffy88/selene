@@ -27,6 +27,7 @@ PRIMARY_EXCHANGE = os.getenv("PRIMARY_EXCHANGE", "binance")
 MONITOR_INTERVAL = float(os.getenv("MONITOR_INTERVAL_S", "5"))
 MAX_SIGNAL_AGE_S = float(os.getenv("MAX_SIGNAL_AGE_S", "30"))   # quote-staleness guard
 RECONCILE_INTERVAL_S = float(os.getenv("RECONCILE_INTERVAL_S", "60"))  # exchange<->state reconcile
+ORDER_TTL_S      = float(os.getenv("ORDER_TTL_S", "300"))  # cancel a working LIMIT that hasn't filled in N s
 CG_EXECUTION     = "execution-service"
 
 _last_reconcile = {"ts": 0.0, "divergences": 0}
@@ -233,6 +234,16 @@ async def process_risk_approved(data: dict):
     await submit_to_exchange(fsm)
 
 
+def ttl_action(state, filled_qty: float, age_s: float, ttl_s: float = ORDER_TTL_S):
+    """Decide what to do with a working order at reconcile time (item #11).
+    Returns None (leave it), "accept_partial", or "cancel". Pure for testing."""
+    if state not in (OrderState.OPEN, OrderState.PARTIALLY_FILLED):
+        return None
+    if age_s <= ttl_s:
+        return None
+    return "accept_partial" if filled_qty > 0 else "cancel"
+
+
 async def submit_to_exchange(fsm: OrderFSM):
     r = await get_redis(); rec = fsm.record
 
@@ -346,6 +357,38 @@ async def reconcile_loop():
                             fsm, o.filled_qty - recorded, o.filled_price, 0.0,
                             str(o.status).upper() in ("FILLED", "EFFECTIVE"))
                         await _audit(fsm, "RECONCILE_MISSED_FILL")
+
+            # 1b) working-order TTL (item #11): cancel a live LIMIT that hasn't filled
+            # within ORDER_TTL_S. A partial fill is accepted (→ MONITORING); a wholly
+            # unfilled order is cancelled (→ CANCELLED).
+            for fsm in list(_orders.values()):
+                rec = fsm.record
+                if not rec.exchange_id or rec.exchange_id.startswith("paper-"):
+                    continue
+                age = (datetime.utcnow() - rec.created_at).total_seconds()
+                action = ttl_action(rec.state, rec.filled_qty or 0.0, age, ORDER_TTL_S)
+                if action is None:
+                    continue
+                try:
+                    adp = get_adapter(rec.exchange or PRIMARY_EXCHANGE)
+                    cancel = await adp.cancel_order(rec.symbol, rec.exchange_id)
+                except Exception as e:
+                    logger.warning(f"order TTL cancel error {rec.id[:8]}: {e}")
+                    continue
+                if not cancel.success:
+                    logger.warning(f"order TTL cancel rejected {rec.id[:8]}: {cancel.error}")
+                    continue
+                if rec.filled_qty > 0:
+                    fsm.transition(OrderState.MONITORING, note=f"ttl_partial_accept age={age:.0f}s")
+                    _stats["filled"] += 1
+                    await _pub(r, fsm, "ttl_partial_accepted")
+                else:
+                    fsm.transition(OrderState.CANCELLED, note=f"ttl_unfilled age={age:.0f}s")
+                    _stats["cancelled"] += 1
+                    await _pub(r, fsm, "ttl_cancelled")
+                await _audit(fsm, "ORDER_TTL_CANCEL")
+                await _persist_order(rec)
+                logger.info(f"order {rec.id[:8]} TTL-{'partial' if rec.filled_qty>0 else 'cancel'} after {age:.0f}s")
 
             # 2) phantom-exposure detection: exchange position with no tracked order
             divergences = 0
