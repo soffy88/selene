@@ -109,16 +109,20 @@ class PaperStrategyEngine:
         # silent fallback). Strategy 1 (CUSUM + state machine) does not need them and runs.
         self._s2_enabled = True
         try:
+            from sel_v2.strategies.hawkes_intensity import HawkesParams, HawkesIntensityTracker
             if self.hawkes_params is not None:
-                from sel_v2.strategies.hawkes_intensity import HawkesParams, HawkesIntensityTracker
                 mu, alpha, beta = self.hawkes_params
-                tracker = HawkesIntensityTracker(HawkesParams(mu=mu, alpha=alpha, beta=beta))
-                self._s2_filter = Strategy2EntryFilter(hawkes_tracker=tracker)
+                params = HawkesParams(mu=mu, alpha=alpha, beta=beta)
             else:
-                self._s2_filter = Strategy2EntryFilter()   # loads H2 params from DB (production)
+                params = HawkesParams.from_h2_reference()   # reads v2_strategy_params
+            # store_history=False: the per-bar tick feed (process_frame) pushes the
+            # full tick stream through this tracker, so unbounded history would blow up.
+            self._s2_tracker = HawkesIntensityTracker(params, store_history=False)
+            self._s2_filter = Strategy2EntryFilter(hawkes_tracker=self._s2_tracker)
         except Exception as exc:  # noqa: BLE001
             self._s2_enabled = False
             self._s2_filter = None
+            self._s2_tracker = None
             logger.warning("Strategy 2 disabled — H2 Hawkes params unavailable (%s). "
                            "Run Wave 1 hawkes_calibration to enable S2; S1 continues.", exc)
         self._s2_cusum = CUSUMShort()
@@ -180,15 +184,22 @@ class PaperStrategyEngine:
 
     # ── per-bar processing ─────────────────────────────────────────────────────
     def process_frame(self, df: pd.DataFrame, oi_series=None, funding_series=None,
-                      ofi_series=None) -> dict:
+                      ofi_series=None, tick_times=None) -> dict:
         """Run the full engine over a frame of 4H bars (ascending by time).
         Optional OI/funding/OFI series (helixa-derived) unlock the Coiling / Drifting-Charged
-        entry states. Returns a summary dict; positions/PnL live in `self.accounts`."""
+        entry states. ``tick_times`` (sorted Unix-second array of trade arrivals) drives the
+        Strategy-2 H1 Hawkes intensity so it reflects real trade clustering instead of a flat
+        baseline. Returns a summary dict; positions/PnL live in `self.accounts`."""
         df = df.sort_values("time").reset_index(drop=True)
         runner, sigma_series, log_returns = self._build_runner(df, oi_series, funding_series, ofi_series)
         n = len(df)
         states: list[str] = []
         self.records = []   # StateRecord per bar, for DB persistence (item #6)
+
+        # Tick stream for the H1 Hawkes feed (point-in-time: only ticks ≤ bar time).
+        tick_times = None if tick_times is None else list(tick_times)
+        tick_idx = 0
+        n_ticks = 0 if tick_times is None else len(tick_times)
 
         for i in range(n):
             rec = runner.process_bar(i)
@@ -199,6 +210,13 @@ class PaperStrategyEngine:
             mark = float(df["close"].iloc[i])
             z_t = self._zscore(float(log_returns[i]), float(sigma_series[i]))
             t_unix = ts.timestamp() if hasattr(ts, "timestamp") else float(i)
+
+            # Feed real trade arrivals up to this bar time into the S2 Hawkes tracker,
+            # so λ*(t) captures recent trade clustering (item: tick→H1 wiring).
+            if self._s2_enabled and tick_times is not None and self._s2_tracker is not None:
+                while tick_idx < n_ticks and tick_times[tick_idx] <= t_unix:
+                    self._s2_tracker.add_event(float(tick_times[tick_idx]))
+                    tick_idx += 1
 
             # ── Strategy 1: entry filter updates CUSUM-Mid once, gives decision ──
             s1_dec = self._s1_filter.evaluate(

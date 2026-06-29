@@ -94,10 +94,15 @@ class HawkesIntensityTracker:
         lam = tracker.intensity(t)    # query λ*(t) at arbitrary t ≥ last event
     """
 
-    def __init__(self, params: Optional[HawkesParams] = None) -> None:
+    def __init__(self, params: Optional[HawkesParams] = None,
+                 store_history: bool = True) -> None:
         self.params = params or HawkesParams.from_h2_reference()
         self._last_t: Optional[float] = None
         self._A: float = 0.0          # recursive term Σ exp(-β(t-t_i))
+        # Intensity only needs the recursive state (_A, _last_t). When feeding a
+        # high-volume tick stream, set store_history=False to bound memory — the
+        # event history is only used by update_params()/recent_intensities().
+        self._store_history = store_history
         self._event_history: List[HawkesObservation] = []
 
     # ── Public API ────────────────────────────────────────────────────────
@@ -116,7 +121,8 @@ class HawkesIntensityTracker:
 
         lam = mu + alpha * self._A
         self._last_t = t
-        self._event_history.append(HawkesObservation(timestamp=t, intensity=lam))
+        if self._store_history:
+            self._event_history.append(HawkesObservation(timestamp=t, intensity=lam))
         return lam
 
     def intensity(self, t: float) -> float:

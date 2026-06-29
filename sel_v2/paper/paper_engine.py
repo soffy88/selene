@@ -103,6 +103,22 @@ class PaperEngine:
                 funding[i] = frs[j]
         return oi, funding
 
+    async def _load_tick_times(self, df, lookback_days: int = 14):
+        """Load recent trade arrival times (Unix seconds) from v2_ticks to drive the
+        Strategy-2 H1 Hawkes intensity. Bounded to a recent window — intensity decays,
+        so only recent ticks affect recent bars (item: tick→H1 wiring)."""
+        from datetime import timedelta
+        import numpy as np
+        last_bar = df["time"].iloc[-1]
+        cutoff = last_bar - timedelta(days=lookback_days)
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT timestamp FROM v2_ticks WHERE symbol=$1 AND timestamp >= $2 "
+                "ORDER BY timestamp ASC", self._symbol, cutoff)
+        if not rows:
+            return None
+        return np.array([r["timestamp"].timestamp() for r in rows], dtype=float)
+
     @staticmethod
     def _ofi_proxy(df):
         """Bar-level signed-volume OFI proxy (sign(return) x volume). Coarse but
@@ -137,8 +153,11 @@ class PaperEngine:
         # proxy so the trading states can fire and the engine actually opens positions.
         oi_series, funding_series = await self._load_derivatives_series(df)
         ofi_series = self._ofi_proxy(df)
+        # Real trade arrivals drive the Strategy-2 H1 Hawkes intensity.
+        tick_times = await self._load_tick_times(df)
         summary = engine.process_frame(
-            df, oi_series=oi_series, funding_series=funding_series, ofi_series=ofi_series)
+            df, oi_series=oi_series, funding_series=funding_series,
+            ofi_series=ofi_series, tick_times=tick_times)
         self._engine = engine
         await self._persist_summary(summary)
         await self._persist_results(engine)

@@ -82,6 +82,25 @@ def test_s2_disabled_gracefully_when_hawkes_params_unavailable(monkeypatch):
     assert len(eng.records) == len(df)
 
 
+def test_tick_feed_drives_s2_hawkes_intensity():
+    # Feeding real trade arrivals must lift the S2 H1 Hawkes intensity well above
+    # its flat baseline (mu), so H1 reflects trade clustering instead of a constant.
+    df = _bars(220)
+    # Dense sub-second ticks over the last day (as real markets produce), so the
+    # exponentially-decaying intensity piles up by the final bars. Span a day to be
+    # robust to the bar-runner's naive-vs-UTC timestamp offset on synthetic frames.
+    t1 = df["time"].iloc[-1].timestamp()
+    tick_times = np.linspace(t1 - 86400, t1, 400_000)
+    eng = PaperStrategyEngine(total_nav_usdt=100_000, skip_tda=True,
+                              hawkes_params=(0.09, 0.023, 0.04))
+    assert eng._s2_enabled and eng._s2_tracker is not None
+    eng.process_frame(df, tick_times=tick_times)
+    tr = eng._s2_tracker
+    assert tr._last_t is not None, "no tick events were fed"
+    lam = tr.intensity(tr._last_t)
+    assert lam > tr.params.mu * 5, f"intensity {lam} not driven above baseline {tr.params.mu}"
+
+
 def test_engine_no_orders_without_flow_inputs():
     # Price-only (the old behaviour) → collapses to Drifting_Calm, no orders.
     df = _bars()
