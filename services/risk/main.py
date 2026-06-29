@@ -29,7 +29,8 @@ from shared.events.streams import (
 from services.risk.portfolio.var_engine import (
     calc_historical_var, DrawdownController, DRAWDOWN_LEVELS,
 )
-from services.risk.portfolio.correlation_risk import same_direction_correlated_exposure
+from services.risk.portfolio.correlation_risk import (
+    same_direction_correlated_exposure, parametric_var_correlated)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -47,6 +48,7 @@ MAX_LEVERAGE           = float(os.getenv("MAX_LEVERAGE",           "3.0"))
 MAX_DAILY_LOSS_PCT     = float(os.getenv("MAX_DAILY_LOSS_PCT",     "0.05"))   # 5% 日亏损熔断
 MAX_CORR_EXPOSURE      = float(os.getenv("MAX_CORR_EXPOSURE",      "0.30"))   # 同向暴露上限30%
 MIN_WIN_PROBABILITY    = float(os.getenv("MIN_WIN_PROBABILITY",    "0.55"))
+VAR_LIMIT_PCT          = float(os.getenv("VAR_LIMIT_PCT",          "0.05"))   # post-trade VaR ≤ 5% of equity
 # Dynamic correlation gate (replaces the static CORR_GROUPS when return data is available).
 CORR_THRESHOLD         = float(os.getenv("CORR_THRESHOLD",         "0.6"))    # signed ρ ≥ this ⇒ correlated (same-direction clustering)
 CORR_RETURNS_TTL_S     = float(os.getenv("CORR_RETURNS_TTL_S",     "300"))    # cache returns for 5 min
@@ -185,25 +187,46 @@ class RiskGate:
             return False, f"drawdown_halt level={level.name} dd={_dd_controller.current_dd:.1%}", 0.0
         return True, "", scalar
 
-    def check_var(self, allocated_usd: float, equity: float) -> tuple[bool, str]:
-        """VaR Gate：新仓位加入后组合 VaR 不超过 equity 的 X%"""
-        if len(_equity_history) < 30:
-            return True, ""   # 数据不足，跳过
+    async def check_var(self, symbol: str, side: str, allocated_usd: float, equity: float) -> tuple[bool, str]:
+        """VaR Gate: post-trade portfolio VaR must not exceed VAR_LIMIT_PCT of equity.
 
-        returns = [
+        Primary path uses the correlation-aware portfolio VaR (w'Σw) including the
+        candidate position, so cross-asset correlation is captured — replacing the
+        prior arbitrary `var_pct + allocated/equity*0.15` estimate (item #9).
+        Falls back to the equity-series historical VaR (scaled by the exposure the
+        candidate adds) when per-symbol return data isn't available yet."""
+        if equity <= 0:
+            return True, ""
+
+        # ── Primary: correlated post-trade VaR ──
+        signed = _signed_positions()
+        sign = 1.0 if str(side).upper() in ("BUY", "LONG") else -1.0
+        signed[symbol] = signed.get(symbol, 0.0) + sign * allocated_usd
+        returns = await _get_corr_returns(set(signed))
+        if returns:
+            var_usd = parametric_var_correlated(signed, returns, confidence=0.95)
+            var_pct = var_usd / equity if equity > 0 else 0.0
+            if var_pct > VAR_LIMIT_PCT:
+                return False, f"VaR limit: post-trade {var_pct:.1%} > {VAR_LIMIT_PCT:.0%} (correlated)"
+            return True, ""
+
+        # ── Fallback: equity-series historical VaR scaled by added exposure ──
+        if len(_equity_history) < 30:
+            return True, ""   # insufficient data
+        eq_returns = [
             (_equity_history[i] - _equity_history[i-1]) / _equity_history[i-1]
             for i in range(1, len(_equity_history))
             if _equity_history[i-1] > 0
         ]
-        var_result = calc_historical_var([r * equity for r in returns])
+        var_result = calc_historical_var([r * equity for r in eq_returns])
         if not var_result:
             return True, ""
-
         var_pct = var_result.var_95 / equity if equity > 0 else 0
-        # 新仓位大约会增加 allocated_usd/equity 的风险敞口
-        new_var_est = var_pct + (allocated_usd / equity) * 0.15
-        if new_var_est > 0.05:   # VaR 不超过 5% 净值
-            return False, f"VaR limit: est {new_var_est:.1%} > 5%"
+        # The new notional scales portfolio risk roughly in proportion to the
+        # exposure it adds (no arbitrary constant).
+        new_var_est = var_pct * (1.0 + allocated_usd / equity)
+        if new_var_est > VAR_LIMIT_PCT:
+            return False, f"VaR limit: est {new_var_est:.1%} > {VAR_LIMIT_PCT:.0%}"
         return True, ""
 
     def check_single_position(
@@ -339,7 +362,7 @@ class RiskGate:
             return False, reason, None
 
         # ── Gate 7: VaR ──
-        ok, reason = self.check_var(allocated, equity)
+        ok, reason = await self.check_var(symbol, side, allocated, equity)
         if not ok:
             return False, reason, None
 
