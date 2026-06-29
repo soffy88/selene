@@ -7,9 +7,12 @@ import asyncpg
 from websockets_proxy import proxy_connect, Proxy
 
 from sel_v2.db.migrations import apply_schema
+from sel_v2.data.insert_guard import InsertGuard, InsertFailureLimitExceeded
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("v2_liquidation_collector")
+
+_guard = InsertGuard("v2_liquidations")
 
 DB_URL = os.environ.get("DB_URL")
 SYMBOL = "BTC-USDT-SWAP"
@@ -47,13 +50,14 @@ async def collect_liquidations(pool):
                                 "INSERT INTO v2_liquidations (timestamp, symbol, side, size, price, loss) VALUES ($1, $2, $3, $4, $5, $6)",
                                 ts, "BTC-USDT", side, size, price, loss
                             )
+                            _guard.ok()
                             insert_count += 1
                             if insert_count == 1:
                                 logger.info("INSERT row 1 to v2_liquidations")
                             if insert_count % 10 == 0:
                                 logger.info(f"v2_liquidations cumulative inserts: {insert_count}")
                         except Exception as db_e:
-                            logger.error(f"INSERT failed: {db_e}")
+                            _guard.fail(db_e)
 
 async def main():
     pool = await asyncpg.create_pool(DB_URL)
@@ -63,6 +67,8 @@ async def main():
         try:
             await collect_liquidations(pool)
             retry_delay = 1
+        except InsertFailureLimitExceeded:
+            raise  # fail-fast: let the process exit so the fault surfaces
         except Exception as e:
             logger.error(f"Connection error: {e}. Retrying in {retry_delay}s...")
             await asyncio.sleep(retry_delay)

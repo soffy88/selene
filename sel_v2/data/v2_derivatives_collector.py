@@ -6,9 +6,12 @@ import aiohttp
 import asyncpg
 
 from sel_v2.db.migrations import apply_schema
+from sel_v2.data.insert_guard import InsertGuard, InsertFailureLimitExceeded
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("v2_derivatives_collector")
+
+_guard = InsertGuard("v2_derivatives_snapshots")
 
 DB_URL = os.environ.get("DB_URL")
 SYMBOL = "BTC-USDT-SWAP"
@@ -50,16 +53,19 @@ async def main():
                             "INSERT INTO v2_derivatives_snapshots (timestamp, symbol, funding_rate, open_interest, mark_price, index_price) VALUES ($1, $2, $3, $4, $5, $6)",
                             ts, "BTC-USDT", funding_rate, open_interest, mark_price, index_price
                         )
+                        _guard.ok()
                         insert_count += 1
                         if insert_count == 1:
                             logger.info("INSERT row 1 to v2_derivatives_snapshots")
                         if insert_count % 10 == 0:
                             logger.info(f"v2_derivatives_snapshots cumulative inserts: {insert_count}")
                     except Exception as db_e:
-                        logger.error(f"INSERT failed: {db_e}")
+                        _guard.fail(db_e)
+            except InsertFailureLimitExceeded:
+                raise  # fail-fast: let the process exit so the fault surfaces
             except Exception as e:
                 logger.error(f"Error fetching derivatives: {e}")
-            
+
             await asyncio.sleep(30)
 
 if __name__ == "__main__":

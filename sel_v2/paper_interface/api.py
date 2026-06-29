@@ -1,7 +1,7 @@
 import os
 import asyncpg
 from fastapi import APIRouter, Query, HTTPException
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -24,6 +24,8 @@ class StateHealth(BaseModel):
     satiation_pct: float
     is_ready: bool
     latest_ts: Optional[datetime]
+    state_counts: Dict[str, int] = {}
+    health_warning_count: int = 0
 
 def normalize_symbol(symbol: str) -> str:
     if symbol == "BTCUSDT": return "BTC-USDT"
@@ -47,20 +49,31 @@ async def state_health(symbol: str = Query("BTC-USDT")):
     async with p.acquire() as conn:
         count = await conn.fetchval("SELECT count(*) FROM v2_bars_4h WHERE symbol=$1", symbol)
         latest = await conn.fetchval("SELECT max(time) FROM v2_bars_4h WHERE symbol=$1", symbol)
-        
+        sc_rows = await conn.fetch(
+            "SELECT state, count(*)::int AS cnt FROM v2_state_history "
+            "WHERE timestamp > NOW() - INTERVAL '24 hours' GROUP BY state"
+        )
+        warn_count = await conn.fetchval(
+            "SELECT count(*) FROM v2_state_history "
+            "WHERE timestamp > NOW() - INTERVAL '30 days' AND state IS NULL"
+        )
+
         count = count or 0
         satiation = min(count / 180 * 100, 100.0)
         is_ready = count >= 180
-        
+        state_counts = {r["state"]: r["cnt"] for r in sc_rows if r["state"]}
+
         return StateHealth(
             symbol=symbol,
             total_bars=count,
             total_bars_4h=count,
-            cold_start_bars=count, 
+            cold_start_bars=count,
             active_bars=count,
             satiation_pct=round(satiation, 2),
             is_ready=is_ready,
-            latest_ts=latest
+            latest_ts=latest,
+            state_counts=state_counts,
+            health_warning_count=int(warn_count or 0),
         )
 
 @router.get("/sel/state/history")
