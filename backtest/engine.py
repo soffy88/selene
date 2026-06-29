@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
+from backtest.costs import round_trip_cost_pct, capacity_capped_notional
+
 logger = logging.getLogger(__name__)
 
 # WFO default configuration
@@ -190,6 +192,11 @@ class WFOEngine:
         times    = [c["open_time"] for c in candles]
         fr_map   = {d["funding_time"]: d["funding_rate"] for d in funding_rates}
 
+        # Average daily volume in USD (1h candles → ×24) for the cost/capacity model.
+        import statistics
+        bar_notional = [c.get("volume", 0.0) * c["close"] for c in candles if c.get("volume")]
+        adv_usd = statistics.median(bar_notional) * 24 if bar_notional else 0.0
+
         train_bars   = self.config.train_days   * 24   # assuming 1h candles
         test_bars    = self.config.test_days     * 24
         step_bars    = self.config.step_days     * 24
@@ -221,7 +228,7 @@ class WFOEngine:
             best_params = self._optimize_params(
                 symbol, train_candles,
                 closes[train_ctx_lo:start], highs[train_ctx_lo:start], lows[train_ctx_lo:start],
-                fr_map, grid,
+                fr_map, grid, adv_usd,
             )
             selected_params.append(best_params)
 
@@ -243,7 +250,7 @@ class WFOEngine:
                 context_lows=context_lows,
                 fr_map=fr_map,
                 initial_capital=self.config.initial_capital,
-                params=best_params,
+                params=best_params, adv_usd=adv_usd,
             )
 
             if oos_trades:
@@ -267,7 +274,7 @@ class WFOEngine:
     def _simulate_period(
         self, symbol: str, candles: dict,
         context_closes: list, context_highs: list, context_lows: list,
-        fr_map: dict, initial_capital: float, params: dict,
+        fr_map: dict, initial_capital: float, params: dict, adv_usd: float = 0.0,
     ) -> list[TradeRecord]:
         """Simulate trading over one window with a fixed parameter set."""
         from services.signal.regime.detector import RegimeDetector, _calc_atr
@@ -335,10 +342,18 @@ class WFOEngine:
                 take = price + atr * atr_take if side == "LONG" else price - atr * atr_take
 
                 qty = (equity * self.config.risk_pct) / (atr * atr_stop)
+                # Capacity: clamp notional to a share of ADV (item #14).
+                notional = qty * price
+                capped = capacity_capped_notional(notional, adv_usd)
+                if capped < notional and price > 0:
+                    qty = capped / price
+                    notional = capped
+                cost_pct = round_trip_cost_pct(notional, adv_usd)
                 open_pos = {
                     "symbol": symbol, "type": sig["type"], "side": side,
                     "entry_price": price, "stop": stop, "take": take,
                     "qty": qty, "entry_time": t, "entry_ci": ci,
+                    "cost_pct": cost_pct,
                 }
                 cooldowns[key] = t + 4 * 3600 * 1000   # 4h cooldown
                 break
@@ -379,7 +394,7 @@ class WFOEngine:
         return signals
 
     def _optimize_params(self, symbol, train_candles, ctx_closes, ctx_highs, ctx_lows,
-                         fr_map, grid) -> dict:
+                         fr_map, grid, adv_usd: float = 0.0) -> dict:
         """Search the grid on the in-sample train window; return the params with the
         best train Sharpe (requiring a minimum trade count). Falls back to the first
         grid entry if nothing clears the bar."""
@@ -390,7 +405,8 @@ class WFOEngine:
             trades = self._simulate_period(
                 symbol=symbol, candles=train_candles,
                 context_closes=ctx_closes, context_highs=ctx_highs, context_lows=ctx_lows,
-                fr_map=fr_map, initial_capital=self.config.initial_capital, params=params,
+                fr_map=fr_map, initial_capital=self.config.initial_capital,
+                params=params, adv_usd=adv_usd,
             )
             if len(trades) < MIN_TRAIN_TRADES:
                 continue
@@ -415,13 +431,16 @@ class WFOEngine:
             exit_price = close; reason = "TIMEOUT"
 
         if exit_price and reason:
+            # Round-trip execution cost (spread + fee + sqrt-impact) from the cost
+            # model, folded into slippage_pct (×100) so pnl_pct nets it out once.
+            cost_pct = pos.get("cost_pct", 0.0)
             return TradeRecord(
                 symbol=pos["symbol"], signal_type=pos["type"], side=pos["side"],
                 entry_price=pos["entry_price"], exit_price=exit_price,
                 quantity=pos["qty"], entry_time=pos["entry_time"],
                 exit_time=current_time, exit_reason=reason,
-                slippage_pct=0.02,  # 0.02% assumed slippage
-                fee_pct=0.0004,
+                slippage_pct=cost_pct * 100.0,
+                fee_pct=0.0,  # folded into the modelled cost above
             )
         return None
 
