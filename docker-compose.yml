@@ -23,44 +23,10 @@ x-common-env: &common_env
 services:
 
   # ── Data ─────────────────────────────────────────────────────────────────
-  data-service:
-    <<: *defaults
-    build:
-      context: .
-      dockerfile: services/data/Dockerfile
-    # services/data has no main.py (never implemented); real ingestion is done by the
-    # v2-*-collector services. No-op placeholder to stop the crash loop until removed.
-    command: sh -c "echo '[data-service] no implementation — placeholder; real data via v2-*-collectors'; tail -f /dev/null"
-    environment:
-      <<: *common_env
-      SERVICE_NAME: data-service
-      SERVICE_PORT: "8001"
-      MARKET_DATA_API_KEY:       ${MARKET_DATA_API_KEY:-}
-      MARKET_DATA_API_SECRET:    ${MARKET_DATA_API_SECRET:-}
-      MARKET_DATA_USE_PROXY:     ${MARKET_DATA_USE_PROXY:-false}
-      HTTP_PROXY:                ${HTTP_PROXY:-}
-      HTTPS_PROXY:               ${HTTPS_PROXY:-}
-      OKX_PUBLIC_API_BASE:       ${OKX_PUBLIC_API_BASE:-https://www.okx.com}
-      OKX_KLINES_PATH:           ${OKX_KLINES_PATH:-/api/v5/market/history-candles}
-      OKX_FUNDING_HISTORY_PATH:  ${OKX_FUNDING_HISTORY_PATH:-/api/v5/public/funding-rate-history}
-      OKX_MARK_PRICE_PATH:       ${OKX_MARK_PRICE_PATH:-/api/v5/public/mark-price}
-      OKX_OPEN_INTEREST_PATH:    ${OKX_OPEN_INTEREST_PATH:-/api/v5/public/open-interest}
-      OKX_LONG_SHORT_RATIO_PATH: ${OKX_LONG_SHORT_RATIO_PATH:-/api/v5/public/long-short-ratio}
-      KCEX_API_BASE:             ${KCEX_API_BASE:-https://api.kcex.com}
-      KCEX_FUTURES_BASE:         ${KCEX_FUTURES_BASE:-https://api.kcex.com}
-      KCEX_KLINES_PATH:          ${KCEX_KLINES_PATH:-/fapi/v1/klines}
-      KCEX_FUNDING_HISTORY_PATH: ${KCEX_FUNDING_HISTORY_PATH:-/fapi/v1/fundingRate}
-      KCEX_OI_HISTORY_PATH:      ${KCEX_OI_HISTORY_PATH:-/futures/data/openInterestHist}
-      KCEX_PREMIUM_INDEX_PATH:   ${KCEX_PREMIUM_INDEX_PATH:-/fapi/v1/premiumIndex}
-      KCEX_LONG_SHORT_RATIO_PATH: ${KCEX_LONG_SHORT_RATIO_PATH:-/futures/data/globalLongShortAccountRatio}
-    ports: ['8001:8001']
-    deploy:
-      resources:
-        limits: {cpus: '1', memory: 512M}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 30s
-      start_period: 15s
+  # NOTE (item #22): the data-service placeholder was removed. services/data was
+  # never implemented; real ingestion is the v2-*-collector services. Its
+  # permanently-unhealthy no-op container and the depends_on edges that pointed at
+  # it have been dropped.
 
   # ── Signal ───────────────────────────────────────────────────────────────
   signal-service:
@@ -78,8 +44,6 @@ services:
       MIN_DATA_QUALITY:      ${MIN_DATA_QUALITY:-0.7}
       PUSH_THRESHOLD_STRONG: ${PUSH_THRESHOLD_STRONG:-0.62}
       PUSH_THRESHOLD_WATCH:  ${PUSH_THRESHOLD_WATCH:-0.56}
-    depends_on:
-      - data-service
     ports: ['8002:8002']
     deploy:
       resources:
@@ -281,8 +245,10 @@ services:
       SERVICE_NAME: sel-orderbook
       SEL_SYMBOL:   ${SEL_SYMBOL:-BTCUSDT}
       SEL_INST_ID:  ${SEL_INST_ID:-BTC-USDT-SWAP}
+    # Real liveness check (item #22): confirm the collector process is running by
+    # scanning /proc (portable, no extra tools) instead of the fake `true`.
     healthcheck:
-      test: ["CMD-SHELL", "true"]
+      test: ["CMD-SHELL", "python -c \"import glob,sys; sys.exit(0 if any(b'run_orderbook' in open(p,'rb').read() for p in glob.glob('/proc/[0-9]*/cmdline')) else 1)\""]
       interval: 60s
     deploy:
       resources:
@@ -300,7 +266,7 @@ services:
       SEL_SYMBOL:   ${SEL_SYMBOL:-BTCUSDT}
       SEL_INST_ID:  ${SEL_INST_ID:-BTC-USDT-SWAP}
     healthcheck:
-      test: ["CMD-SHELL", "true"]
+      test: ["CMD-SHELL", "python -c \"import glob,sys; sys.exit(0 if any(b'run_trade_flow' in open(p,'rb').read() for p in glob.glob('/proc/[0-9]*/cmdline')) else 1)\""]
       interval: 60s
     deploy:
       resources:
@@ -318,7 +284,7 @@ services:
       SEL_SYMBOL:   ${SEL_SYMBOL:-BTCUSDT}
       SEL_INST_ID:  ${SEL_INST_ID:-BTC-USDT-SWAP}
     healthcheck:
-      test: ["CMD-SHELL", "true"]
+      test: ["CMD-SHELL", "python -c \"import glob,sys; sys.exit(0 if any(b'run_oi' in open(p,'rb').read() for p in glob.glob('/proc/[0-9]*/cmdline')) else 1)\""]
       interval: 60s
     deploy:
       resources:
@@ -368,7 +334,6 @@ services:
       SERVICE_NAME: gateway
       SERVICE_PORT: "5000"
     depends_on:
-      - data-service
       - signal-service
       - portfolio-service
       - risk-service
@@ -389,6 +354,11 @@ services:
     ports: ['8088:80']
     depends_on:
       - gateway
+    # Healthcheck via the nginx /healthz location added in item #21.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/healthz || exit 1"]
+      interval: 30s
+      start_period: 5s
     deploy:
       resources:
         limits: {cpus: '0.1', memory: 64M}
