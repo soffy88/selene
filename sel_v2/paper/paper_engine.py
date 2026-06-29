@@ -119,6 +119,48 @@ class PaperEngine:
             return None
         return np.array([r["timestamp"].timestamp() for r in rows], dtype=float)
 
+    async def _load_microstructure_series(self, df, lookback_days: int = 14):
+        """Per-4H-bar microstructure features from real v2_ticks + v2_lob_snapshots,
+        used to derive the Strategy-2 inverse-vocab tags (Sweep/Absorption) and OFI
+        persistence. Aggregated in SQL via time_bucket for efficiency; aligned to the
+        bar grid (NaN where no data). Bounded to a recent window.
+
+        Returns dict of np arrays aligned to df rows:
+          taker_net  — Σ buy size − Σ sell size in the bar (signed taker flow)
+          taker_vol  — Σ |size| (total taken volume)
+          lob_imb    — mean(bid_depth − ask_depth) over the bar's LOB snapshots
+        """
+        from datetime import timedelta
+        import numpy as np
+        n = len(df)
+        out = {k: np.full(n, np.nan) for k in ("taker_net", "taker_vol", "lob_imb")}
+        cutoff = df["time"].iloc[-1] - timedelta(days=lookback_days)
+        # bar open time -> row index
+        idx = {t: i for i, t in enumerate(df["time"])}
+        async with self._pool.acquire() as conn:
+            flow = await conn.fetch(
+                "SELECT time_bucket('4 hours', timestamp) AS b, "
+                "  COALESCE(SUM(size) FILTER (WHERE side='buy'),0) "
+                "  - COALESCE(SUM(size) FILTER (WHERE side='sell'),0) AS net, "
+                "  COALESCE(SUM(size),0) AS vol "
+                "FROM v2_ticks WHERE symbol=$1 AND timestamp >= $2 GROUP BY b",
+                self._symbol, cutoff)
+            lob = await conn.fetch(
+                "SELECT time_bucket('4 hours', timestamp) AS b, "
+                "  AVG(bid_depth - ask_depth) AS imb "
+                "FROM v2_lob_snapshots WHERE symbol=$1 AND timestamp >= $2 GROUP BY b",
+                self._symbol, cutoff)
+        for r in flow:
+            i = idx.get(r["b"])
+            if i is not None:
+                out["taker_net"][i] = float(r["net"])
+                out["taker_vol"][i] = float(r["vol"])
+        for r in lob:
+            i = idx.get(r["b"])
+            if i is not None and r["imb"] is not None:
+                out["lob_imb"][i] = float(r["imb"])
+        return out
+
     @staticmethod
     def _ofi_proxy(df):
         """Bar-level signed-volume OFI proxy (sign(return) x volume). Coarse but
@@ -155,9 +197,11 @@ class PaperEngine:
         ofi_series = self._ofi_proxy(df)
         # Real trade arrivals drive the Strategy-2 H1 Hawkes intensity.
         tick_times = await self._load_tick_times(df)
+        # Per-bar microstructure → Strategy-2 inverse-vocab + OFI persistence.
+        micro = await self._load_microstructure_series(df)
         summary = engine.process_frame(
             df, oi_series=oi_series, funding_series=funding_series,
-            ofi_series=ofi_series, tick_times=tick_times)
+            ofi_series=ofi_series, tick_times=tick_times, micro=micro)
         self._engine = engine
         await self._persist_summary(summary)
         await self._persist_results(engine)

@@ -34,6 +34,14 @@ logger = logging.getLogger("paper_strategy_engine")
 
 _SIGMA_WINDOW = 180
 
+# Strategy-2 inverse-vocab classifier thresholds (v1 heuristics on real tick/LOB
+# microstructure — documented & replaceable). See _micro_vocab_series.
+_VOCAB_VOL_WINDOW = 60      # bars for the rolling taker-volume percentile baseline
+_VOCAB_VOL_Q = 0.80        # taker volume above this percentile = "high activity"
+_SWEEP_MOVE = 0.005        # |bar return| ≥ 0.5% with flow → aggressive Sweep
+_ABSORB_MOVE = 0.0015      # high volume but |return| ≤ 0.15% → flow Absorbed
+_OFI_PERSIST_BARS = 2      # net taker flow same direction for this many bars
+
 
 # Inlined from sel_v2/scheduler/replay.py (kept identical) so this engine is importable
 # without ripser when TDA is disabled — replay imports tda_critical at module load.
@@ -182,9 +190,57 @@ class PaperStrategyEngine:
             threshold=dec.cusum_threshold, intensity_coeff=0.0,
         )
 
+    def _micro_vocab_series(self, df: pd.DataFrame, micro: Optional[dict]):
+        """Per-bar Strategy-2 inputs from real microstructure (item: S2 vocab wiring).
+
+        Returns (vocab_list, flow_dir) where vocab_list[i] is a set of inverse-vocab
+        tags and flow_dir[i] ∈ {-1,0,+1} is the net taker-flow sign. v1 heuristics:
+          Sweep      — high taker volume + a same-direction ≥0.5% bar move (aggressive
+                       consumption sweeping levels).
+          Absorption — high taker volume but ≤0.15% move (flow absorbed by limits).
+          Crowding   — net taker flow the same direction for ≥ _OFI_PERSIST_BARS bars.
+        All empty when no tick/LOB data covers the bar (conservative)."""
+        n = len(df)
+        vocab: list[set] = [set() for _ in range(n)]
+        flow_dir = np.zeros(n)
+        if micro is None:
+            return vocab, flow_dir
+
+        taker_net = micro.get("taker_net")
+        taker_vol = micro.get("taker_vol")
+        lob_imb = micro.get("lob_imb")
+        close = df["close"].values.astype(float)
+        open_ = df["open"].values.astype(float)
+
+        # Flow direction: taker net if present, else LOB imbalance.
+        for i in range(n):
+            v = taker_net[i] if (taker_net is not None and np.isfinite(taker_net[i])) else (
+                lob_imb[i] if (lob_imb is not None and np.isfinite(lob_imb[i])) else np.nan)
+            flow_dir[i] = 0.0 if not np.isfinite(v) else float(np.sign(v))
+
+        for i in range(n):
+            if taker_vol is None or not np.isfinite(taker_vol[i]):
+                continue
+            lo = max(0, i - _VOCAB_VOL_WINDOW)
+            window = taker_vol[lo:i]
+            window = window[np.isfinite(window)]
+            if len(window) < 10:
+                continue
+            vol_high = taker_vol[i] >= np.quantile(window, _VOCAB_VOL_Q)
+            pm = (close[i] - open_[i]) / open_[i] if open_[i] else 0.0
+            if vol_high and abs(pm) >= _SWEEP_MOVE and np.sign(pm) == flow_dir[i] and flow_dir[i] != 0:
+                vocab[i].add("Sweep")
+            if vol_high and abs(pm) <= _ABSORB_MOVE:
+                vocab[i].add("Absorption")
+            # Crowding: persistent same-direction net flow.
+            if flow_dir[i] != 0 and i >= _OFI_PERSIST_BARS - 1:
+                if all(flow_dir[i - k] == flow_dir[i] for k in range(_OFI_PERSIST_BARS)):
+                    vocab[i].add("Crowding")
+        return vocab, flow_dir
+
     # ── per-bar processing ─────────────────────────────────────────────────────
     def process_frame(self, df: pd.DataFrame, oi_series=None, funding_series=None,
-                      ofi_series=None, tick_times=None) -> dict:
+                      ofi_series=None, tick_times=None, micro=None) -> dict:
         """Run the full engine over a frame of 4H bars (ascending by time).
         Optional OI/funding/OFI series (helixa-derived) unlock the Coiling / Drifting-Charged
         entry states. ``tick_times`` (sorted Unix-second array of trade arrivals) drives the
@@ -200,6 +256,9 @@ class PaperStrategyEngine:
         tick_times = None if tick_times is None else list(tick_times)
         tick_idx = 0
         n_ticks = 0 if tick_times is None else len(tick_times)
+
+        # Per-bar Strategy-2 inverse-vocab + flow direction from real microstructure.
+        vocab_series, flow_dir = self._micro_vocab_series(df, micro)
 
         for i in range(n):
             rec = runner.process_bar(i)
@@ -232,7 +291,8 @@ class PaperStrategyEngine:
             if self._s2_enabled:
                 s2_trig = self._s2_cusum.update(z_t, t_unix)
                 self._manage_s2_exits(state, mark, ts, s2_trig)
-                self._maybe_open_s2(t_unix, s2_trig, state, mark, ts)
+                self._maybe_open_s2(t_unix, s2_trig, state, mark, ts,
+                                    vocab=vocab_series[i], flow_dir=flow_dir[i])
 
             # ── portfolio-wide cascade red line ──
             if state == "Cascade":
@@ -278,9 +338,18 @@ class PaperStrategyEngine:
             self._apply_exit(acct, pos.id, dec, mark, ts, is_s1=True)
 
     # ── Strategy 2 helpers ─────────────────────────────────────────────────────
-    def _maybe_open_s2(self, t_unix, trig, state, mark, ts) -> None:
+    def _maybe_open_s2(self, t_unix, trig, state, mark, ts, vocab=None, flow_dir=0.0) -> None:
+        # OFI persistently same direction as the CUSUM signal: real taker-flow sign
+        # (flow_dir, already persistence-gated via the Crowding tag) agrees with the
+        # CUSUM direction. None when there's no flow data → Type B stays conservative.
+        ofi_persist = None
+        if trig.triggered and flow_dir != 0 and trig.direction in ("LONG", "SHORT"):
+            cusum_sign = 1.0 if trig.direction == "LONG" else -1.0
+            ofi_persist = ("Crowding" in (vocab or set())) and (flow_dir == cusum_sign)
         dec = self._s2_filter.evaluate(
             t=t_unix, cusum_trigger=trig, state_4h=state,
+            inverse_vocab=list(vocab) if vocab else None,
+            ofi_persistent_same_direction=ofi_persist,
             subaccount_nav_usdt=self.accounts.subaccount_2.nav,
         )
         if dec.action not in ("ENTER_LONG", "ENTER_SHORT"):

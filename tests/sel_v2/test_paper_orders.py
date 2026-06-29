@@ -101,6 +101,28 @@ def test_tick_feed_drives_s2_hawkes_intensity():
     assert lam > tr.params.mu * 5, f"intensity {lam} not driven above baseline {tr.params.mu}"
 
 
+def test_micro_vocab_classifier_tags():
+    # Build bars with controlled moves and a micro dict that should produce each tag.
+    df = _bars(80)
+    n = len(df)
+    close = df["close"].values.astype(float)
+    open_ = df["open"].values.astype(float)
+    taker_vol = np.full(n, 100.0)
+    taker_vol[-1] = 10_000.0           # last bar: high activity
+    taker_net = np.full(n, 50.0)       # persistently positive flow → Crowding
+    micro = {"taker_net": taker_net, "taker_vol": taker_vol,
+             "lob_imb": np.full(n, np.nan)}
+    eng = PaperStrategyEngine(total_nav_usdt=100_000, skip_tda=True,
+                              hawkes_params=(0.09, 0.023, 0.04))
+    vocab, flow_dir = eng._micro_vocab_series(df, micro)
+    # Persistent positive flow → Crowding on the high-activity bar; flow_dir is +1.
+    assert flow_dir[-1] == 1.0
+    assert "Crowding" in vocab[-1]
+    # No micro → all-empty vocab.
+    v0, f0 = eng._micro_vocab_series(df, None)
+    assert all(len(s) == 0 for s in v0)
+
+
 def test_engine_no_orders_without_flow_inputs():
     # Price-only (the old behaviour) → collapses to Drifting_Calm, no orders.
     df = _bars()
