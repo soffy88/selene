@@ -10,6 +10,11 @@ relative to low-freq trend energy.  Signal fires when energy ratio exceeds
 rolling 90th-percentile threshold.
 
 Reuses pywt (available) from sel_v2/offline/wavelet.py pattern.
+
+ACCURACY NOTE (item #15): despite the "multifractal" name, this computes a
+high-/low-frequency wavelet ENERGY RATIO — it is NOT a multifractal analysis
+(no MFDFA, wavelet leaders, or singularity spectrum). Treat the output as an
+energy-concentration heuristic; a true multifractal spectrum is future work.
 """
 from __future__ import annotations
 

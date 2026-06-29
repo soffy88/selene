@@ -10,6 +10,11 @@ the rolling 90th-percentile threshold.
 
 STUB: threshold is seeded from hardcoded default (0.05) until a 90-day
       calibration history is accumulated.  Replace via offline recalibration.
+
+ACCURACY NOTE (item #15): the "L^1 norm" here is the TOTAL PERSISTENCE (sum of
+H1 death-birth lifetimes), not a persistence-landscape L^1, and no clustering is
+performed despite the "clustering" name. It is a scalar topological-activity
+heuristic; a true persistence landscape / clustering step is future work.
 """
 from __future__ import annotations
 

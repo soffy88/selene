@@ -78,10 +78,15 @@ def symbolic_te(source: np.ndarray, target: np.ndarray, d: int = 3, lag: int = 1
     # y_past:   sy[d - 1 : d - 1 + n]  (y_{t-1}'s pattern, simplified to 1-step)
     # x_past:   sx[d - 1 : d - 1 + n] shifted by lag
 
+    # x_past must lag the target by `lag` steps. Previously this used sx[d-1:...]
+    # regardless of lag (correct only at lag=1) — the lag was never applied (item #15).
+    x_start = d - lag
+    if x_start < 0:
+        return 0.0   # lag exceeds the embedding offset; not enough history
+
     y_fut = sy[d: d + n]
     y_past = sy[d - 1: d - 1 + n]
-    # x_past lags behind: we take sx starting from (d - 1 + lag) back
-    x_past = sx[d - 1: d - 1 + n]
+    x_past = sx[x_start: x_start + n]
 
     if len(y_fut) != len(y_past) or len(y_fut) != len(x_past):
         min_len = min(len(y_fut), len(y_past), len(x_past))
