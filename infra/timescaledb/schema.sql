@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS orders (
     quantity       DECIMAL(20,8) NOT NULL,
     limit_price    DECIMAL(20,8),
     stop_price     DECIMAL(20,8),
+    take_profit    DECIMAL(20,8),
     filled_price   DECIMAL(20,8),
     filled_qty     DECIMAL(20,8),
     slippage_pct   DECIMAL(8,6),
@@ -120,6 +121,8 @@ CREATE TABLE IF NOT EXISTS orders (
     created_at     TIMESTAMPTZ   DEFAULT NOW(),
     closed_at      TIMESTAMPTZ
 );
+-- Backfill column for existing deployments (CREATE TABLE IF NOT EXISTS won't add it). (item #7)
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS take_profit DECIMAL(20,8);
 CREATE INDEX IF NOT EXISTS idx_orders_sym   ON orders (symbol, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_state ON orders (state);
 CREATE INDEX IF NOT EXISTS idx_orders_sig   ON orders (signal_id);

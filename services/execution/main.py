@@ -422,11 +422,11 @@ async def _persist_order(rec):
             await conn.execute("""
                 INSERT INTO orders
                     (id, signal_id, symbol, exchange, side, order_type,
-                     quantity, limit_price, stop_price, filled_price, filled_qty,
+                     quantity, limit_price, stop_price, take_profit, filled_price, filled_qty,
                      slippage_pct, fee_paid, state, exchange_id,
                      kelly_fraction, risk_usd, reject_reason, close_reason,
                      realized_pnl, created_at, closed_at)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
                 ON CONFLICT (id) DO UPDATE SET
                     filled_price  = EXCLUDED.filled_price,
                     filled_qty    = EXCLUDED.filled_qty,
@@ -434,6 +434,7 @@ async def _persist_order(rec):
                     fee_paid      = EXCLUDED.fee_paid,
                     state         = EXCLUDED.state,
                     exchange_id   = EXCLUDED.exchange_id,
+                    take_profit   = EXCLUDED.take_profit,
                     reject_reason = EXCLUDED.reject_reason,
                     close_reason  = EXCLUDED.close_reason,
                     realized_pnl  = EXCLUDED.realized_pnl,
@@ -444,6 +445,7 @@ async def _persist_order(rec):
             rec.symbol, rec.exchange, rec.side, rec.order_type,
             rec.quantity, rec.limit_price or rec.entry_price,
             rec.stop_loss or None,
+            rec.take_profit or None,
             rec.filled_price or None, rec.filled_qty or None,
             rec.slippage_pct or None, rec.fee_paid or None,
             rec.state.value, rec.exchange_id or None,
@@ -484,7 +486,7 @@ async def _recover_monitoring_orders():
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT id, signal_id, symbol, exchange, side, order_type, "
-                "quantity, limit_price, stop_price, filled_price, filled_qty, "
+                "quantity, limit_price, stop_price, take_profit, filled_price, filled_qty, "
                 "slippage_pct, fee_paid, state, exchange_id, kelly_fraction, risk_usd, "
                 "reject_reason, close_reason, realized_pnl, created_at, closed_at "
                 "FROM orders WHERE state='MONITORING'"
@@ -502,7 +504,7 @@ async def _recover_monitoring_orders():
                 limit_price   = lp or None,
                 entry_price   = lp,
                 stop_loss     = float(row['stop_price'] or 0),
-                take_profit   = 0.0,  # not stored in DB; monitoring guards take_profit > 0
+                take_profit   = float(row['take_profit'] or 0),  # restored so TP exits survive restart (item #7)
                 filled_price  = float(row['filled_price'] or 0),
                 filled_qty    = float(row['filled_qty'] or 0),
                 slippage_pct  = float(row['slippage_pct'] or 0),
@@ -527,16 +529,21 @@ async def _recover_monitoring_orders():
         logger.error(f"DB order recovery failed: {e}")
 
 
+LIVE_EXEC_MODES = ("AUTO_EXEC", "CONFIRM_THEN_EXEC")
+
+
 def _assert_safe_exec_mode():
-    """Fail-fast guard: refuse to auto-execute against a live (production) exchange unless an
-    operator has explicitly acknowledged it. Prevents an accidental AUTO_EXEC + production deploy
-    from trading real money. Override with I_UNDERSTAND_LIVE_AUTO_EXEC=yes."""
+    """Fail-fast guard: refuse to place orders against a live (production) exchange unless an
+    operator has explicitly acknowledged it. Both AUTO_EXEC and CONFIRM_THEN_EXEC reach mainnet
+    (the latter after a manual /orders/{id}/confirm), so both are gated (item #7). Prevents an
+    accidental live deploy from trading real money. Override with I_UNDERSTAND_LIVE_AUTO_EXEC=yes."""
     env = os.getenv("ENVIRONMENT", "development")
     ack = os.getenv("I_UNDERSTAND_LIVE_AUTO_EXEC", "").lower() in ("1", "true", "yes")
-    if EXEC_MODE == "AUTO_EXEC" and env == "production" and not ack:
+    if EXEC_MODE in LIVE_EXEC_MODES and env == "production" and not ack:
         raise RuntimeError(
-            "Refusing to start: EXEC_MODE=AUTO_EXEC with ENVIRONMENT=production. "
-            "This would auto-trade real funds. Set I_UNDERSTAND_LIVE_AUTO_EXEC=yes to override."
+            f"Refusing to start: EXEC_MODE={EXEC_MODE} with ENVIRONMENT=production. "
+            "This would place orders against real funds. "
+            "Set I_UNDERSTAND_LIVE_AUTO_EXEC=yes to override."
         )
 
 
