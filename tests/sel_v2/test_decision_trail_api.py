@@ -123,6 +123,24 @@ def test_strategy_summary_empty_is_valid(monkeypatch):
     assert out["current_state"] is None
 
 
+def test_sel_chart_returns_ascending_ohlc_with_state(monkeypatch):
+    import decimal
+    # endpoint queries DESC; it must return ascending unix-second OHLC + state
+    t1 = datetime(2026, 6, 30, 0, tzinfo=timezone.utc)
+    t2 = datetime(2026, 6, 30, 4, tzinfo=timezone.utc)
+    rows = [  # DESC order as the SQL returns
+        {"time": t2, "open": decimal.Decimal("2"), "high": decimal.Decimal("3"),
+         "low": decimal.Decimal("1"), "close": decimal.Decimal("2.5"), "state": "Surging"},
+        {"time": t1, "open": decimal.Decimal("1"), "high": decimal.Decimal("2"),
+         "low": decimal.Decimal("0.5"), "close": decimal.Decimal("1.5"), "state": "Drifting_Calm"},
+    ]
+    _patch_pool(monkeypatch, _Conn(rows=rows))
+    out = asyncio.run(api.sel_chart(symbol="BTC-USDT", bars=300))
+    assert [d["state"] for d in out] == ["Drifting_Calm", "Surging"]   # ascending
+    assert out[0]["time"] == int(t1.timestamp()) and isinstance(out[0]["time"], int)
+    assert out[1]["close"] == 2.5 and out[1]["high"] == 3.0
+
+
 def test_decision_view_flattens_entry_decision():
     from sel_v2.paper.strategy_engine import PaperStrategyEngine
 

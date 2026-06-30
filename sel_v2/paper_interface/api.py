@@ -88,6 +88,29 @@ async def state_history(symbol: str = Query("BTC-USDT"), hours: int = 24, limit:
         )
         return [record_to_dict(r) for r in rows]
 
+@router.get("/sel/chart")
+async def sel_chart(symbol: str = Query("BTC-USDT"), bars: int = 300):
+    """OHLC bars + the regime state per bar for the SEL price chart. Joins v2_bars_4h with
+    v2_state_history on the bar open time; returns the most recent `bars` 4H bars ascending.
+    `time` is unix seconds (the time format lightweight-charts expects)."""
+    sym = normalize_symbol(symbol)
+    p = await get_pool()
+    async with p.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT b.time, b.open, b.high, b.low, b.close, s.state "
+            "FROM v2_bars_4h b "
+            "LEFT JOIN v2_state_history s ON s.timestamp = b.time "
+            "WHERE b.symbol = $1 "
+            "ORDER BY b.time DESC LIMIT $2", sym, bars)
+    return [
+        {"time": int(r["time"].timestamp()),
+         "open": float(r["open"]), "high": float(r["high"]),
+         "low": float(r["low"]), "close": float(r["close"]),
+         "state": r["state"]}
+        for r in reversed(rows)
+    ]
+
+
 @router.get("/sel/cusum/recent")
 async def cusum_recent(strategy: str = "all", limit: int = 20):
     p = await get_pool()

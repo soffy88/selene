@@ -474,6 +474,13 @@ td.neu{color:var(--text1)}
     <div class="stat"><div class="stat-label">健康警告</div><div class="stat-val" id="sel-warn">--</div><div class="stat-sub">过去30天</div></div>
   </div>
   <div class="card">
+    <div class="ch">BTC 走势 + SEL 状态标注 <span style="font-size:10px;color:var(--text2)">(4H · 近300根 · 状态切换处打点)</span></div>
+    <div class="cb">
+      <div id="sel-chart" style="width:100%;height:340px"></div>
+      <div id="sel-chart-legend" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:10px;color:var(--text2)"></div>
+    </div>
+  </div>
+  <div class="card">
     <div class="ch">策略 (S1 趋势 / S2 日内) <span style="font-size:10px;color:var(--text2)" id="sel-strat-state">--</span></div>
     <div class="cb">
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -510,6 +517,7 @@ td.neu{color:var(--text1)}
 </div><!-- .main -->
 </div><!-- .app -->
 
+<script src="/lightweight-charts.standalone.production.js"></script>
 <script>
 const API='/api/v4'; const st={signals:[],prices:{},fr:{},regimes:{},portfolio:null,pending:[],arbOpps:[],btRunId:null,sigFilter:'ALL',orders:[]};
 
@@ -923,8 +931,54 @@ async function loadOverview(){
 }
 
 // sel state
+// SEL 状态配色(走势图标注用)
+const SEL_STATE_COLORS={
+  Drifting_Calm:'#888',Coiling:'#26a69a',Drifting_Charged:'#26c6da',
+  Surging:'#42a5f5',Surging_Up:'#42a5f5',Surging_Down:'#5c6bc0',
+  Critical:'#ffa726',Cascade:'#ef5350'
+};
+let _selChart=null,_selSeries=null;
+async function loadSelChart(){
+  if(typeof LightweightCharts==='undefined') return;          // lib 未加载
+  const data=await fetch('/api/v2/sel/chart?symbol=BTC-USDT&bars=300').then(r=>r.ok?r.json():null).catch(()=>null);
+  if(!Array.isArray(data)||!data.length) return;
+  const el=document.getElementById('sel-chart'); if(!el) return;
+  if(!_selChart){
+    _selChart=LightweightCharts.createChart(el,{
+      width:el.clientWidth,height:340,
+      layout:{background:{type:'solid',color:'transparent'},textColor:'#9aa'},
+      grid:{vertLines:{color:'rgba(255,255,255,.05)'},horzLines:{color:'rgba(255,255,255,.05)'}},
+      timeScale:{timeVisible:true,secondsVisible:false,borderColor:'#333'},
+      rightPriceScale:{borderColor:'#333'},
+      crosshair:{mode:0}
+    });
+    _selSeries=_selChart.addCandlestickSeries({
+      upColor:'#26a69a',downColor:'#ef5350',borderVisible:false,
+      wickUpColor:'#26a69a',wickDownColor:'#ef5350'
+    });
+    window.addEventListener('resize',()=>{if(_selChart)_selChart.applyOptions({width:el.clientWidth});});
+  }
+  _selSeries.setData(data.map(d=>({time:d.time,open:d.open,high:d.high,low:d.low,close:d.close})));
+  // 状态切换处打点标注
+  const markers=[]; let prev=null; const seen=new Set();
+  for(const d of data){
+    if(d.state){ seen.add(d.state); }
+    if(d.state && d.state!==prev){
+      markers.push({time:d.time,position:'aboveBar',color:SEL_STATE_COLORS[d.state]||'#bbb',shape:'circle',text:d.state});
+      prev=d.state;
+    }
+  }
+  _selSeries.setMarkers(markers);
+  _selChart.timeScale().fitContent();
+  // 图例(只列出现过的状态)
+  document.getElementById('sel-chart-legend').innerHTML=[...seen].map(s=>
+    `<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${SEL_STATE_COLORS[s]||'#bbb'};margin-right:3px"></span>${s}</span>`
+  ).join('');
+}
+
 async function loadSel(){
   const sym='BTC-USDT';
+  loadSelChart();
   const [hd,hst,summ,trec,topen]=await Promise.all([
     fetch(`/api/v2/sel/state/health?symbol=${sym}`).then(r=>r.ok?r.json():null).catch(()=>null),
     fetch(`/api/v2/sel/state/history?symbol=${sym}&hours=24&limit=24`).then(r=>r.ok?r.json():null).catch(()=>null),
