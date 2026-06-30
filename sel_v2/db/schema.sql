@@ -234,20 +234,18 @@ CREATE INDEX IF NOT EXISTS idx_v2_decision_trail_ts
 CREATE INDEX IF NOT EXISTS idx_v2_decision_trail_component
     ON v2_decision_trail (target_component, timestamp DESC);
 
--- Strategy parameters version table
+-- Strategy parameters: flat key/value store.
+-- Convention: param_key = '{strategy}_{name}' (e.g. 'h2_mu_ref', 'tda1_l1_threshold_p95').
+-- param_value is a JSONB scalar. Read via sel_v2/strategies/params_loader.load_strategy_params,
+-- written via save_strategy_params (e.g. sel_v2/offline/hawkes_calibration). This flat shape
+-- is what every reader queries (param_key/param_value); the committed schema must reproduce it
+-- so a fresh deploy populates the same table the live DB uses. Guarded by
+-- tests/sel_v2/test_strategy_params_schema.py.
 CREATE TABLE IF NOT EXISTS v2_strategy_params (
-    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    strategy        TEXT        NOT NULL,
-    param_name      TEXT        NOT NULL,
-    param_value     JSONB       NOT NULL,
-    valid_from      TIMESTAMPTZ NOT NULL,
-    valid_to        TIMESTAMPTZ,
-    decision_id     UUID        REFERENCES v2_decision_trail(id),
-    created_at      TIMESTAMPTZ DEFAULT NOW()
+    param_key   TEXT        PRIMARY KEY,
+    param_value JSONB       NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_v2_strategy_params_active
-    ON v2_strategy_params (strategy, param_name)
-    WHERE valid_to IS NULL;
 
 -- Tool evaluation results (monthly reviews)
 CREATE TABLE IF NOT EXISTS v2_tool_evaluation_results (

@@ -83,3 +83,43 @@ def load_strategy_params(
             "Populate the table by running Wave 1 hawkes_calibration.py first."
         )
     return result
+
+
+def save_strategy_params(
+    strategy: str,
+    params: dict[str, float],
+    db_url: Optional[str] = None,
+) -> None:
+    """
+    Upsert named parameters into v2_strategy_params for the given strategy.
+
+    The inverse of load_strategy_params: each (strategy, name) is written to the
+    flat key '{strategy}_{name}' with the value JSON-encoded as a JSONB scalar.
+    Existing keys are overwritten (ON CONFLICT). This is how offline calibration
+    (e.g. hawkes_calibration) makes its results available to the live strategies —
+    without it, Strategy 2 silently disables itself for lack of H2 reference params.
+
+    Args:
+        strategy: Value encoded as the key prefix (e.g. 'h2', 'tda1').
+        params:   {name: value}. Values are coerced to float before storage.
+        db_url:   Optional DSN override. Falls back to environment variables.
+    """
+    url = db_url or _default_db_url()
+    rows = [(f"{strategy}_{name}", json.dumps(float(value)))
+            for name, value in params.items()]
+
+    async def _store() -> None:
+        conn = await asyncpg.connect(url)
+        try:
+            await conn.executemany(
+                "INSERT INTO v2_strategy_params (param_key, param_value, updated_at) "
+                "VALUES ($1, $2::jsonb, NOW()) "
+                "ON CONFLICT (param_key) DO UPDATE "
+                "SET param_value = EXCLUDED.param_value, updated_at = NOW()",
+                rows,
+            )
+        finally:
+            await conn.close()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(asyncio.run, _store()).result()

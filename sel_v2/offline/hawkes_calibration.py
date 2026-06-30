@@ -108,6 +108,8 @@ def run_hawkes_calibration(
     window: int = 540,
     step: int = 6,
     output_path: str = "analysis/hawkes_calibration_v1.md",
+    persist: bool = True,
+    db_url: str | None = None,
 ) -> dict:
     logger.info("Loading data from %s", data_path)
     df = pd.read_parquet(data_path).sort_values("time").reset_index(drop=True)
@@ -213,7 +215,48 @@ def run_hawkes_calibration(
     }
 
     _write_report(result, output_path)
+
+    if persist:
+        _persist_to_db(full_fit, db_url)
+
     return result
+
+
+def _persist_to_db(full_fit: dict, db_url: str | None) -> None:
+    """Write the H2 reference parameters into v2_strategy_params so the live
+    strategies can load them. Without this, HawkesParams.from_h2_reference() raises
+    and Strategy 2 silently disables itself (it caught the RuntimeError and ran S1
+    only). The keys match what load_strategy_params('h2', [...]) expects:
+    h2_mu_ref / h2_alpha_ref / h2_beta_ref / h2_branching_ratio_threshold.
+
+    A DB failure is logged, not raised: the markdown report is still produced, and
+    offline calibration must remain runnable in environments without Postgres."""
+    mu = full_fit.get("mu")
+    alpha = full_fit.get("alpha")
+    beta = full_fit.get("beta")
+    if not all(np.isfinite(x) for x in (mu, alpha, beta) if x is not None) \
+            or None in (mu, alpha, beta):
+        logger.warning("Skipping DB persist: full-dataset fit did not converge "
+                       "(mu=%s alpha=%s beta=%s)", mu, alpha, beta)
+        return
+    try:
+        from sel_v2.strategies.params_loader import save_strategy_params
+        save_strategy_params(
+            strategy="h2",
+            params={
+                "mu_ref": mu,
+                "alpha_ref": alpha,
+                "beta_ref": beta,
+                "branching_ratio_threshold": CRITICAL_THRESHOLD,
+            },
+            db_url=db_url,
+        )
+        logger.info("Persisted H2 reference params to v2_strategy_params "
+                    "(mu=%.6f alpha=%.6f beta=%.6f threshold=%.2f)",
+                    mu, alpha, beta, CRITICAL_THRESHOLD)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to persist H2 params to v2_strategy_params (%s). "
+                     "Strategy 2 will stay disabled until these rows exist.", exc)
 
 
 def _write_report(result: dict, output_path: str) -> None:
@@ -418,6 +461,10 @@ def main() -> None:
     parser.add_argument("--step", type=int, default=6,
                         help="Step between calibration points (default 6 = 1 day)")
     parser.add_argument("--output", default="analysis/hawkes_calibration_v1.md")
+    parser.add_argument("--no-persist", action="store_true",
+                        help="Skip writing H2 reference params to v2_strategy_params")
+    parser.add_argument("--db-url", default=None,
+                        help="Postgres DSN override for param persistence")
     args = parser.parse_args()
 
     run_hawkes_calibration(
@@ -426,6 +473,8 @@ def main() -> None:
         window=args.window,
         step=args.step,
         output_path=args.output,
+        persist=not args.no_persist,
+        db_url=args.db_url,
     )
 
 
