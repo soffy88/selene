@@ -393,6 +393,8 @@ class PaperStrategyEngine:
         if not acct.can_open():
             return
         direction = "LONG" if dec.action == "ENTER_LONG" else "SHORT"
+        # base_size_pct now carries the §14.4 base (10%) scaled by CUSUM intensity;
+        # the flat 10% is only a defensive floor if a decision lacks it entirely.
         size_pct = max(0.0, getattr(dec, "base_size_pct", 0.0) or 0.0)
         if size_pct <= 0:
             size_pct = 0.10  # §14.4 base = 10% of sub-account-2

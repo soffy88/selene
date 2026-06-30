@@ -134,6 +134,27 @@ def test_type_b_short_momentum():
     assert d.action == "ENTER_SHORT"
 
 
+def test_entry_size_scales_with_cusum_intensity():
+    """base_size_pct must scale with the CUSUM C/h ratio (§14.4): the flat 10%
+    base at coeff≈1, larger for a stronger break — the intensity_coeff is no
+    longer ignored by sizing."""
+    from sel_v2.strategies.strategy2_entry import BASE_SIZE_FRACTION
+
+    f = Strategy2EntryFilter()
+    weak = f.evaluate(t=1e6, cusum_trigger=_make_trigger(direction="LONG", coeff=1.0),
+                      state_4h="Coiling", inverse_vocab=["Sweep"],
+                      ofi_persistent_same_direction=True)
+    f2 = Strategy2EntryFilter()
+    strong = f2.evaluate(t=1e6, cusum_trigger=_make_trigger(direction="LONG", coeff=2.5),
+                         state_4h="Coiling", inverse_vocab=["Sweep"],
+                         ofi_persistent_same_direction=True)
+
+    assert weak.action == "ENTER_LONG" and strong.action == "ENTER_LONG"
+    assert weak.base_size_pct == pytest.approx(BASE_SIZE_FRACTION)            # 10%
+    assert strong.base_size_pct == pytest.approx(BASE_SIZE_FRACTION * 2.5)    # scaled
+    assert strong.base_size_pct > weak.base_size_pct
+
+
 def test_type_b_aborts_when_ofi_unknown():
     """ofi_persistent_same_direction=None must abort (Type B cannot trigger)."""
     f = Strategy2EntryFilter()

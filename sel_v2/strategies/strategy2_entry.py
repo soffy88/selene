@@ -40,6 +40,7 @@ class EntryDecision:
     reason: str
     cusum_direction: Optional[Literal["LONG", "SHORT"]] = None
     cusum_intensity_coeff: float = 0.0    # C/h ratio for sizing
+    base_size_pct: float = 0.0            # fraction of subaccount-2 NAV to commit
     hawkes_lambda: Optional[float] = None
     hawkes_threshold: Optional[float] = None
     hawkes_passed: Optional[bool] = None
@@ -220,6 +221,10 @@ class Strategy2EntryFilter:
             ),
             cusum_direction=direction,
             cusum_intensity_coeff=cusum_trigger.intensity_coeff,
+            # §14.4: base size = 10% of subaccount-2, scaled by the CUSUM signal
+            # strength (C/h ratio, already capped at 3.0). At the minimum trigger
+            # (coeff≈1) this is the 10% base; a stronger break sizes up to 3×.
+            base_size_pct=BASE_SIZE_FRACTION * max(1.0, cusum_trigger.intensity_coeff),
             hawkes_lambda=lam_now,
             hawkes_threshold=h_lambda,
             hawkes_passed=True,

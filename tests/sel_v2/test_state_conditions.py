@@ -119,6 +119,22 @@ def test_surging_fires_when_flow_available():
     assert res.met is True
 
 
+def test_surging_fires_when_ofi_extreme():
+    """Real OFI in the top decile now confirms Surging (previously discarded)."""
+    f = _feat(price_breakout_up=True, sigma_pctile=0.75, ofi_cumulative_pctile=0.95)
+    res = check_surging(f)
+    assert res.met is True
+
+
+def test_surging_ofi_non_extreme_abstains_not_vetoes():
+    """A non-extreme OFI reading must abstain (met=None with OI absent), never
+    return False — otherwise _tristate_all would veto Surging on the common case."""
+    f = _feat(price_breakout_up=True, sigma_pctile=0.75, ofi_cumulative_pctile=0.40)
+    res = check_surging(f)
+    assert res.met is None
+    assert "ofi_90pct" in res.none_conditions
+
+
 def test_surging_no_breakout_false():
     f = _feat(price_breakout_up=False, price_breakout_down=False, sigma_pctile=0.75)
     res = check_surging(f)

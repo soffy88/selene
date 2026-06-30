@@ -180,12 +180,12 @@ def check_surging(features: BarFeatures) -> ConditionResult:
     From Coiling (primary path):
       - Price breaks 24h high or low (computable)
       - σ > 70th pctile (computable)
-      - OFI cumulative direction 90th pctile (STUB)
+      - OFI cumulative direction 90th pctile (live when OFI data present)
       - OI acceleration (STUB)
 
     Conservative principle (v2.1 §2.1): price_breakout + σ are necessary but not
-    sufficient. At least one of the two STUB flow signals (OFI or OI acceleration)
-    must be non-None (and True) to return met=True. If both STUBs are None →
+    sufficient. At least one of the two flow signals (OFI or OI acceleration)
+    must be non-None (and True) to return met=True. If both are None →
     met=None (state unidentifiable; prevents Drifting_Calm → Surging bypass of the
     Coiling/Drifting-Charged intermediate state required by §6 transition graph).
     """
@@ -201,8 +201,17 @@ def check_surging(features: BarFeatures) -> ConditionResult:
     # σ jump
     sigma_jump: Optional[bool] = features.sigma_pctile >= 0.70
 
-    # OFI (STUB)
-    ofi_pctile_high: Optional[bool] = None  # features.ofi_cumulative_pctile
+    # OFI cumulative direction in the top decile (90th pctile of the 7-day rank).
+    # BarRunner populates ofi_cumulative_pctile from the OFI proxy series. OFI is a
+    # POSITIVE confirmation signal combined by the "at least one flow True" rule, so
+    # an extreme reading confirms (True) while a non-extreme or missing reading
+    # abstains (None) — it must not return False, which _tristate_all treats as a
+    # hard veto and would block Surging on the common (non-extreme) case.
+    ofi_pctile_high: Optional[bool] = (
+        True if (features.ofi_cumulative_pctile is not None
+                 and features.ofi_cumulative_pctile >= 0.90)
+        else None
+    )
 
     # OI acceleration (STUB)
     oi_accel: Optional[bool] = features.oi_acceleration
