@@ -474,6 +474,20 @@ td.neu{color:var(--text1)}
     <div class="stat"><div class="stat-label">健康警告</div><div class="stat-val" id="sel-warn">--</div><div class="stat-sub">过去30天</div></div>
   </div>
   <div class="card">
+    <div class="ch">策略 (S1 趋势 / S2 日内) <span style="font-size:10px;color:var(--text2)" id="sel-strat-state">--</span></div>
+    <div class="cb">
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <div class="stat" style="flex:1;min-width:150px"><div class="stat-label">S1 趋势 (子账户)</div><div id="sel-s1" class="stat-sub" style="line-height:1.6">--</div></div>
+        <div class="stat" style="flex:1;min-width:150px"><div class="stat-label">S2 日内 (子账户)</div><div id="sel-s2" class="stat-sub" style="line-height:1.6">--</div></div>
+      </div>
+      <div class="section-label" style="margin-top:10px">成交记录（持仓中 + 最近平仓）</div>
+      <div style="overflow-x:auto">
+        <table><thead><tr><th>策略</th><th>方向</th><th>入场</th><th>出场</th><th>PnL (USDT)</th></tr></thead>
+        <tbody id="sel-trades-table"><tr><td colspan="5" class="t-empty">加载中...</td></tr></tbody></table>
+      </div>
+    </div>
+  </div>
+  <div class="card">
     <div class="ch">冷启动进度 <span style="font-size:10px;color:var(--text2)">(需要180条4H数据)</span></div>
     <div class="cb">
       <div class="progress mt2" style="margin-bottom:8px">
@@ -911,10 +925,45 @@ async function loadOverview(){
 // sel state
 async function loadSel(){
   const sym='BTC-USDT';
-  const [hd,hst]=await Promise.all([
+  const [hd,hst,summ,trec,topen]=await Promise.all([
     fetch(`/api/v2/sel/state/health?symbol=${sym}`).then(r=>r.ok?r.json():null).catch(()=>null),
-    fetch(`/api/v2/sel/state/history?symbol=${sym}&hours=24&limit=24`).then(r=>r.ok?r.json():null).catch(()=>null)
+    fetch(`/api/v2/sel/state/history?symbol=${sym}&hours=24&limit=24`).then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch(`/api/v2/sel/strategy/summary?symbol=${sym}`).then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch(`/api/v2/sel/trades/recent?limit=20`).then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch(`/api/v2/sel/trades/open`).then(r=>r.ok?r.json():null).catch(()=>null)
   ]);
+  // ── S1/S2 策略摘要 ──
+  if(summ){
+    const card=(s)=>{
+      const pnl=+(s.realized_pnl||0); const wr=s.win_rate!=null?(s.win_rate*100).toFixed(0)+'%':'--';
+      const col=pnl>0?'g':pnl<0?'r':'neu';
+      return `持仓 <b>${s.open_trades}</b> · 平仓 <b>${s.closed_trades}</b> · 胜率 ${wr}<br>`+
+             `<span class="${col}">PnL ${pnl>=0?'+':''}${pnl.toFixed(2)}</span>`;
+    };
+    document.getElementById('sel-s1').innerHTML=card(summ.strategy_1);
+    document.getElementById('sel-s2').innerHTML=card(summ.strategy_2);
+    document.getElementById('sel-strat-state').textContent='当前状态 '+(summ.current_state||'--');
+  }
+  // ── 成交记录:持仓中(open) + 最近平仓(recent) ──
+  const open=(Array.isArray(topen)?topen:[]).map(t=>({...t,_open:true}));
+  const all=[...open,...(Array.isArray(trec)?trec:[])];
+  const tbody=document.getElementById('sel-trades-table');
+  if(all.length){
+    tbody.innerHTML=all.map(t=>{
+      const pnl=t.pnl_usdt; const pc=pnl>0?'g':pnl<0?'r':'neu';
+      const dc=t.direction==='LONG'?'g':'r';
+      const strat=(t.strategy||'').replace('strategy_','S');
+      return `<tr>
+        <td class="neu">${strat}</td>
+        <td class="${dc}">${t.direction||'--'}</td>
+        <td class="neu">${ft(t.entry_time)}</td>
+        <td class="neu">${t._open?'<span style="color:var(--amber)">持仓中</span>':ft(t.exit_time)}</td>
+        <td class="${pc}">${pnl!=null?(pnl>=0?'+':'')+(+pnl).toFixed(2):'--'}</td>
+      </tr>`;
+    }).join('');
+  }else{
+    tbody.innerHTML='<tr><td colspan="5" class="t-empty">暂无成交（S1/S2 尚未触发入场 — 当前为高波动趋势,S1 入场状态 Coiling/盘整 未出现）</td></tr>';
+  }
   if(hd){
     const tot=hd.total_bars||0; const cold=hd.cold_start_bars||0; const active=hd.active_bars||0;
     const pct=(hd.satiation_pct||0).toFixed(1);

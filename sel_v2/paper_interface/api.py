@@ -115,6 +115,51 @@ async def trades_recent(limit: int = 20):
         )
         return [record_to_dict(r) for r in rows]
 
+@router.get("/sel/strategy/summary")
+async def strategy_summary(symbol: str = Query("BTC-USDT")):
+    """Per-strategy (S1 trend / S2 intraday) paper status for the UI: open/closed trade
+    counts, realised PnL and win-rate, plus the current regime state and bar coverage.
+
+    Built only from v2_trades + v2_state_history (the PG the API already uses; no Redis).
+    Zeroes when a strategy hasn't traded yet — that's a valid observation (e.g. S1 sits out
+    a sustained high-volatility regime because its entry states never form), not an error."""
+    p = await get_pool()
+    sym = normalize_symbol(symbol)
+    async with p.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT strategy, "
+            "  count(*) FILTER (WHERE exit_time IS NULL)     AS open_trades, "
+            "  count(*) FILTER (WHERE exit_time IS NOT NULL) AS closed_trades, "
+            "  count(*) FILTER (WHERE exit_time IS NOT NULL AND pnl_usdt > 0) AS wins, "
+            "  round(coalesce(sum(pnl_usdt) FILTER (WHERE exit_time IS NOT NULL), 0)::numeric, 2) AS realized_pnl "
+            "FROM v2_trades GROUP BY strategy")
+        latest = await conn.fetchrow(
+            "SELECT state, timestamp FROM v2_state_history ORDER BY timestamp DESC LIMIT 1")
+        bars = await conn.fetchval("SELECT count(*) FROM v2_bars_4h WHERE symbol = $1", sym)
+    by = {r["strategy"]: r for r in rows}
+
+    def strat(name: str) -> dict:
+        r = by.get(name)
+        closed = int(r["closed_trades"]) if r else 0
+        wins = int(r["wins"]) if r else 0
+        return {
+            "strategy": name,
+            "open_trades": int(r["open_trades"]) if r else 0,
+            "closed_trades": closed,
+            "realized_pnl": float(r["realized_pnl"]) if r else 0.0,
+            "win_rate": round(wins / closed, 3) if closed else None,
+        }
+
+    return {
+        "symbol": sym,
+        "strategy_1": strat("strategy_1"),
+        "strategy_2": strat("strategy_2"),
+        "current_state": latest["state"] if latest else None,
+        "latest_ts": latest["timestamp"].isoformat() if latest else None,
+        "total_bars": bars,
+    }
+
+
 @router.get("/sel/phase/current")
 async def phase_current():
     p = await get_pool()

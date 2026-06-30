@@ -71,3 +71,45 @@ def test_full_trail_degrades_to_empty_when_table_absent(monkeypatch):
     _patch_pool(monkeypatch, conn)
     out = asyncio.run(api.decision_trail_full(symbol="BTC-USDT"))
     assert out == []   # graceful, not a 500
+
+
+# ── strategy summary (S1/S2 frontend panel) ─────────────────────────────────
+
+class _SummaryConn:
+    """Returns per-strategy aggregate rows for fetch(), a state row for fetchrow(),
+    and a bar count for fetchval() — matching strategy_summary's three queries."""
+    def __init__(self, rows, state_row, bars):
+        self._rows, self._state, self._bars = rows, state_row, bars
+
+    async def fetch(self, *a):
+        return self._rows
+
+    async def fetchrow(self, *a):
+        return self._state
+
+    async def fetchval(self, *a):
+        return self._bars
+
+
+def test_strategy_summary_partitions_and_zero_fills(monkeypatch):
+    rows = [
+        {"strategy": "strategy_1", "open_trades": 1, "closed_trades": 4, "wins": 3,
+         "realized_pnl": 125.50},
+        # strategy_2 absent → must zero-fill, not error
+    ]
+    state_row = {"state": "Surging", "timestamp": datetime(2026, 6, 30, tzinfo=timezone.utc)}
+    _patch_pool(monkeypatch, _SummaryConn(rows, state_row, 4487))
+    out = asyncio.run(api.strategy_summary(symbol="BTC-USDT"))
+    assert out["strategy_1"] == {"strategy": "strategy_1", "open_trades": 1,
+                                 "closed_trades": 4, "realized_pnl": 125.5, "win_rate": 0.75}
+    # absent strategy is present and zeroed (win_rate None when no closed trades)
+    assert out["strategy_2"]["closed_trades"] == 0 and out["strategy_2"]["win_rate"] is None
+    assert out["current_state"] == "Surging"
+    assert out["total_bars"] == 4487
+
+
+def test_strategy_summary_empty_is_valid(monkeypatch):
+    _patch_pool(monkeypatch, _SummaryConn([], None, 0))
+    out = asyncio.run(api.strategy_summary(symbol="BTC-USDT"))
+    assert out["strategy_1"]["closed_trades"] == 0
+    assert out["current_state"] is None
