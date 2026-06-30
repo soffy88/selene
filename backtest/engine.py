@@ -128,6 +128,11 @@ class WFOResult:
     mc_sharpe_p50:  float = 0.0
     mc_sharpe_p95:  float = 0.0
 
+    # CPCV / probability of backtest overfitting (None when oskill is unavailable).
+    # Single-path WFO cannot estimate the OOS path-Sharpe distribution; CPCV does.
+    cpcv:           Optional[dict]  = None
+    pbo:            Optional[float] = None
+
     passed:         bool  = False
     failure_reasons: list = field(default_factory=list)
 
@@ -145,6 +150,8 @@ class WFOResult:
             "mc_sharpe_p5": round(self.mc_sharpe_p5, 4),
             "mc_sharpe_p50": round(self.mc_sharpe_p50, 4),
             "mc_sharpe_p95": round(self.mc_sharpe_p95, 4),
+            "cpcv": self.cpcv,
+            "pbo": round(self.pbo, 4) if self.pbo is not None else None,
             "passed": self.passed,
             "failure_reasons": self.failure_reasons,
             "n_trials": self.n_trials,
@@ -267,9 +274,51 @@ class WFOEngine:
         if all_oos_trades:
             self._aggregate_metrics(result)
             self._monte_carlo(result)
+            # CPCV path-Sharpe distribution + PBO over the full sample (the
+            # combinatorial OOS evidence a single WFO replay cannot produce).
+            cpcv_params = selected_params[0] if selected_params else grid[0]
+            result.cpcv = self._maybe_run_cpcv(
+                symbol, closes, highs, lows, times, fr_map, cpcv_params, adv_usd)
+            if result.cpcv:
+                result.pbo = result.cpcv.get("pbo")
             self._check_pass(result)
 
         return result
+
+    def _maybe_run_cpcv(self, symbol, closes, highs, lows, times, fr_map,
+                        params, adv_usd) -> Optional[dict]:
+        """Run CPCV over the full sample, returning its summary or None. Never
+        propagates: a missing oskill or any pipeline mismatch must not break the
+        WFO result — CPCV is supplementary evidence."""
+        from backtest.cpcv import run_cpcv
+
+        def backtest_fn(train_idx, test_idx):
+            idx = sorted(int(i) for i in test_idx)
+            if len(idx) < 2:
+                return [0.0] * len(idx)
+            lo, hi = idx[0], idx[-1] + 1
+            span = {"closes": closes[lo:hi], "highs": highs[lo:hi],
+                    "lows": lows[lo:hi], "times": times[lo:hi]}
+            ctx_lo = max(0, lo - 200)
+            trades = self._simulate_period(
+                symbol=symbol, candles=span,
+                context_closes=closes[ctx_lo:lo], context_highs=highs[ctx_lo:lo],
+                context_lows=lows[ctx_lo:lo], fr_map=fr_map,
+                initial_capital=self.config.initial_capital, params=params, adv_usd=adv_usd)
+            # Per-bar return: a trade's net pnl_pct attributed to its exit bar.
+            pos_of_time = {times[i]: k for k, i in enumerate(idx)}
+            ret = [0.0] * len(idx)
+            for t in trades:
+                k = pos_of_time.get(t.exit_time)
+                if k is not None:
+                    ret[k] += t.pnl_pct
+            return ret
+
+        try:
+            return run_cpcv(len(closes), backtest_fn)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("CPCV skipped (%s)", exc)
+            return None
 
     def _simulate_period(
         self, symbol: str, candles: dict,
