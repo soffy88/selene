@@ -315,7 +315,10 @@ class WFOEngine:
             return ret
 
         try:
-            return run_cpcv(len(closes), backtest_fn)
+            # Bars are hourly and a trade can hold up to MAX_HOLD_HOURS, so its label spans
+            # that many bars — purge train samples overlapping the test window by that horizon
+            # (audit P1-8), else CPCV leaks future labels and PBO looks too good.
+            return run_cpcv(len(closes), backtest_fn, label_horizon=MAX_HOLD_HOURS)
         except Exception as exc:  # noqa: BLE001
             logger.warning("CPCV skipped (%s)", exc)
             return None

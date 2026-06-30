@@ -34,11 +34,17 @@ def pbo_from_stats(mean: float, std: float) -> float:
 
 def run_cpcv(n_total: int, backtest_fn: Callable, *,
              n_folds: int = 6, n_test_groups: int = 2,
-             embargo_pct: float = 0.01) -> Optional[dict]:
+             embargo_pct: float = 0.01, label_horizon: int = 0) -> Optional[dict]:
     """Run CPCV and return {path_sharpes, median_sharpe, n_paths, pbo}.
 
     backtest_fn(train_idx, test_idx) must return the per-bar return array for the
     test indices. Returns None if oskill is unavailable.
+
+    label_horizon is the number of bars a trade's label spans (≈ max hold in bars). It
+    must be > 0 whenever positions are held across multiple bars, or CPCV purges only the
+    embargo gap and leaves train samples whose labels overlap the test set — leaking future
+    information into training and making PBO/path-Sharpe look better than reality (audit
+    P1-8). Defaults to 0 only for the genuinely single-bar case.
     """
     try:
         import oskill
@@ -46,7 +52,7 @@ def run_cpcv(n_total: int, backtest_fn: Callable, *,
         return None
     res = oskill.cpcv_pipeline(
         n_total, n_folds=n_folds, n_test_groups=n_test_groups,
-        embargo_pct=embargo_pct, backtest_fn=backtest_fn,
+        embargo_pct=embargo_pct, label_horizon=label_horizon, backtest_fn=backtest_fn,
         compute_path_statistics=True,
     )
     # oskill returns a summary dict of the path-Sharpe distribution, not the raw list.

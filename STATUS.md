@@ -21,7 +21,7 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
-- **P1-8** CPCV `label_horizon` purge for multi-bar holds.
+- **P1-3** Derive `lob_depth_pctile` from collected perp LOB depth → BarFeatures.
 
 ---
 
@@ -35,7 +35,6 @@ rounds (see memory `opt-pr-3`).
 - [ ] **P1-4** WS disconnect has no gap recovery (`v2_bar_aggregator.py:28`).
 - [ ] **P1-6** No Prometheus/Grafana actually deployed (metrics exposed, unscraped).
 - [ ] **P1-7** Decision Trail has no UI/API read surface (the moat is invisible).
-- [ ] **P1-8** CPCV has no `label_horizon` purge despite multi-bar holds.
 
 ## 📋 Backlog — P2 (cleanup / UX)
 
@@ -53,6 +52,11 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+- **P1-8** CPCV now purges label overlap: `run_cpcv` threads `label_horizon` through to
+      `oskill.cpcv_pipeline` and the engine passes `MAX_HOLD_HOURS` (trades hold up to 24
+      hourly bars), so train samples whose labels overlap the test window are purged instead
+      of leaking future info and flattering PBO/path-Sharpe. 2 tests (incl. forwarding).
+      `backtest/cpcv.py`, `backtest/engine.py`.
 - **P1-5** Correlation static-fallback side bug fixed: `check_corr_exposure` now normalises
       LONG/SHORT vs BUY/SELL to a sign (matching the dynamic path) before summing same-
       direction exposure — the gate previously matched nothing and silently passed all

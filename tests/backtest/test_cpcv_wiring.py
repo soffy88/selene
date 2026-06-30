@@ -65,14 +65,16 @@ def test_wforesult_cpcv_fields_default_none_and_serialised():
 
 # ── End-to-end wiring with a fake oskill ──────────────────────────────────────
 
-def _install_fake_oskill(monkeypatch, capture):
+def _install_fake_oskill(monkeypatch, capture, kwargs_seen=None):
     """A fake oskill.cpcv_pipeline that drives backtest_fn over n_folds contiguous
     groups and summarises the path-Sharpe distribution (mirrors what cpcv.run_cpcv
     consumes)."""
     mod = types.ModuleType("oskill")
 
     def cpcv_pipeline(n_total, *, n_folds, n_test_groups, embargo_pct,
-                      backtest_fn, compute_path_statistics):
+                      label_horizon, backtest_fn, compute_path_statistics):
+        if kwargs_seen is not None:
+            kwargs_seen["label_horizon"] = label_horizon
         groups = [g for g in np.array_split(np.arange(n_total), n_folds) if len(g)]
         sharpes = []
         for gi, test_idx in enumerate(groups):
@@ -94,7 +96,8 @@ def _install_fake_oskill(monkeypatch, capture):
 
 def test_run_populates_cpcv_with_fake_oskill(monkeypatch):
     capture: list = []
-    _install_fake_oskill(monkeypatch, capture)
+    kwargs_seen: dict = {}
+    _install_fake_oskill(monkeypatch, capture, kwargs_seen)
 
     engine = WFOEngine(_cfg())
     result = asyncio_run(engine, _make_candles(300), _make_funding(300))
@@ -108,6 +111,28 @@ def test_run_populates_cpcv_with_fake_oskill(monkeypatch):
     assert result.pbo is not None and 0.0 <= result.pbo <= 1.0
     d = result.to_dict()
     assert d["cpcv"] is not None and d["pbo"] is not None
+    # P1-8: the multi-bar label horizon is forwarded so CPCV purges label overlap
+    from backtest.engine import MAX_HOLD_HOURS
+    assert kwargs_seen.get("label_horizon") == MAX_HOLD_HOURS
+    assert MAX_HOLD_HOURS > 0
+
+
+def test_run_cpcv_forwards_label_horizon_to_pipeline(monkeypatch):
+    """Unit-level: run_cpcv must pass label_horizon through to oskill (not drop it)."""
+    seen = {}
+    mod = types.ModuleType("oskill")
+
+    def cpcv_pipeline(n_total, *, n_folds, n_test_groups, embargo_pct,
+                      label_horizon, backtest_fn, compute_path_statistics):
+        seen["label_horizon"] = label_horizon
+        return {"paths_sharpe_distribution": {"mean": 1.0, "std": 1.0},
+                "median_sharpe": 1.0, "min_sharpe": 0.0, "max_sharpe": 2.0, "n_paths": 3}
+
+    mod.cpcv_pipeline = cpcv_pipeline
+    monkeypatch.setitem(sys.modules, "oskill", mod)
+    from backtest.cpcv import run_cpcv
+    run_cpcv(200, lambda tr, te: [0.0], label_horizon=6)
+    assert seen["label_horizon"] == 6
 
 
 def test_run_without_oskill_leaves_cpcv_none(monkeypatch):
