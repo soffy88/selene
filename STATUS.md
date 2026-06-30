@@ -21,7 +21,7 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
-- **P1-5** Correlation static-fallback side mismatch fix.
+- **P1-8** CPCV `label_horizon` purge for multi-bar holds.
 
 ---
 
@@ -30,13 +30,11 @@ rounds (see memory `opt-pr-3`).
 
 ## 📋 Backlog — P1 (core capability gaps)
 
-- [ ] **P1-2** Strategy 2 inert + upper state machine unreachable (LOB/OFI/liq STUB).
-- [ ] **P1-3** Cascade extreme defense dead (needs depth/liq/spread data).
+- [ ] **P1-3** Cascade cond-1 unreachable: `lob_depth_pctile` is never computed from the
+      (now perp) LOB depth the collector stores. Derive it + wire into BarFeatures.
 - [ ] **P1-4** WS disconnect has no gap recovery (`v2_bar_aggregator.py:28`).
-- [ ] **P1-5** Correlation static-fallback side mismatch (`risk/main.py:260`,
-      LONG/SHORT vs BUY/SELL never equal) — gate is a no-op at cold start.
 - [ ] **P1-6** No Prometheus/Grafana actually deployed (metrics exposed, unscraped).
-- [ ] **P1-7** Decision Trail has no UI surface (the moat is invisible).
+- [ ] **P1-7** Decision Trail has no UI/API read surface (the moat is invisible).
 - [ ] **P1-8** CPCV has no `label_horizon` purge despite multi-bar holds.
 
 ## 📋 Backlog — P2 (cleanup / UX)
@@ -55,6 +53,15 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+- **P1-5** Correlation static-fallback side bug fixed: `check_corr_exposure` now normalises
+      LONG/SHORT vs BUY/SELL to a sign (matching the dynamic path) before summing same-
+      direction exposure — the gate previously matched nothing and silently passed all
+      correlated concentration at cold start. 3 new tests. `services/risk/main.py`.
+- **P1-2** Verified already code-complete + tested (not a code gap): `_micro_vocab_series`
+      derives Sweep/Absorption/Crowding vocab and `_maybe_open_s2` derives
+      `ofi_persistent_same_direction` from real microstructure, and Type A/B entries are
+      exercised in `test_strategy2_entry`. The audit's "S2 inert" reflected the empty-data
+      runtime; the residual is deploy-data availability (advanced by P0-2). No code needed.
 - **P1-1** Gated sel_v2 → live execution bridge: `decision_to_scored_signal` translates a
       deployed S1/S2 entry decision into the canonical ScoredSignal (protective stop from the
       REAL drawdown-stop pct, regime mapped from 4H state), and `LiveBridge.emit` publishes

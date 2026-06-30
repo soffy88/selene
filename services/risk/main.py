@@ -257,11 +257,18 @@ class RiskGate:
         if not group:
             return True, ""
 
-        # 计算该组同方向暴露
+        # 计算该组同方向暴露。
+        # Normalise side to a sign before comparing: stored positions carry "LONG"/"SHORT"
+        # while the incoming order side is "BUY"/"SELL", so a raw == comparison never matched
+        # and this static fallback silently passed everything at cold start (audit P1-5). Use
+        # the same normalisation as the dynamic path (correlation_risk.same_direction...).
+        def _sign(s: str) -> int:
+            return 1 if str(s).upper() in ("BUY", "LONG") else -1
+        cand_sign = _sign(side)
         same_dir_notional = sum(
             pos["notional"]
             for sym, pos in _open_positions.items()
-            if sym in group and pos.get("side") == side
+            if sym in group and _sign(pos.get("side", "LONG")) == cand_sign
         )
         equity = _get_equity()
         if equity <= 0:
