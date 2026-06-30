@@ -9,10 +9,17 @@ DB_URL = os.environ.get("DB_URL", "postgresql://selene_app:sel_app_2026@localhos
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--symbol", default="BTC-USDT")
+    parser.add_argument("--symbol", default="BTC-USDT",
+                        help="stored symbol (base) — downstream joins on this")
+    parser.add_argument("--inst-id", default=None,
+                        help="OKX instId to fetch candles from; default {symbol}-SWAP (the "
+                             "PERPETUAL). The live tick/LOB feed is the perp (P0-2), so the "
+                             "historical bars must be the perp too, not spot BTC-USDT, or the "
+                             "bar series has a spot/perp seam.")
     parser.add_argument("--bar", default="4H")
     parser.add_argument("--years", type=int, default=2)
     args = parser.parse_args()
+    inst_id = args.inst_id or f"{args.symbol}-SWAP"
 
     conn = psycopg2.connect(DB_URL)
     cur = conn.cursor()
@@ -24,7 +31,7 @@ def main():
     total_inserted = 0
 
     while end_ts > start_ts:
-        url = f"https://www.okx.com/api/v5/market/history-candles?instId={args.symbol}&bar={args.bar}&after={end_ts}&limit={limit}"
+        url = f"https://www.okx.com/api/v5/market/history-candles?instId={inst_id}&bar={args.bar}&after={end_ts}&limit={limit}"
         
         proxies = {}
         if os.environ.get("HTTPS_PROXY"):
