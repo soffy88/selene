@@ -39,6 +39,7 @@ _TDA_PCTILE_WINDOW = 540  # 90 days for percentile baseline
 _OI_PCTILE_WINDOW = 360   # 60 days
 _FUNDING_PCTILE_WINDOW = 360
 _OFI_PCTILE_WINDOW = 42   # 7 days
+_LOB_DEPTH_PCTILE_WINDOW = 42   # 7 days (schema: "LOB depth rank in 7-day history")
 _FUNDING_PERSIST_BARS = 6  # same sign 6 consecutive bars
 
 
@@ -66,6 +67,7 @@ class BarRunner:
         oi_series: Optional[np.ndarray] = None,
         funding_series: Optional[np.ndarray] = None,
         ofi_proxy_series: Optional[np.ndarray] = None,
+        lob_depth_series: Optional[np.ndarray] = None,   # total top-of-book depth (bid+ask) per bar
     ) -> None:
         self._closes = closes
         self._timestamps = timestamps
@@ -96,6 +98,12 @@ class BarRunner:
         self._funding_persistent = self._precompute_funding_persistent(funding_series)
         self._ofi_cumulative_pctile = self._precompute_rolling_pctile(
             ofi_proxy_series, _OFI_PCTILE_WINDOW
+        )
+        # Rolling rank of top-of-book depth: a LOW percentile = a thin/exhausted book,
+        # which (with σ extreme) is Cascade condition 1 (§5.7). Previously always None →
+        # Cascade cond-1 was permanently unreachable (audit P1-3).
+        self._lob_depth_pctile = self._precompute_rolling_pctile(
+            lob_depth_series, _LOB_DEPTH_PCTILE_WINDOW
         )
 
     # ── Helixa feature precomputation ─────────────────────────────────────────
@@ -168,6 +176,7 @@ class BarRunner:
         oi_series: Optional[np.ndarray] = None,
         funding_series: Optional[np.ndarray] = None,
         ofi_proxy_series: Optional[np.ndarray] = None,
+        lob_depth_series: Optional[np.ndarray] = None,
     ) -> "BarRunner":
         closes = df["close"].values.astype(float)
         timestamps = df["time"].values
@@ -184,6 +193,7 @@ class BarRunner:
             oi_series=oi_series,
             funding_series=funding_series,
             ofi_proxy_series=ofi_proxy_series,
+            lob_depth_series=lob_depth_series,
         )
 
     def build_features(self, i: int) -> BarFeatures:
@@ -269,6 +279,7 @@ class BarRunner:
         funding_pctile = _f(self._funding_pctile)
         funding_persistent: Optional[bool] = _b(self._funding_persistent)
         ofi_cumulative_pctile = _f(self._ofi_cumulative_pctile)
+        lob_depth_pctile = _f(self._lob_depth_pctile)
 
         return BarFeatures(
             timestamp=ts,
@@ -294,6 +305,7 @@ class BarRunner:
             funding_pctile=funding_pctile,
             funding_persistent=funding_persistent,
             ofi_cumulative_pctile=ofi_cumulative_pctile,
+            lob_depth_pctile=lob_depth_pctile,
         )
 
     def process_bar(self, i: int) -> StateRecord:

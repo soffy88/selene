@@ -21,7 +21,7 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
-- **P1-3** Derive `lob_depth_pctile` from collected perp LOB depth → BarFeatures.
+- **P1-4** WS disconnect gap recovery / detection.
 
 ---
 
@@ -30,8 +30,6 @@ rounds (see memory `opt-pr-3`).
 
 ## 📋 Backlog — P1 (core capability gaps)
 
-- [ ] **P1-3** Cascade cond-1 unreachable: `lob_depth_pctile` is never computed from the
-      (now perp) LOB depth the collector stores. Derive it + wire into BarFeatures.
 - [ ] **P1-4** WS disconnect has no gap recovery (`v2_bar_aggregator.py:28`).
 - [ ] **P1-6** No Prometheus/Grafana actually deployed (metrics exposed, unscraped).
 - [ ] **P1-7** Decision Trail has no UI/API read surface (the moat is invisible).
@@ -52,6 +50,11 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+- **P1-3** Cascade cond-1 reachable: BarRunner now derives `lob_depth_pctile` (rolling
+      7-day rank of total top-of-book bid+ask depth) from the collected perp LOB and wires it
+      into BarFeatures; paper engine aggregates `AVG(bid_depth+ask_depth)` per bar. A thin book
+      now yields a low pctile so "σ extreme AND thin book" can fire. 3 new tests.
+      `sel_v2/scheduler/bar_runner.py`, `sel_v2/paper/{strategy_engine,paper_engine}.py`.
 - **P1-8** CPCV now purges label overlap: `run_cpcv` threads `label_horizon` through to
       `oskill.cpcv_pipeline` and the engine passes `MAX_HOLD_HOURS` (trades hold up to 24
       hourly bars), so train samples whose labels overlap the test window are purged instead
@@ -128,6 +131,11 @@ rounds (see memory `opt-pr-3`).
   needs a real Redis/services run to validate (call-site wiring in the paper/strategy engine
   to actually invoke `LiveBridge.emit` is intentionally NOT added yet — that is the live
   cut-over step and must be a deliberate human action with OOS evidence in hand).
+- **P1-3 remaining Cascade conditions**: cond-1 (thin book) is now wired; cond-2
+  (`liquidation_pulse`) needs a `v2_liquidations`→per-bar aggregation (tractable, separate)
+  and cond-3 (`cross_exchange_spread`) is structurally N/A while single-venue (OKX only) —
+  a second venue feed (P2: 2nd exchange) is required. Validate cond-1 firing with real LOB
+  data on deploy.
 - **P0-3 live bracket lifecycle** needs real-exchange verification before any live use
   (cannot be integration-tested here): native stop placement on the *WebSocket* fill
   path (currently wired only on the immediate-FILLED branch), OCO pairing with take-profit,

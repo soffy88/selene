@@ -139,7 +139,7 @@ class PaperStrategyEngine:
 
     # ── feature pipeline (mirrors replay.run_replay) ───────────────────────────
     def _build_runner(self, df: pd.DataFrame, oi_series=None, funding_series=None,
-                      ofi_series=None) -> tuple[BarRunner, np.ndarray, np.ndarray]:
+                      ofi_series=None, lob_depth_series=None) -> tuple[BarRunner, np.ndarray, np.ndarray]:
         closes = df["close"].values.astype(float)
         n = len(closes)
         sigma_series, sigma_pctile = precompute_sigma_series(closes)
@@ -163,6 +163,7 @@ class PaperStrategyEngine:
             hawkes_br_series=hawkes_br, tda_l1_series=tda_l1, tda_l1_pctile_series=tda_pctile,
             hawkes_br_threshold=self.hawkes_threshold, tda_l1_threshold=self.tda_threshold,
             oi_series=oi_series, funding_series=funding_series, ofi_proxy_series=ofi_series,
+            lob_depth_series=lob_depth_series,
         )
         log_returns = np.diff(np.log(closes), prepend=np.log(closes[0]))
         return runner, sigma_series, log_returns
@@ -260,7 +261,11 @@ class PaperStrategyEngine:
         Strategy-2 H1 Hawkes intensity so it reflects real trade clustering instead of a flat
         baseline. Returns a summary dict; positions/PnL live in `self.accounts`."""
         df = df.sort_values("time").reset_index(drop=True)
-        runner, sigma_series, log_returns = self._build_runner(df, oi_series, funding_series, ofi_series)
+        # Total top-of-book depth per bar (bid+ask) feeds the Cascade thin-book condition
+        # (audit P1-3); None when LOB data isn't flowing → cond stays None (conservative).
+        lob_depth_series = micro.get("lob_depth") if micro else None
+        runner, sigma_series, log_returns = self._build_runner(
+            df, oi_series, funding_series, ofi_series, lob_depth_series=lob_depth_series)
         n = len(df)
         states: list[str] = []
         self.records = []   # StateRecord per bar, for DB persistence (item #6)

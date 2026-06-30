@@ -142,11 +142,13 @@ class PaperEngine:
           taker_net  — Σ buy size − Σ sell size in the bar (signed taker flow)
           taker_vol  — Σ |size| (total taken volume)
           lob_imb    — mean(bid_depth − ask_depth) over the bar's LOB snapshots
+          lob_depth  — mean(bid_depth + ask_depth) over the bar's LOB snapshots (total
+                       top-of-book depth; feeds the Cascade thin-book condition, P1-3)
         """
         from datetime import timedelta
         import numpy as np
         n = len(df)
-        out = {k: np.full(n, np.nan) for k in ("taker_net", "taker_vol", "lob_imb")}
+        out = {k: np.full(n, np.nan) for k in ("taker_net", "taker_vol", "lob_imb", "lob_depth")}
         cutoff = df["time"].iloc[-1] - timedelta(days=lookback_days)
         # bar open time -> row index
         idx = {t: i for i, t in enumerate(df["time"])}
@@ -160,7 +162,8 @@ class PaperEngine:
                 self._symbol, cutoff)
             lob = await conn.fetch(
                 "SELECT time_bucket('4 hours', timestamp) AS b, "
-                "  AVG(bid_depth - ask_depth) AS imb "
+                "  AVG(bid_depth - ask_depth) AS imb, "
+                "  AVG(bid_depth + ask_depth) AS depth "
                 "FROM v2_lob_snapshots WHERE symbol=$1 AND timestamp >= $2 GROUP BY b",
                 self._symbol, cutoff)
         for r in flow:
@@ -170,8 +173,11 @@ class PaperEngine:
                 out["taker_vol"][i] = float(r["vol"])
         for r in lob:
             i = idx.get(r["b"])
-            if i is not None and r["imb"] is not None:
-                out["lob_imb"][i] = float(r["imb"])
+            if i is not None:
+                if r["imb"] is not None:
+                    out["lob_imb"][i] = float(r["imb"])
+                if r["depth"] is not None:
+                    out["lob_depth"][i] = float(r["depth"])
         return out
 
     @staticmethod
