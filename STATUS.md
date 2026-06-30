@@ -21,7 +21,7 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
-- **P1-6** Prometheus/Grafana deploy; **P1-7** Decision-trail read API.
+- P2 cleanups (P2-4 tie-aware Spearman, P2-1 OFI orphan, P2-5 vwap, P2-3 router split).
 
 ---
 
@@ -30,7 +30,6 @@ rounds (see memory `opt-pr-3`).
 
 ## 📋 Backlog — P1 (core capability gaps)
 
-- [ ] **P1-6** No Prometheus/Grafana actually deployed (metrics exposed, unscraped).
 
 ## 📋 Backlog — P2 (cleanup / UX)
 
@@ -48,6 +47,11 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+- **P1-6** Prometheus + Grafana now deployed in docker-compose (were absent): prometheus
+      scrapes the gateway `/metrics` (target verified to match `gateway:5000`) with 30d
+      retention, grafana on :3000, both on helios-net with persistent volumes. Compose +
+      prometheus.yml validated as parseable. Container bring-up needs a real Docker host →
+      Needs-Human. `docker-compose.yml`.
 - **P1-7** Rich decision-trail read API: `GET /sel/decision-trail/full` exposes the per-bar
       `sel_decision_trail` (feature snapshot, state+reason, proposed-vs-final action, matched
       rule, risk veto+details, fill, config_hash) — the Helios moat that was persisted but had
@@ -144,6 +148,10 @@ rounds (see memory `opt-pr-3`).
   and cond-3 (`cross_exchange_spread`) is structurally N/A while single-venue (OKX only) —
   a second venue feed (P2: 2nd exchange) is required. Validate cond-1 firing with real LOB
   data on deploy.
+- **P1-6 observability bring-up**: prometheus+grafana are declared in compose but need a real
+  Docker host to verify containers start and scraping works; add Grafana dashboards/datasource
+  provisioning once running. Other FastAPI services still need to adopt `shared/metrics.py` to
+  appear (scrape jobs already declared).
 - **P0-3 live bracket lifecycle** needs real-exchange verification before any live use
   (cannot be integration-tested here): native stop placement on the *WebSocket* fill
   path (currently wired only on the immediate-FILLED branch), OCO pairing with take-profit,

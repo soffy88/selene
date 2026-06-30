@@ -515,9 +515,46 @@ services:
       - v2-bar-aggregator
     restart: unless-stopped
 
+  # ── Observability stack (audit P1-6) ────────────────────────────────────────
+  # The gateway already exposes a real /metrics; these scrape + visualise it. Other
+  # FastAPI services appear automatically once they adopt shared/metrics.py (their
+  # scrape jobs are pre-declared in infra/prometheus/prometheus.yml).
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=30d'
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports: ['9090:9090']
+    networks: [helios-net]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "50m", max-file: "5"}
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports: ['3000:3000']
+    depends_on:
+      - prometheus
+    networks: [helios-net]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "50m", max-file: "5"}
+
 networks:
   helios-net:
     external: true
 
 volumes:
   onchain_history:    # SQLite 历史胜率数据持久化
+  prometheus_data:    # Prometheus TSDB (P1-6)
+  grafana_data:       # Grafana dashboards/state (P1-6)
