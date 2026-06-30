@@ -49,6 +49,10 @@ MAX_DAILY_LOSS_PCT     = float(os.getenv("MAX_DAILY_LOSS_PCT",     "0.05"))   # 
 MAX_CORR_EXPOSURE      = float(os.getenv("MAX_CORR_EXPOSURE",      "0.30"))   # 同向暴露上限30%
 MIN_WIN_PROBABILITY    = float(os.getenv("MIN_WIN_PROBABILITY",    "0.55"))
 VAR_LIMIT_PCT          = float(os.getenv("VAR_LIMIT_PCT",          "0.05"))   # post-trade VaR ≤ 5% of equity
+# Perp liquidation guard (the existential gate for a leveraged perpetuals account).
+MAINT_MARGIN_RATE      = float(os.getenv("MAINT_MARGIN_RATE",      "0.005"))  # exchange maintenance-margin rate (BTC perp low tiers ≈ 0.4–0.5%)
+MIN_LIQ_BUFFER_PCT     = float(os.getenv("MIN_LIQ_BUFFER_PCT",     "0.10"))   # post-trade price must sit ≥ this far (fraction) from the liquidation price
+STOP_LIQ_SAFETY        = float(os.getenv("STOP_LIQ_SAFETY",        "0.80"))   # protective stop must fall within this fraction of the liquidation distance (so it triggers BEFORE liquidation)
 # Dynamic correlation gate (replaces the static CORR_GROUPS when return data is available).
 CORR_THRESHOLD         = float(os.getenv("CORR_THRESHOLD",         "0.6"))    # signed ρ ≥ this ⇒ correlated (same-direction clustering)
 CORR_RETURNS_TTL_S     = float(os.getenv("CORR_RETURNS_TTL_S",     "300"))    # cache returns for 5 min
@@ -312,6 +316,48 @@ class RiskGate:
             return False, f"leverage {new_leverage:.2f}x > max {MAX_LEVERAGE}x"
         return True, ""
 
+    def check_liquidation_distance(
+        self, allocated_usd: float, entry_price: float, stop_price: float, equity: float
+    ) -> tuple[bool, str]:
+        """Perp liquidation guard — the existential gate a leveraged perpetuals account needs.
+
+        Models the *post-trade cross-margin* liquidation distance (as a fraction of price)
+        from equity and total notional, using the same cross leverage = total_notional/equity
+        convention as ``check_leverage``:
+
+            liq_dist ≈ 1/leverage − maintenance_margin_rate
+
+        Rejects when either:
+          (a) the position would sit closer to its liquidation price than MIN_LIQ_BUFFER_PCT
+              (a leverage backstop independent of MAX_LEVERAGE), or
+          (b) the protective stop is at/beyond the liquidation price — i.e. the position
+              would be force-liquidated *before* the stop could fill. This is the exact ruin
+              mode where a synthetic/exchange stop never gets the chance to work.
+
+        Missing prices ⇒ the stop check is skipped (we can't assert it), but the leverage
+        backstop (a) still applies. Fails closed only on a concrete, computable violation.
+        """
+        if equity <= 0 or allocated_usd <= 0:
+            return True, ""
+        total_exposure = sum(p["notional"] for p in _open_positions.values() if "notional" in p)
+        lev = (total_exposure + allocated_usd) / equity
+        if lev <= 0:
+            return True, ""
+        liq_dist = 1.0 / lev - MAINT_MARGIN_RATE
+        if liq_dist <= MIN_LIQ_BUFFER_PCT:
+            return False, (
+                f"liq_distance {liq_dist:.1%} ≤ min buffer {MIN_LIQ_BUFFER_PCT:.0%} "
+                f"(post-trade {lev:.2f}x sits too close to liquidation)"
+            )
+        if entry_price > 0 and stop_price > 0:
+            stop_dist = abs(entry_price - stop_price) / entry_price
+            if stop_dist >= liq_dist * STOP_LIQ_SAFETY:
+                return False, (
+                    f"stop_dist {stop_dist:.1%} ≥ {STOP_LIQ_SAFETY:.0%}×liq_dist {liq_dist:.1%}: "
+                    f"protective stop sits at/beyond liquidation — position would liquidate first"
+                )
+        return True, ""
+
     async def approve(self, order_data: dict) -> tuple[bool, str, float | None]:
         """
         完整风控检查流水线。
@@ -322,6 +368,8 @@ class RiskGate:
         allocated   = float(order_data.get("allocated_usd", 0))
         win_prob    = float(order_data.get("win_probability", 0))
         quantity    = float(order_data.get("quantity", 0))
+        entry_price = float(order_data.get("entry_price", 0))
+        stop_price  = float(order_data.get("stop_price", 0))
 
         equity = _get_equity()
 
@@ -350,6 +398,11 @@ class RiskGate:
 
         # ── Gate 5: 杠杆 ──
         ok, reason = self.check_leverage(allocated, equity)
+        if not ok:
+            return False, reason, None
+
+        # ── Gate 5b: 强平距离（永续命门：止损必须在强平价之前触发）──
+        ok, reason = self.check_liquidation_distance(allocated, entry_price, stop_price, equity)
         if not ok:
             return False, reason, None
 
