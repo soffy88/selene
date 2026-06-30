@@ -21,14 +21,12 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
-- **P0-3** Exchange-native stop capability (gated; never runs under NOTIFY_ONLY).
+- **P0-4** Real-strategy backtest DSR degenerate (`n_trials=1`).
 
 ---
 
 ## 📋 Backlog — P0 (live-safety / signal-trust; must precede any live ambition)
 
-- [ ] **P0-3** Synthetic in-process stop. Add exchange-native STOP order capability
-      + slippage bound (gated; never runs under NOTIFY_ONLY).
 - [ ] **P0-4** Real-strategy backtest DSR degenerate (`n_trials=1`,
       `backtest/v2_strategy_backtest.py:73`) — never deflates for the real search.
 - [ ] **P0-5** No backtest pass-gate is enforced; `passed` is computed but consumed
@@ -65,6 +63,13 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+- **P0-3** Exchange-native protective stops: `place_stop_order` on the adapter
+      interface (base default = unsupported; real Binance `STOP_MARKET` + OKX algo
+      `conditional`); live fills now place a reduce-only native stop that survives a
+      service/feed outage or gap, with a high-severity alert + in-process backstop when
+      placement fails; cancelled on close. `websockets` lazy-imported so adapters are
+      unit-testable. 7 new tests. `services/execution/adapters/{base,okx,binance}.py`,
+      `services/execution/main.py`, `tests/services/test_native_stop_orders.py`.
 - **P0-2** Microstructure feed now matches the traded instrument: tick + LOB
       collectors subscribe to the perp `BTC-USDT-SWAP` (was spot), storing the shared
       base symbol so downstream joins are unchanged. Liquidation/derivatives made
@@ -82,4 +87,9 @@ rounds (see memory `opt-pr-3`).
 
 ## 🚨 Needs Human
 
-- (none yet)
+- **P0-3 live bracket lifecycle** needs real-exchange verification before any live use
+  (cannot be integration-tested here): native stop placement on the *WebSocket* fill
+  path (currently wired only on the immediate-FILLED branch), OCO pairing with take-profit,
+  partial-fill stop resizing, and de-duplication against the in-process monitor so a
+  fired native stop and the monitor don't both try to close. Capability + unit tests are
+  in place; the live wiring is best-effort and gated (never runs under NOTIFY_ONLY).

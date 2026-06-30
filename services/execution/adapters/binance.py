@@ -22,7 +22,8 @@ from datetime import datetime
 from typing import Optional
 
 import aiohttp
-import websockets
+# websockets is lazy-imported inside subscribe_fills (keeps the module import-safe
+# where the optional WS lib isn't installed, e.g. unit-test/CI environments).
 
 from services.execution.adapters.base import (
     BaseAdapter, OrderResult, CancelResult, PositionResult, FillEvent,
@@ -165,6 +166,49 @@ class BinanceAdapter(BaseAdapter):
             raw=data,
         )
 
+    async def place_stop_order(
+        self,
+        symbol: str,
+        side: str,
+        qty: float,
+        stop_price: float,
+        reduce_only: bool = True,
+        client_order_id: str = "",
+    ) -> OrderResult:
+        """Exchange-native STOP_MARKET (reduce-only) — survives a service/feed outage."""
+        cl_ord_id = _sanitize_client_id(client_order_id)
+        params = {
+            "symbol":    symbol,
+            "side":      side.upper(),
+            "type":      "STOP_MARKET",
+            "quantity":  f"{qty:.6f}".rstrip("0").rstrip("."),
+            "stopPrice": f"{stop_price:.4f}",
+        }
+        if reduce_only:
+            params["reduceOnly"] = "true"
+        if cl_ord_id:
+            params["newClientOrderId"] = cl_ord_id
+
+        data = await self._request("POST", "/fapi/v1/order", params)
+        if not data:
+            return OrderResult(success=False, error="no response from exchange")
+        if "code" in data:
+            err = data.get("msg", str(data["code"]))
+            if cl_ord_id and _is_duplicate_order(str(data.get("code", "")), err):
+                logger.warning(f"Binance duplicate stop clientOrderId={cl_ord_id}; recovering")
+                recovered = await self._get_order_by_client_id(symbol, cl_ord_id)
+                if recovered:
+                    return recovered
+            logger.error(f"place_stop_order error: {err}")
+            return OrderResult(success=False, error=err, client_order_id=cl_ord_id)
+        return OrderResult(
+            success=True,
+            exchange_id=str(data["orderId"]),
+            status=data.get("status", "NEW"),
+            client_order_id=str(data.get("clientOrderId", cl_ord_id)),
+            raw=data,
+        )
+
     async def _get_order_by_client_id(self, symbol: str, cl_ord_id: str) -> Optional[OrderResult]:
         data = await self._request("GET", "/fapi/v1/order", {
             "symbol": symbol, "origClientOrderId": cl_ord_id,
@@ -278,6 +322,7 @@ class BinanceAdapter(BaseAdapter):
         解析 ORDER_TRADE_UPDATE 事件 → FillEvent → 通知 execution/main.py。
         断线自动指数退避重连。
         """
+        import websockets   # lazy: optional WS lib, only needed for the live fill stream
         asyncio.create_task(self._keepalive_listen_key())
         retry = 5
 

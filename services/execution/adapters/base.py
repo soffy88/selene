@@ -133,6 +133,25 @@ class BaseAdapter(ABC):
     ) -> OrderResult:
         """下单。返回 OrderResult，不抛异常。"""
 
+    async def place_stop_order(
+        self,
+        symbol:     str,
+        side:       str,       # side of the STOP itself = opposite of the position (SELL protects a long)
+        qty:        float,
+        stop_price: float,
+        reduce_only: bool = True,
+        client_order_id: str = "",
+    ) -> OrderResult:
+        """Place an exchange-native stop (stop-market) order.
+
+        Unlike the in-process price-poll monitor, a native stop lives ON the exchange and
+        fires even if this service is down, the price feed freezes, or the market gaps —
+        i.e. it is the protection that actually survives the scenarios that liquidate a
+        leveraged perps account. Default implementation reports unsupported; adapters that
+        support conditional/stop orders override it. Returns success=False (never raises),
+        so callers fall back to the in-process monitor when an exchange lacks support."""
+        return OrderResult(success=False, error="stop orders not supported by this adapter")
+
     @abstractmethod
     async def cancel_order(self, symbol: str, exchange_id: str) -> CancelResult:
         """撤单"""

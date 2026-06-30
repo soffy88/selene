@@ -16,7 +16,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import aiohttp
-import websockets
+# websockets is lazy-imported inside subscribe_fills (keeps the module import-safe
+# where the optional WS lib isn't installed, e.g. unit-test/CI environments).
 
 from services.execution.adapters.base import (
     BaseAdapter, OrderResult, CancelResult, PositionResult, FillEvent,
@@ -170,6 +171,51 @@ class OKXAdapter(BaseAdapter):
             raw=order,
         )
 
+    async def place_stop_order(
+        self, symbol: str, side: str, qty: float, stop_price: float,
+        reduce_only: bool = True, client_order_id: str = "",
+    ) -> OrderResult:
+        """Exchange-native conditional stop (market on trigger) via the algo endpoint —
+        survives a service/feed outage, unlike the in-process price-poll monitor."""
+        inst_id = symbol.replace("USDT", "-USDT-SWAP") if "USDT" in symbol else symbol
+        if not self._ct_val:
+            await self._load_ct_val()
+        contracts = self._to_contracts(inst_id, qty)
+        cl_ord_id = _sanitize_client_id(client_order_id)
+        payload = {
+            "instId":      inst_id,
+            "tdMode":      "cross",
+            "side":        side.lower(),
+            "ordType":     "conditional",
+            "sz":          str(contracts),
+            "slTriggerPx": str(stop_price),
+            "slOrdPx":     "-1",   # -1 ⇒ market order on trigger
+        }
+        if reduce_only:
+            payload["reduceOnly"] = "true"
+        if cl_ord_id:
+            payload["algoClOrdId"] = cl_ord_id
+
+        data = await self._request("POST", "/api/v5/trade/order-algo", payload)
+        if not data:
+            return OrderResult(success=False, error="no response")
+        if data.get("code", "") != "0":
+            inner = (data.get("data") or [{}])[0]
+            err = inner.get("sMsg") or data.get("msg", f"code={data.get('code')}")
+            logger.error(f"OKX stop order error msg={err} payload={payload}")
+            return OrderResult(success=False, error=err, client_order_id=cl_ord_id)
+        order = data["data"][0]
+        if order.get("sCode", "0") != "0":
+            return OrderResult(success=False, error=order.get("sMsg", f"sCode={order.get('sCode')}"),
+                               client_order_id=cl_ord_id)
+        return OrderResult(
+            success=True,
+            exchange_id=order.get("algoId", ""),
+            status="NEW",
+            client_order_id=order.get("algoClOrdId", cl_ord_id),
+            raw=order,
+        )
+
     async def _get_order_by_client_id(self, inst_id: str, cl_ord_id: str) -> Optional[OrderResult]:
         data = await self._request("GET", f"/api/v5/trade/order?instId={inst_id}&clOrdId={cl_ord_id}")
         if not data or data.get("code") != "0" or not data.get("data"):
@@ -251,6 +297,7 @@ class OKXAdapter(BaseAdapter):
     # ── WebSocket 成交回报 ─────────────────────────────
 
     async def subscribe_fills(self):
+        import websockets   # lazy: optional WS lib, only needed for the live fill stream
         retry = 5
         while True:
             try:

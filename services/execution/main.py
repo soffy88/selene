@@ -11,12 +11,12 @@ from fastapi import FastAPI
 from shared.db.connections import get_redis, get_pg, redis_health, pg_health
 from shared.events.streams import (
     STREAM_SIGNAL_SIZED, STREAM_RISK_CHECK, STREAM_RISK_APPROVED,
-    STREAM_ORDER_LIFECYCLE, encode, decode,
+    STREAM_ORDER_LIFECYCLE, STREAM_SYSTEM_ALERTS, encode, decode,
 )
 from shared.models.signal import ScoredSignal, Direction
 from services.execution.statemachine.order_fsm import OrderFSM, OrderRecord, OrderState
 from services.execution.slippage.model import SlippageModel
-from services.execution.adapters.base import get_adapter, register_adapter, FillEvent, get_all_adapters
+from services.execution.adapters.base import get_adapter, register_adapter, FillEvent, get_all_adapters, OrderResult
 from services.execution.routing.smart_router import SmartRouter
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,7 @@ _slippage_model = SlippageModel()
 _router         = SmartRouter()
 _orders:        dict[str, OrderFSM] = {}
 _exchange_map:  dict[str, str]      = {}
+_stop_orders:   dict[str, str]      = {}   # order_id → exchange-native stop id (best-effort bracket)
 _pending_risk:  dict[str, OrderFSM] = {}
 _recent_orders: deque               = deque(maxlen=500)
 _stats = {"queued":0,"filled":0,"failed":0,"cancelled":0,"risk_rejected":0,"stale_dropped":0}
@@ -281,6 +282,7 @@ async def submit_to_exchange(fsm: OrderFSM):
     if result.status == "FILLED" and result.filled_qty > 0:
         fsm.on_fill(result.filled_qty, result.filled_price, result.fee_paid)
         fsm.transition(OrderState.MONITORING); _stats["filled"] += 1
+        await _place_protective_stop(adp, rec)   # native exchange stop (survives outages/gaps)
         await _pub(r, fsm, "filled_immediately"); await _audit(fsm, "ORDER_FILLED")
         await _persist_order(rec)
     else:
@@ -432,6 +434,7 @@ async def _close_position(fsm: OrderFSM, exit_price: float, reason: str):
         result = await adp.place_order(rec.symbol, close_side, rec.filled_qty or rec.quantity, "MARKET", reduce_only=True,
                                        client_order_id=_client_oid(rec.id, "C"))
         if result.success:
+            await _cancel_protective_stop(adp, rec)   # drop the now-orphaned native stop
             actual_exit = result.filled_price or exit_price
             pnl = fsm.calc_realized_pnl(actual_exit)
             fsm.transition(OrderState.CLOSED, note=reason); rec.close_reason = reason
@@ -442,6 +445,57 @@ async def _close_position(fsm: OrderFSM, exit_price: float, reason: str):
             fsm.transition(OrderState.MONITORING, note="close_failed_retry")
     except Exception as e:
         logger.error(f"_close_position: {e}"); fsm.transition(OrderState.MONITORING, note="exception_retry")
+
+
+async def _place_protective_stop(adp, rec) -> bool:
+    """Place an exchange-native protective stop after a live fill (best-effort bracket).
+
+    The in-process monitoring_loop is only a backstop: it depends on this service being
+    alive and the price feed being fresh, so it cannot protect against a service outage or
+    a gap. A native stop lives on the exchange and fires regardless. We place it reduce-only
+    on the opposite side at rec.stop_loss. On failure we keep the position (the in-process
+    monitor still guards it) but emit a loud alert — a live position without its native stop
+    is a risk event, not a silent condition.
+
+    Returns True if a native stop was placed. Never raises (no-throw execution contract)."""
+    if not rec.stop_loss or rec.stop_loss <= 0:
+        return False
+    stop_side = "SELL" if rec.side == "BUY" else "BUY"
+    try:
+        res = await adp.place_stop_order(
+            rec.symbol, stop_side, rec.filled_qty or rec.quantity, rec.stop_loss,
+            reduce_only=True, client_order_id=_client_oid(rec.id, "S"))
+    except Exception as e:   # defensive: adapter should never throw, but guard anyway
+        res = OrderResult(success=False, error=str(e))
+    if res.success:
+        _stop_orders[rec.id] = res.exchange_id
+        logger.info(f"Protective stop placed {rec.symbol} {stop_side} @ {rec.stop_loss} id={res.exchange_id}")
+        return True
+    # No native stop — alert so the gap is visible; in-process monitor remains the backstop.
+    logger.error(f"PROTECTIVE STOP FAILED {rec.symbol} order={rec.id[:8]}: {res.error} "
+                 f"— relying on in-process monitor only")
+    try:
+        r = await get_redis()
+        await r.xadd(STREAM_SYSTEM_ALERTS, encode({
+            "type": "risk_alert", "severity": "high", "source": "execution",
+            "msg": f"native protective stop failed for {rec.symbol} ({res.error}); "
+                   f"position guarded by in-process monitor only",
+            "order_id": rec.id,
+        }), maxlen=100000, approximate=True)
+    except Exception as e:
+        logger.warning(f"stop-fail alert publish: {e}")
+    return False
+
+
+async def _cancel_protective_stop(adp, rec):
+    """Cancel a position's native stop once it's closed (avoid an orphaned reduce-only stop)."""
+    stop_id = _stop_orders.pop(rec.id, None)
+    if not stop_id:
+        return
+    try:
+        await adp.cancel_order(rec.symbol, stop_id)
+    except Exception as e:
+        logger.warning(f"cancel protective stop {stop_id}: {e}")
 
 
 async def _pub(r, fsm: OrderFSM, event: str):
