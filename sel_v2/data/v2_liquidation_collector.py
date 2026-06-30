@@ -20,6 +20,29 @@ BASE_SYMBOL = os.environ.get("SYMBOLS", "BTC-USDT")
 INST_ID = os.environ.get("LIQ_INST_ID", f"{BASE_SYMBOL}-SWAP")
 PROXY_URL = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
 
+
+def extract_liquidation_rows(data, inst_id, base_symbol):
+    """Map an OKX liquidation-orders WS message to v2_liquidations row tuples.
+
+    OKX puts ``instId`` on the OUTER item; ``details[].instId`` is always None — so filtering
+    on ``detail.instId`` (the original bug) skipped every liquidation and left v2_liquidations
+    empty, killing the Cascade liquidation-pulse defense. We filter on ``item.instId``.
+    Pure (no I/O) so it's unit-testable. Returns (ts, symbol, side, size, price, loss) tuples.
+    """
+    rows = []
+    for item in data.get("data", []):
+        if item.get("instId") != inst_id:
+            continue
+        for d in item.get("details", []):
+            ts = datetime.fromtimestamp(int(d["ts"]) / 1000, tz=timezone.utc)
+            rows.append((
+                ts, base_symbol, d["side"], float(d["sz"]),
+                float(d["bkPx"]) if d.get("bkPx") else 0.0,
+                float(d["bkLoss"]) if d.get("bkLoss") else 0.0,
+            ))
+    return rows
+
+
 async def collect_liquidations(pool):
     from websockets_proxy import proxy_connect, Proxy   # lazy: keep module import-safe without the proxy lib
     insert_count = 0
@@ -38,29 +61,20 @@ async def collect_liquidations(pool):
         async for msg in ws:
             data = json.loads(msg)
             if "data" in data:
-                for item in data["data"]:
-                    for detail in item.get("details", []):
-                        if detail.get("instId") != INST_ID:
-                            continue
-                        ts = datetime.fromtimestamp(int(detail["ts"])/1000, tz=timezone.utc)
-                        side = detail["side"]
-                        size = float(detail["sz"])
-                        price = float(detail["bkPx"]) if detail.get("bkPx") else 0.0
-                        loss = float(detail["bkLoss"]) if detail.get("bkLoss") else 0.0
-                        
-                        try:
-                            await pool.execute(
-                                "INSERT INTO v2_liquidations (timestamp, symbol, side, size, price, loss) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
-                                ts, BASE_SYMBOL, side, size, price, loss
-                            )
-                            _guard.ok()
-                            insert_count += 1
-                            if insert_count == 1:
-                                logger.info("INSERT row 1 to v2_liquidations")
-                            if insert_count % 10 == 0:
-                                logger.info(f"v2_liquidations cumulative inserts: {insert_count}")
-                        except Exception as db_e:
-                            _guard.fail(db_e)
+                for row in extract_liquidation_rows(data, INST_ID, BASE_SYMBOL):
+                    try:
+                        await pool.execute(
+                            "INSERT INTO v2_liquidations (timestamp, symbol, side, size, price, loss) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
+                            *row
+                        )
+                        _guard.ok()
+                        insert_count += 1
+                        if insert_count == 1:
+                            logger.info("INSERT row 1 to v2_liquidations")
+                        if insert_count % 10 == 0:
+                            logger.info(f"v2_liquidations cumulative inserts: {insert_count}")
+                    except Exception as db_e:
+                        _guard.fail(db_e)
 
 async def main():
     pool = await asyncpg.create_pool(DB_URL)
