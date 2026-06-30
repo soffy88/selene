@@ -9,6 +9,9 @@ from sel_v2.strategies.sub_account import (
     SUBACCOUNT_2_FRACTION,
     MAX_CONCURRENT_S1,
     MAX_CONCURRENT_S2,
+    ONE_SIDE_COST_PCT,
+    FUNDING_BAR_FACTOR,
+    round_trip_cost_usdt,
 )
 
 _NOW = datetime(2025, 6, 1, tzinfo=timezone.utc)
@@ -162,3 +165,67 @@ def test_closed_positions_recorded():
     pos = _open(e.subaccount_1)
     e.subaccount_1.close_position(pos.id, 52_000.0, _NOW, "test")
     assert len(e.subaccount_1.closed_positions) == 1
+
+
+# ── Transaction costs & funding (P0-4: paper fills are no longer free) ─────────
+
+def test_close_charges_round_trip_cost():
+    """A flat (entry==exit) close must lose exactly the round-trip fee+slippage,
+    not break even, because real fills pay taker fee + spread both ways."""
+    e = _engine()
+    pos = _open(e.subaccount_1, price=50_000.0, size_pct=0.20, leverage=2.0)
+    notional = pos.notional_usdt
+    closed = e.subaccount_1.close_position(pos.id, 50_000.0, _NOW, "flat")
+    expected_cost = round_trip_cost_usdt(notional)
+    assert expected_cost > 0
+    assert closed.pnl_usdt == pytest.approx(-expected_cost, rel=1e-9)
+    # gross price move was zero, so pnl_pct stays 0 while pnl_usdt is the cost.
+    assert closed.pnl_pct == pytest.approx(0.0, abs=1e-12)
+
+
+def test_gross_profit_reduced_by_cost():
+    e = _engine()
+    pos = _open(e.subaccount_1, price=50_000.0, size_pct=0.20, leverage=1.0)
+    notional = pos.notional_usdt
+    closed = e.subaccount_1.close_position(pos.id, 55_000.0, _NOW, "tp")  # +10%
+    gross = 0.10 * notional
+    assert closed.pnl_usdt == pytest.approx(gross - round_trip_cost_usdt(notional), rel=1e-9)
+
+
+def test_funding_cost_deducted_for_long():
+    """A long that accrued positive funding pays it at exit."""
+    e = _engine()
+    pos = _open(e.subaccount_1, price=50_000.0, size_pct=0.20, leverage=1.0)
+    notional = pos.notional_usdt
+    fr = 0.0001
+    pos.accrue_funding(fr)                     # one bar of funding
+    expected_funding = fr * FUNDING_BAR_FACTOR * notional
+    assert pos.accrued_funding_usdt == pytest.approx(expected_funding, rel=1e-12)
+    closed = e.subaccount_1.close_position(pos.id, 50_000.0, _NOW, "flat")
+    expected = -round_trip_cost_usdt(notional) - expected_funding
+    assert closed.pnl_usdt == pytest.approx(expected, rel=1e-9)
+
+
+def test_funding_sign_flips_for_short():
+    """A short receives funding when the rate is positive (sign flips)."""
+    long_pos = _open(_engine().subaccount_1, direction="LONG", leverage=1.0)
+    short_pos = _open(_engine().subaccount_1, direction="SHORT", leverage=1.0)
+    long_pos.accrue_funding(0.0002)
+    short_pos.accrue_funding(0.0002)
+    assert long_pos.accrued_funding_usdt > 0     # long pays
+    assert short_pos.accrued_funding_usdt < 0    # short receives
+    assert long_pos.accrued_funding_usdt == pytest.approx(-short_pos.accrued_funding_usdt)
+
+
+def test_reduce_charges_proportional_cost_and_funding():
+    e = _engine()
+    pos = _open(e.subaccount_1, price=50_000.0, size_pct=0.20, leverage=1.0)
+    pos.accrue_funding(0.0001)
+    full_funding = pos.accrued_funding_usdt
+    reduced_usdt = pos.size_usdt * 0.5
+    closed = e.subaccount_1.reduce_position(
+        pos.id, fraction=0.5, exit_price=50_000.0, exit_time=_NOW, exit_reason="half")
+    # half the funding charged now, half stays on the remaining position
+    assert pos.accrued_funding_usdt == pytest.approx(full_funding * 0.5, rel=1e-9)
+    expected = -round_trip_cost_usdt(reduced_usdt * pos.leverage) - full_funding * 0.5
+    assert closed.pnl_usdt == pytest.approx(expected, rel=1e-9)

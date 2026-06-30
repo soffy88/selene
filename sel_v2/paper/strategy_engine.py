@@ -17,6 +17,7 @@ replay uses, so paper and replay produce identical states for identical input.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -282,6 +283,11 @@ class PaperStrategyEngine:
             z_t = self._zscore(float(log_returns[i]), float(sigma_series[i]))
             t_unix = ts.timestamp() if hasattr(ts, "timestamp") else float(i)
 
+            # Accrue one bar of funding on positions already open (entered in a
+            # prior bar) before this bar's opens/exits, so funding cost is deducted
+            # from realised PnL at exit. No-op without a funding series.
+            self._accrue_funding(funding_series, i)
+
             # Feed real trade arrivals up to this bar time into the S2 Hawkes tracker,
             # so λ*(t) captures recent trade clustering (item: tick→H1 wiring).
             if self._s2_enabled and tick_times is not None and self._s2_tracker is not None:
@@ -315,6 +321,23 @@ class PaperStrategyEngine:
             states.append(raw_state)
 
         return self._summary(df, states)
+
+    # ── funding accrual ─────────────────────────────────────────────────────────
+    def _accrue_funding(self, funding_series, i: int) -> None:
+        """Accrue bar i's funding rate onto every open position. funding_series is
+        the per-bar (as-of) funding rate aligned to the bar grid; NaN/None means
+        unknown → no accrual (conservative)."""
+        if funding_series is None:
+            return
+        try:
+            fr = float(funding_series[i])
+        except (IndexError, TypeError, ValueError):
+            return
+        if not math.isfinite(fr):
+            return
+        for acct in (self.accounts.subaccount_1, self.accounts.subaccount_2):
+            for pos in acct.open_positions:
+                pos.accrue_funding(fr)
 
     # ── Strategy 1 helpers ─────────────────────────────────────────────────────
     def _maybe_open_s1(self, dec, state, mark, ts) -> None:

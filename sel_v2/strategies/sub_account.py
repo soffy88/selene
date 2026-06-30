@@ -31,6 +31,27 @@ SUBACCOUNT_2_FRACTION: float = 0.20
 MAX_CONCURRENT_S1: int = 1
 MAX_CONCURRENT_S2: int = 2
 
+# Transaction-cost model — aligned with backtest/costs.py so the paper engine and
+# the backtester charge the same per-trade frictions. Previously paper fills were
+# free (mid-price, no fee/slippage/funding), so reported paper PnL was optimistic
+# by at least round-trip fees + funding. Cost is charged when a notional unit is
+# exited; entry+exit is accounted round-trip at that point.
+TAKER_FEE_PCT: float = 0.0004                      # 4 bps per side (taker)
+HALF_SPREAD_PCT: float = (2.0 / 10_000.0) / 2.0    # half of a 2 bps spread, per side
+ONE_SIDE_COST_PCT: float = TAKER_FEE_PCT + HALF_SPREAD_PCT
+
+# Perpetual funding settles every 8h; the v2 engine steps 4H bars, so one bar is
+# half a settlement period. Funding is accrued per bar on open positions and
+# deducted from realised PnL at exit.
+FUNDING_SETTLEMENT_HOURS: float = 8.0
+BAR_HOURS: float = 4.0
+FUNDING_BAR_FACTOR: float = BAR_HOURS / FUNDING_SETTLEMENT_HOURS
+
+
+def round_trip_cost_usdt(notional_usdt: float) -> float:
+    """Round-trip (entry+exit) fee + slippage in USDT for a given traded notional."""
+    return 2.0 * ONE_SIDE_COST_PCT * notional_usdt
+
 
 @dataclass
 class Position:
@@ -53,10 +74,22 @@ class Position:
     batches_triggered: int = 0
     # Critical-reduce tracking (Strategy 1)
     critical_reduced: bool = False
+    # Accumulated funding cost in USDT (positive = paid to the market), accrued per
+    # bar while the position is open and deducted from realised PnL at exit.
+    accrued_funding_usdt: float = 0.0
 
     @property
     def notional_usdt(self) -> float:
         return self.size_usdt * self.leverage
+
+    def accrue_funding(self, funding_rate: float) -> None:
+        """Accrue one bar's funding as a cost. Longs pay when the funding rate is
+        positive, shorts receive; pro-rated by FUNDING_BAR_FACTOR because a 4H bar
+        is half an 8H settlement period."""
+        sign = 1.0 if self.direction == "LONG" else -1.0
+        self.accrued_funding_usdt += (
+            sign * funding_rate * FUNDING_BAR_FACTOR * self.notional_usdt
+        )
 
     def unrealized_pnl_pct(self, mark_price: float) -> float:
         if self.direction == "LONG":
@@ -179,8 +212,12 @@ class SubAccount:
         if pos is None:
             return None
 
+        # pnl_pct stays the gross price move; pnl_usdt is net of round-trip
+        # fee+slippage and accrued funding (the real frictions a live fill pays).
         pnl_pct = pos.unrealized_pnl_pct(exit_price)
-        pnl_usdt = pos.unrealized_pnl_usdt(exit_price)
+        gross_pnl = pos.unrealized_pnl_usdt(exit_price)
+        cost = round_trip_cost_usdt(pos.notional_usdt)
+        pnl_usdt = gross_pnl - cost - pos.accrued_funding_usdt
         self._nav += pnl_usdt
 
         closed = ClosedPosition(
@@ -216,7 +253,13 @@ class SubAccount:
         fraction = max(0.0, min(1.0, fraction))
         reduced_usdt = pos.size_usdt * fraction
         pnl_pct = pos.unrealized_pnl_pct(exit_price)
-        pnl_usdt = reduced_usdt * leverage_pnl(pos.leverage, pnl_pct)
+        gross_pnl = reduced_usdt * leverage_pnl(pos.leverage, pnl_pct)
+        # The exited fraction round-trips its share of fee+slippage and carries its
+        # share of accrued funding; the remainder keeps the rest.
+        cost = round_trip_cost_usdt(reduced_usdt * pos.leverage)
+        funding_charge = pos.accrued_funding_usdt * fraction
+        pos.accrued_funding_usdt -= funding_charge
+        pnl_usdt = gross_pnl - cost - funding_charge
 
         pos.size_usdt -= reduced_usdt
         self._nav += pnl_usdt
