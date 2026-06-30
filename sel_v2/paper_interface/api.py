@@ -135,6 +135,40 @@ async def sel_chart(symbol: str = Query("BTC-USDT"), bars: int = 300):
     ]
 
 
+@router.get("/sel/counterfactual")
+async def sel_counterfactual():
+    """Counterfactual S1/S2 entries over the full price history, computed by ASSUMING the
+    unavailable derivative gates (OI/entropy/funding) pass — i.e. where the price+σ+CUSUM
+    structure WOULD allow an entry. This is an upper-bound exploration, NOT a validated
+    backtest (no DSR deflation, no out-of-sample split). Empty until the scan has populated
+    v2_counterfactual_trades; the table may not exist yet (graceful)."""
+    p = await get_pool()
+    async with p.acquire() as conn:
+        try:
+            rows = await conn.fetch(
+                "SELECT strategy, direction, entry_time, entry_price, exit_time, exit_price, "
+                "pnl_usdt, exit_reason FROM v2_counterfactual_trades ORDER BY entry_time")
+        except Exception:
+            return {"trades": [], "summary": None}
+    trades = [{
+        "strategy": r["strategy"], "direction": r["direction"],
+        "entry_time": int(r["entry_time"].timestamp()),
+        "entry_price": float(r["entry_price"]),
+        "exit_time": int(r["exit_time"].timestamp()) if r["exit_time"] else None,
+        "exit_price": float(r["exit_price"]) if r["exit_price"] is not None else None,
+        "pnl_usdt": float(r["pnl_usdt"]) if r["pnl_usdt"] is not None else None,
+        "exit_reason": r["exit_reason"],
+    } for r in rows]
+    closed = [t for t in trades if t["pnl_usdt"] is not None]
+    wins = sum(1 for t in closed if t["pnl_usdt"] > 0)
+    summary = {
+        "n_trades": len(trades),
+        "win_rate": round(wins / len(closed), 3) if closed else None,
+        "net_pnl_usdt": round(sum(t["pnl_usdt"] for t in closed), 2),
+    } if trades else None
+    return {"trades": trades, "summary": summary}
+
+
 @router.get("/sel/cusum/recent")
 async def cusum_recent(strategy: str = "all", limit: int = 20):
     p = await get_pool()

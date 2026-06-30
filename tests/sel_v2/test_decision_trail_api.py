@@ -172,6 +172,31 @@ def test_sel_chart_returns_ascending_ohlc_with_state(monkeypatch):
     assert out[1]["close"] == 2.5 and out[1]["high"] == 3.0
 
 
+def test_counterfactual_summarises_trades(monkeypatch):
+    e1 = datetime(2024, 7, 15, tzinfo=timezone.utc); x1 = datetime(2024, 7, 22, tzinfo=timezone.utc)
+    e2 = datetime(2024, 9, 6, tzinfo=timezone.utc); x2 = datetime(2024, 9, 9, tzinfo=timezone.utc)
+    rows = [
+        {"strategy": "strategy_1", "direction": "SHORT", "entry_time": e1, "entry_price": 67000.0,
+         "exit_time": x1, "exit_price": 53000.0, "pnl_usdt": 7665.0, "exit_reason": "Time stop"},
+        {"strategy": "strategy_1", "direction": "SHORT", "entry_time": e2, "entry_price": 54000.0,
+         "exit_time": x2, "exit_price": 57000.0, "pnl_usdt": -2214.0, "exit_reason": "Drawdown stop"},
+    ]
+    _patch_pool(monkeypatch, _Conn(rows=rows))
+    out = asyncio.run(api.sel_counterfactual())
+    assert out["summary"]["n_trades"] == 2
+    assert out["summary"]["win_rate"] == 0.5
+    assert out["summary"]["net_pnl_usdt"] == 7665.0 - 2214.0
+    # entry/exit times are unix seconds for the chart
+    assert out["trades"][0]["entry_time"] == int(e1.timestamp())
+    assert out["trades"][0]["direction"] == "SHORT"
+
+
+def test_counterfactual_graceful_when_table_absent(monkeypatch):
+    _patch_pool(monkeypatch, _Conn(raise_on_fetch=True))
+    out = asyncio.run(api.sel_counterfactual())
+    assert out == {"trades": [], "summary": None}
+
+
 def test_decision_view_flattens_entry_decision():
     from sel_v2.paper.strategy_engine import PaperStrategyEngine
 

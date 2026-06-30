@@ -474,8 +474,12 @@ td.neu{color:var(--text1)}
     <div class="stat"><div class="stat-label">健康警告</div><div class="stat-val" id="sel-warn">--</div><div class="stat-sub">过去30天</div></div>
   </div>
   <div class="card">
-    <div class="ch">BTC 走势 + SEL 状态标注 <span style="font-size:10px;color:var(--text2)">(4H · 近300根 · 状态切换处打点)</span></div>
+    <div class="ch" style="display:flex;justify-content:space-between;align-items:center">
+      <span>BTC 走势 + SEL 状态标注 <span style="font-size:10px;color:var(--text2)" id="sel-chart-sub">(4H · 近300根 · 状态切换处打点)</span></span>
+      <button id="sel-cf-btn" onclick="toggleCf()" style="font-size:11px;padding:3px 8px;background:var(--bg2,#222);color:var(--text2);border:1px solid #444;border-radius:4px;cursor:pointer">反事实成交(2年)</button>
+    </div>
     <div class="cb">
+      <div id="sel-cf-banner" style="display:none;font-size:10px;color:var(--amber);background:rgba(255,167,38,.08);border:1px solid rgba(255,167,38,.3);border-radius:4px;padding:6px 8px;margin-bottom:8px"></div>
       <div id="sel-chart" style="width:100%;height:340px"></div>
       <div id="sel-chart-legend" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:10px;color:var(--text2)"></div>
     </div>
@@ -937,20 +941,24 @@ const SEL_STATE_COLORS={
   Surging:'#42a5f5',Surging_Up:'#42a5f5',Surging_Down:'#5c6bc0',
   Critical:'#ffa726',Cascade:'#ef5350'
 };
-let _selChart=null,_selSeries=null;
-async function loadSelChart(){
-  if(typeof LightweightCharts==='undefined') return;          // lib 未加载
-  const data=await fetch('/api/v2/sel/chart?symbol=BTC-USDT&bars=300').then(r=>r.ok?r.json():null).catch(()=>null);
-  if(!Array.isArray(data)||!data.length) return;
-  const el=document.getElementById('sel-chart'); if(!el) return;
+let _selChart=null,_selSeries=null,_selCfOn=false;
+function toggleCf(){
+  _selCfOn=!_selCfOn;
+  const b=document.getElementById('sel-cf-btn');
+  b.style.background=_selCfOn?'rgba(255,167,38,.2)':'var(--bg2,#222)';
+  b.style.color=_selCfOn?'var(--amber)':'var(--text2)';
+  b.textContent=_selCfOn?'← 返回近期视图':'反事实成交(2年)';
+  loadSelChart();
+}
+function _ensureChart(){
+  const el=document.getElementById('sel-chart'); if(!el) return null;
   if(!_selChart){
     _selChart=LightweightCharts.createChart(el,{
       width:el.clientWidth,height:340,
       layout:{background:{type:'solid',color:'transparent'},textColor:'#9aa'},
       grid:{vertLines:{color:'rgba(255,255,255,.05)'},horzLines:{color:'rgba(255,255,255,.05)'}},
       timeScale:{timeVisible:true,secondsVisible:false,borderColor:'#333'},
-      rightPriceScale:{borderColor:'#333'},
-      crosshair:{mode:0}
+      rightPriceScale:{borderColor:'#333'},crosshair:{mode:0}
     });
     _selSeries=_selChart.addCandlestickSeries({
       upColor:'#26a69a',downColor:'#ef5350',borderVisible:false,
@@ -958,26 +966,51 @@ async function loadSelChart(){
     });
     window.addEventListener('resize',()=>{if(_selChart)_selChart.applyOptions({width:el.clientWidth});});
   }
+  return el;
+}
+async function loadSelChart(){
+  if(typeof LightweightCharts==='undefined') return;          // lib 未加载
+  const cf=_selCfOn, nbars=cf?6000:300;
+  const data=await fetch(`/api/v2/sel/chart?symbol=BTC-USDT&bars=${nbars}`).then(r=>r.ok?r.json():null).catch(()=>null);
+  if(!Array.isArray(data)||!data.length) return;
+  if(!_ensureChart()) return;
   _selSeries.setData(data.map(d=>({time:d.time,open:d.open,high:d.high,low:d.low,close:d.close})));
-  // 状态切换处打点标注
-  const markers=[]; let prev=null; const seen=new Set();
-  for(const d of data){
-    if(d.state){ seen.add(d.state); }
-    if(d.state && d.state!==prev){
-      markers.push({time:d.time,position:'aboveBar',color:SEL_STATE_COLORS[d.state]||'#bbb',shape:'circle',text:d.state});
-      prev=d.state;
+  const banner=document.getElementById('sel-cf-banner'), sub=document.getElementById('sel-chart-sub');
+  const legend=document.getElementById('sel-chart-legend');
+  if(cf){
+    // ── 反事实成交点叠加(假设衍生品门通过)──
+    const r=await fetch('/api/v2/sel/counterfactual').then(r=>r.ok?r.json():null).catch(()=>null);
+    const trades=(r&&r.trades)||[], s=r&&r.summary;
+    const mk=[];
+    for(const t of trades){
+      const long=t.direction==='LONG';
+      mk.push({time:t.entry_time,position:long?'belowBar':'aboveBar',color:long?'#26a69a':'#ef5350',shape:long?'arrowUp':'arrowDown',text:long?'多':'空'});
+      if(t.exit_time)mk.push({time:t.exit_time,position:'inBar',color:(t.pnl_usdt>0?'#26a69a':'#ef5350'),shape:'circle',text:(t.pnl_usdt>=0?'+':'')+Math.round(t.pnl_usdt)});
     }
+    mk.sort((a,b)=>a.time-b.time);
+    _selSeries.setMarkers(mk);
+    sub.textContent='(4H · 全2年 · 反事实成交:▲多 ▼空 ○平仓)';
+    banner.style.display='block';
+    banner.innerHTML='⚠️ <b>反事实推演</b>:假设拿不到的 OI/熵/资金费门<b>全部通过</b>,只用真实价格+σ+CUSUM。'+
+      '<b>非真实回测</b>(无 DSR 去膨胀/无样本外),仅看价格结构上"哪能开单"的上界。'+
+      (s?`<br>S1:<b>${s.n_trades}</b> 笔 · 胜率 <b>${((s.win_rate||0)*100).toFixed(0)}%</b> · 净 <b>${s.net_pnl_usdt>=0?'+':''}${s.net_pnl_usdt}</b> USDT`:'');
+    legend.innerHTML='<span style="color:#26a69a">▲ 做多入场</span> <span style="color:#ef5350">▼ 做空入场</span> <span>○ 平仓(绿=盈/红=亏,数字为 PnL)</span>';
+  }else{
+    // ── 近期视图:状态切换打点 + 6 态图例 ──
+    banner.style.display='none';
+    sub.textContent='(4H · 近300根 · 状态切换处打点)';
+    const mk=[]; let prev=null; const seen=new Set();
+    for(const d of data){
+      if(d.state)seen.add(d.state);
+      if(d.state&&d.state!==prev){ mk.push({time:d.time,position:'aboveBar',color:SEL_STATE_COLORS[d.state]||'#bbb',shape:'circle',text:d.state}); prev=d.state; }
+    }
+    _selSeries.setMarkers(mk);
+    const S6=['Coiling','Drifting_Charged','Drifting_Calm','Surging','Critical','Cascade'];
+    legend.innerHTML=S6.map(s=>{const on=seen.has(s);
+      return `<span style="opacity:${on?1:.4}" title="${on?'本窗口出现':'本窗口未出现'}"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${SEL_STATE_COLORS[s]||'#bbb'};margin-right:3px"></span>${s}${on?'':' (未出现)'}</span>`;
+    }).join('');
   }
-  _selSeries.setMarkers(markers);
   _selChart.timeScale().fitContent();
-  // 图例:始终列全 6 态(模型完整词汇表),本窗口未出现的灰显标注
-  const SEL_STATES_6=['Coiling','Drifting_Charged','Drifting_Calm','Surging','Critical','Cascade'];
-  document.getElementById('sel-chart-legend').innerHTML=SEL_STATES_6.map(s=>{
-    const on=seen.has(s);
-    return `<span style="opacity:${on?1:.4}" title="${on?'本窗口出现':'本窗口未出现'}">`+
-           `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${SEL_STATE_COLORS[s]||'#bbb'};margin-right:3px"></span>`+
-           `${s}${on?'':' (未出现)'}</span>`;
-  }).join('');
 }
 
 async function loadSel(){
