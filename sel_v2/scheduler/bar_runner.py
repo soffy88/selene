@@ -40,6 +40,11 @@ _OI_PCTILE_WINDOW = 360   # 60 days
 _FUNDING_PCTILE_WINDOW = 360
 _OFI_PCTILE_WINDOW = 42   # 7 days
 _LOB_DEPTH_PCTILE_WINDOW = 42   # 7 days (schema: "LOB depth rank in 7-day history")
+_ENTROPY_PCTILE_WINDOW = 180    # 30 days (schema: "entropy rank in 30-day history")
+# Min finite observations before a rolling percentile is emitted (adaptive window, A2):
+# lets recently-started feeds (OI/funding/entropy) produce a percentile instead of staying
+# null until their full window is filled.
+_PCTILE_MIN_BARS = 30
 _FUNDING_PERSIST_BARS = 6  # same sign 6 consecutive bars
 
 
@@ -68,6 +73,7 @@ class BarRunner:
         funding_series: Optional[np.ndarray] = None,
         ofi_proxy_series: Optional[np.ndarray] = None,
         lob_depth_series: Optional[np.ndarray] = None,   # total top-of-book depth (bid+ask) per bar
+        entropy_series: Optional[np.ndarray] = None,     # LOB Shannon entropy per bar (from v2_lob_snapshots)
     ) -> None:
         self._closes = closes
         self._timestamps = timestamps
@@ -105,6 +111,13 @@ class BarRunner:
         self._lob_depth_pctile = self._precompute_rolling_pctile(
             lob_depth_series, _LOB_DEPTH_PCTILE_WINDOW
         )
+        # LOB entropy is collected (v2_lob_snapshots.entropy) but was never aggregated into a
+        # bar feature, so entropy_pctile was 100% null and Coiling (which needs entropy_low)
+        # could never confirm (audit follow-up B). Wire it through as a rolling rank.
+        self._entropy_raw = entropy_series
+        self._entropy_pctile = self._precompute_rolling_pctile(
+            entropy_series, _ENTROPY_PCTILE_WINDOW
+        )
 
     # ── Helixa feature precomputation ─────────────────────────────────────────
 
@@ -121,16 +134,28 @@ class BarRunner:
         return rate
 
     def _precompute_rolling_pctile(
-        self, series: Optional[np.ndarray], window: int
+        self, series: Optional[np.ndarray], window: int, min_bars: int = _PCTILE_MIN_BARS
     ) -> Optional[np.ndarray]:
+        """Rolling rank of `series[i]` within its trailing `window`.
+
+        Adaptive window (audit follow-up A2): a percentile is produced as soon as there are
+        `min_bars` finite observations in the trailing window, rather than waiting for the bar
+        index to reach `window`. This matters when a feed (OI/funding/entropy) only started
+        recently: with a 360-bar (60-day) window but ~90 bars of real data, the old
+        `range(window, n)` never emitted a value, so oi_change_rate_pctile / funding_pctile /
+        entropy_pctile were 100% null and Coiling/Drifting-Charged were unreachable. Now the
+        last ~(valid−min_bars) bars get a (necessarily thinner) percentile so those states can
+        fire on recent data; backfilling the feed history restores the full-window statistics.
+        """
         if series is None:
             return None
         n = len(series)
         pctile = np.full(n, np.nan)
-        for i in range(window, n):
-            seg = series[i - window: i]
+        for i in range(1, n):
+            lo = max(0, i - window)
+            seg = series[lo:i]
             valid = seg[np.isfinite(seg)]
-            if len(valid) >= 2 and np.isfinite(series[i]):
+            if len(valid) >= min_bars and np.isfinite(series[i]):
                 pctile[i] = float(np.mean(valid <= series[i]))
         return pctile
 
@@ -177,6 +202,7 @@ class BarRunner:
         funding_series: Optional[np.ndarray] = None,
         ofi_proxy_series: Optional[np.ndarray] = None,
         lob_depth_series: Optional[np.ndarray] = None,
+        entropy_series: Optional[np.ndarray] = None,
     ) -> "BarRunner":
         closes = df["close"].values.astype(float)
         timestamps = df["time"].values
@@ -194,6 +220,7 @@ class BarRunner:
             funding_series=funding_series,
             ofi_proxy_series=ofi_proxy_series,
             lob_depth_series=lob_depth_series,
+            entropy_series=entropy_series,
         )
 
     def build_features(self, i: int) -> BarFeatures:
@@ -280,6 +307,8 @@ class BarRunner:
         funding_persistent: Optional[bool] = _b(self._funding_persistent)
         ofi_cumulative_pctile = _f(self._ofi_cumulative_pctile)
         lob_depth_pctile = _f(self._lob_depth_pctile)
+        entropy_4h = _f(self._entropy_raw)
+        entropy_pctile = _f(self._entropy_pctile)
 
         return BarFeatures(
             timestamp=ts,
@@ -306,6 +335,8 @@ class BarRunner:
             funding_persistent=funding_persistent,
             ofi_cumulative_pctile=ofi_cumulative_pctile,
             lob_depth_pctile=lob_depth_pctile,
+            entropy_4h=entropy_4h,
+            entropy_pctile=entropy_pctile,
         )
 
     def process_bar(self, i: int) -> StateRecord:

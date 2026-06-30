@@ -144,11 +144,14 @@ class PaperEngine:
           lob_imb    — mean(bid_depth − ask_depth) over the bar's LOB snapshots
           lob_depth  — mean(bid_depth + ask_depth) over the bar's LOB snapshots (total
                        top-of-book depth; feeds the Cascade thin-book condition, P1-3)
+          entropy    — mean(entropy) over the bar's LOB snapshots (feeds Coiling's
+                       entropy_low condition; collected all along but never aggregated)
         """
         from datetime import timedelta
         import numpy as np
         n = len(df)
-        out = {k: np.full(n, np.nan) for k in ("taker_net", "taker_vol", "lob_imb", "lob_depth")}
+        out = {k: np.full(n, np.nan)
+               for k in ("taker_net", "taker_vol", "lob_imb", "lob_depth", "entropy")}
         cutoff = df["time"].iloc[-1] - timedelta(days=lookback_days)
         # bar open time -> row index
         idx = {t: i for i, t in enumerate(df["time"])}
@@ -163,7 +166,8 @@ class PaperEngine:
             lob = await conn.fetch(
                 "SELECT time_bucket('4 hours', timestamp) AS b, "
                 "  AVG(bid_depth - ask_depth) AS imb, "
-                "  AVG(bid_depth + ask_depth) AS depth "
+                "  AVG(bid_depth + ask_depth) AS depth, "
+                "  AVG(entropy) AS entropy "
                 "FROM v2_lob_snapshots WHERE symbol=$1 AND timestamp >= $2 GROUP BY b",
                 self._symbol, cutoff)
         for r in flow:
@@ -178,6 +182,8 @@ class PaperEngine:
                     out["lob_imb"][i] = float(r["imb"])
                 if r["depth"] is not None:
                     out["lob_depth"][i] = float(r["depth"])
+                if r["entropy"] is not None:
+                    out["entropy"][i] = float(r["entropy"])
         return out
 
     @staticmethod
