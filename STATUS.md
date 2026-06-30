@@ -33,20 +33,23 @@ rounds (see memory `opt-pr-3`).
 
 ## 📋 Backlog — P2 (cleanup / UX)
 
-- [ ] **P2-1** `v2_ofi_features` is an orphan store (0 readers; paper engine recomputes).
-- [ ] **P2-2** Misleading names: `hawkes_cascade_warning` (no Hawkes),
-      `wavelet_multifractal` (not multifractal), `tda_clustering` (no clustering).
-- [ ] **P2-3** smart_router cross-venue split computed but never executed
-      (`execution/main.py:177` uses `splits[0]`).
-- [ ] **P2-4** Online ICTracker uses tie-naive Spearman (`signal/main.py:166`).
-- [ ] **P2-5** Backfilled bars carry fake `vwap=0` in the same column as real VWAP
-      (`okx_backfill.py:47`).
-- [ ] **P2-6** `/monitor/recommendation` ("建议") endpoint name violates iron law.
+- [ ] **P2-1** `v2_ofi_features` orphan store — deferred (documented in Needs-Human).
+- [ ] **P2-2** Misleading observation-tool names — deferred (docstrings already self-disclaim;
+      rename is high-import-churn for low value).
+- [ ] **P2-3** smart_router cross-venue split not executed — deferred (single-venue +
+      NOTIFY_ONLY make it low-value now; needs live multi-venue validation).
 
 ---
 
 ## ✅ Done
 
+- **P2-5** VWAP now NULL (unknown) instead of fake 0.0 where it can't be computed (REST
+      backfill + zero-volume bars), so a reader can't mistake a placeholder for a real VWAP.
+      `sel_v2/data/{okx_backfill,v2_bar_aggregator}.py`. (P2-6 done with P0-6.)
+- **P2-4** Online IC is now tie-correct: ICTracker uses average ranks + Pearson-on-ranks
+      (`_spearman`, equals `scipy.stats.spearmanr` under ties) instead of the
+      1−6Σd²/(n(n²−1)) shortcut that assumed no ties — discretised scores / flat bars no
+      longer bias the IC used for sizing throttle. 5 new tests. `services/signal/main.py`.
 - **P1-6** Prometheus + Grafana now deployed in docker-compose (were absent): prometheus
       scrapes the gateway `/metrics` (target verified to match `gateway:5000`) with 30d
       retention, grafana on :3000, both on helios-net with persistent volumes. Compose +
@@ -148,6 +151,11 @@ rounds (see memory `opt-pr-3`).
   and cond-3 (`cross_exchange_spread`) is structurally N/A while single-venue (OKX only) —
   a second venue feed (P2: 2nd exchange) is required. Validate cond-1 firing with real LOB
   data on deploy.
+- **P2-1 OFI orphan store**: `v2_ofi_features` (ofi_persister) computes the same per-bar OFI
+  the paper engine already recomputes inline (`_load_microstructure_series`), so it's a
+  write-only duplicate. Decision needed: either point the paper engine at the persisted store
+  (removes the duplicate compute, but changes the data path — validate equivalence on real
+  data first) or drop the persister + its compose service. Left intact pending that call.
 - **P1-6 observability bring-up**: prometheus+grafana are declared in compose but need a real
   Docker host to verify containers start and scraping works; add Grafana dashboards/datasource
   provisioning once running. Other FastAPI services still need to adopt `shared/metrics.py` to

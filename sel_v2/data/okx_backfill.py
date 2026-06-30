@@ -44,7 +44,9 @@ def main():
         for c in candles:
             ts = datetime.fromtimestamp(int(c[0])/1000, tz=timezone.utc)
             o, h, l, cl, vol = float(c[1]), float(c[2]), float(c[3]), float(c[4]), float(c[5])
-            vwap = 0.0 # historical API doesn't provide VWAP easily in the same way
+            # History candles don't carry VWAP; store NULL (unknown), not a fake 0.0 that a
+            # reader can't tell apart from a real VWAP (audit P2-5).
+            vwap = None
             tick_count = 0
             
             cur.execute("""

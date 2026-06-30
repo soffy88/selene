@@ -34,6 +34,15 @@ def test_build_bar_row_none_on_empty():
     assert agg.build_bar_row([], START, "BTC-USDT") is None
 
 
+def test_vwap_is_null_when_unknown():
+    # zero-volume bar → vwap NULL (unknown), not a fake 0.0 (P2-5)
+    row = agg.build_bar_row([{"price": 100.0, "size": 0.0}], START, "BTC-USDT")
+    assert row[7] is None
+    # REST-recovered candle carries no VWAP → NULL
+    candles = [[str(START_MS), "100", "120", "80", "110", "5", "0", "0", "0"]]
+    assert agg.parse_rest_candle(candles, START, "BTC-USDT")[7] is None
+
+
 def test_parse_rest_candle_matches_start_and_flags_recovered():
     candles = [[str(START_MS), "100", "120", "80", "110", "5", "0", "0", "0"]]
     row = agg.parse_rest_candle(candles, START, "BTC-USDT")

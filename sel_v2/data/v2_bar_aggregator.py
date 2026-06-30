@@ -31,7 +31,8 @@ def build_bar_row(ticks, start: datetime, symbol: str):
     prices = [float(t["price"]) for t in ticks]
     sizes = [float(t["size"]) for t in ticks]
     volume = sum(sizes)
-    vwap = (sum(p * s for p, s in zip(prices, sizes)) / volume) if volume > 0 else 0.0
+    # NULL (unknown) when there's no volume to weight by, not a fake 0.0 (P2-5).
+    vwap = (sum(p * s for p, s in zip(prices, sizes)) / volume) if volume > 0 else None
     return (start, symbol, prices[0], max(prices), min(prices), prices[-1],
             volume, vwap, len(ticks))
 
@@ -44,7 +45,8 @@ def parse_rest_candle(candles, start: datetime, symbol: str):
     for c in candles or []:
         if int(c[0]) == start_ms:
             o, h, l, cl, vol = float(c[1]), float(c[2]), float(c[3]), float(c[4]), float(c[5])
-            return (start, symbol, o, h, l, cl, vol, 0.0, 0)
+            # vwap NULL (REST candles carry no VWAP), tick_count=0 marks REST-recovered (P2-5).
+            return (start, symbol, o, h, l, cl, vol, None, 0)
     return None
 
 

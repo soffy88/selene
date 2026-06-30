@@ -158,12 +158,9 @@ class ICTracker:
         scores  = [r[0] for r in self._records]
         returns = [r[1] for r in self._records]
 
-        # Spearman rank correlation
+        # Spearman rank correlation (tie-correct — see _spearman)
         n   = len(scores)
-        sr  = _rank(scores)
-        rr  = _rank(returns)
-        num = sum((sr[i]-rr[i])**2 for i in range(n))
-        ic  = 1 - 6*num/(n*(n**2-1))
+        ic  = _spearman(scores, returns)
 
         # IR = IC / IC_std (rolling)
         recent = [self._calc_single_ic(i) for i in range(min(20, n))]
@@ -187,14 +184,31 @@ class ICTracker:
         if len(sample) < 5:
             return 0.0
         sc = [r[0] for r in sample]; re = [r[1] for r in sample]
-        n = len(sc); sr = _rank(sc); rr = _rank(re)
-        d2 = sum((sr[i]-rr[i])**2 for i in range(n))
-        return 1 - 6*d2/(n*(n**2-1))
+        return _spearman(sc, re)
 
 
 def _rank(values: list) -> list:
+    # Average ranks (ties share the mean rank) — required for a correct Spearman under ties.
     from scipy.stats import rankdata
-    return rankdata(values, method='ordinal').tolist()
+    return rankdata(values, method='average').tolist()
+
+
+def _spearman(a: list, b: list) -> float:
+    """Spearman ρ = Pearson correlation of average ranks. Correct under ties, unlike the
+    1−6Σd²/(n(n²−1)) shortcut which assumes all ranks are distinct (P2-4): tied scores or
+    returns (common with discretised signals / flat bars) biased the old IC."""
+    ra, rb = _rank(a), _rank(b)
+    n = len(ra)
+    if n == 0:
+        return 0.0
+    ma = sum(ra) / n
+    mb = sum(rb) / n
+    cov = sum((ra[i] - ma) * (rb[i] - mb) for i in range(n))
+    va = sum((x - ma) ** 2 for x in ra)
+    vb = sum((x - mb) ** 2 for x in rb)
+    if va <= 0 or vb <= 0:
+        return 0.0
+    return cov / (math.sqrt(va) * math.sqrt(vb))
 
 
 def _to_float(v):
