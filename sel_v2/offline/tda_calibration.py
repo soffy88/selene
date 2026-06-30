@@ -211,6 +211,8 @@ def run_tda_calibration(
     d: int = 4,
     tau: int = 1,
     output_path: str = "analysis/tda_calibration_v1.md",
+    persist: bool = True,
+    db_url: str | None = None,
 ) -> dict:
     logger.info("Loading data from %s", data_path)
     df = pd.read_parquet(data_path).sort_values("time").reset_index(drop=True)
@@ -325,7 +327,43 @@ def run_tda_calibration(
     }
 
     _write_report(result, output_path)
+
+    if persist:
+        _persist_to_db(result, db_url)
+
     return result
+
+
+def _persist_to_db(result: dict, db_url: str | None) -> dict | None:
+    """Write the TDA L^1 percentile thresholds into v2_strategy_params so the live
+    Critical-state TDA condition uses the data-derived threshold instead of the
+    hardcoded placeholder (sel_v2/states/schema.py tda_l1_threshold=0.000097). The
+    p95 key is the one the live reader needs (replay.py: load_strategy_params('tda1',
+    ['l1_threshold_p95'])); p90/p97 are persisted alongside for tuning context.
+
+    Returns the persisted params, or None if the fit was degenerate or the write
+    failed (logged, not raised — the markdown report is still produced and offline
+    calibration must run without a DB)."""
+    params = {
+        "l1_threshold_p90": result.get("l1_q90"),
+        "l1_threshold_p95": result.get("l1_q95"),
+        "l1_threshold_p97": result.get("l1_q97"),
+    }
+    if any(v is None or not np.isfinite(v) for v in params.values()):
+        logger.warning("Skipping DB persist: TDA L^1 thresholds not finite (%s)", params)
+        return None
+    try:
+        from sel_v2.strategies.params_loader import save_strategy_params
+        save_strategy_params(strategy="tda1", params=params, db_url=db_url)
+        logger.info("Persisted TDA1 L^1 thresholds to v2_strategy_params "
+                    "(p90=%.6f p95=%.6f p97=%.6f)",
+                    params["l1_threshold_p90"], params["l1_threshold_p95"],
+                    params["l1_threshold_p97"])
+        return params
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to persist TDA1 thresholds to v2_strategy_params (%s). "
+                     "The live TDA condition will keep using the placeholder.", exc)
+        return None
 
 
 def _write_report(result: dict, output_path: str) -> None:
@@ -532,6 +570,10 @@ def main() -> None:
     parser.add_argument("--tau", type=int, default=1,
                         help="Takens time delay (bars)")
     parser.add_argument("--output", default="analysis/tda_calibration_v1.md")
+    parser.add_argument("--no-persist", action="store_true",
+                        help="Skip writing L^1 thresholds to v2_strategy_params")
+    parser.add_argument("--db-url", default=None,
+                        help="Postgres DSN override for param persistence")
     args = parser.parse_args()
 
     run_tda_calibration(
@@ -541,6 +583,8 @@ def main() -> None:
         d=args.d,
         tau=args.tau,
         output_path=args.output,
+        persist=not args.no_persist,
+        db_url=args.db_url,
     )
 
 

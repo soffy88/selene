@@ -46,6 +46,10 @@ CONTROL_EVENTS = [
 # v2.1 §5.2 Critical state condition: branching ratio > CRITICAL_THRESHOLD
 CRITICAL_THRESHOLD = 0.85
 
+# A full-sample fit with branching ratio above this is treated as a diverged MLE
+# (matches the rolling-stats MAX_BR clip) and is not persisted to the live params.
+_MAX_BRANCHING_PERSIST = 10.0
+
 
 # ── Hawkes log-likelihood ─────────────────────────────────────────────────────
 
@@ -222,41 +226,49 @@ def run_hawkes_calibration(
     return result
 
 
-def _persist_to_db(full_fit: dict, db_url: str | None) -> None:
+def _persist_to_db(full_fit: dict, db_url: str | None) -> dict | None:
     """Write the H2 reference parameters into v2_strategy_params so the live
     strategies can load them. Without this, HawkesParams.from_h2_reference() raises
     and Strategy 2 silently disables itself (it caught the RuntimeError and ran S1
     only). The keys match what load_strategy_params('h2', [...]) expects:
     h2_mu_ref / h2_alpha_ref / h2_beta_ref / h2_branching_ratio_threshold.
 
-    A DB failure is logged, not raised: the markdown report is still produced, and
-    offline calibration must remain runnable in environments without Postgres."""
+    Returns the persisted params, or None on a degenerate fit / write failure
+    (logged, not raised: the markdown report is still produced, and offline
+    calibration must remain runnable in environments without Postgres)."""
     mu = full_fit.get("mu")
     alpha = full_fit.get("alpha")
     beta = full_fit.get("beta")
-    if not all(np.isfinite(x) for x in (mu, alpha, beta) if x is not None) \
-            or None in (mu, alpha, beta):
+    if None in (mu, alpha, beta) or not all(np.isfinite(x) for x in (mu, alpha, beta)):
         logger.warning("Skipping DB persist: full-dataset fit did not converge "
                        "(mu=%s alpha=%s beta=%s)", mu, alpha, beta)
-        return
+        return None
+    # Reject degenerate fits: beta must be > 0 (else the H1 kernel never decays and
+    # branching_ratio blows up), and the branching ratio must be in a sane range.
+    # A diverged MLE (seen on too-few/noisy events) would otherwise poison the live
+    # Strategy-2 intensity with beta≈0 / α/β≈inf.
+    branching = alpha / beta if beta > 0 else float("inf")
+    if beta <= 0 or not (0.0 < branching <= _MAX_BRANCHING_PERSIST):
+        logger.warning("Skipping DB persist: degenerate Hawkes fit "
+                       "(mu=%s alpha=%s beta=%s branching=%s)", mu, alpha, beta, branching)
+        return None
+    params = {
+        "mu_ref": mu,
+        "alpha_ref": alpha,
+        "beta_ref": beta,
+        "branching_ratio_threshold": CRITICAL_THRESHOLD,
+    }
     try:
         from sel_v2.strategies.params_loader import save_strategy_params
-        save_strategy_params(
-            strategy="h2",
-            params={
-                "mu_ref": mu,
-                "alpha_ref": alpha,
-                "beta_ref": beta,
-                "branching_ratio_threshold": CRITICAL_THRESHOLD,
-            },
-            db_url=db_url,
-        )
+        save_strategy_params(strategy="h2", params=params, db_url=db_url)
         logger.info("Persisted H2 reference params to v2_strategy_params "
                     "(mu=%.6f alpha=%.6f beta=%.6f threshold=%.2f)",
                     mu, alpha, beta, CRITICAL_THRESHOLD)
+        return params
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to persist H2 params to v2_strategy_params (%s). "
                      "Strategy 2 will stay disabled until these rows exist.", exc)
+        return None
 
 
 def _write_report(result: dict, output_path: str) -> None:
