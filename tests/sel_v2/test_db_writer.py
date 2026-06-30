@@ -249,6 +249,10 @@ async def test_write_states_bulk_returns_count():
     count = await writer.write_states_bulk(records)
     assert count == 5
     writer._conn.executemany.assert_called_once()
+    # self-heal regression guard: must upsert (refresh stale states on recompute), not DO NOTHING
+    sql = writer._conn.executemany.call_args[0][0]
+    assert "ON CONFLICT (timestamp) DO UPDATE" in sql
+    assert "DO NOTHING" not in sql
 
 
 @pytest.mark.asyncio

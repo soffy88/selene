@@ -254,13 +254,30 @@ class DBWriter:
             ))
 
         try:
+            # ON CONFLICT DO UPDATE (not DO NOTHING): the paper engine replays the full history
+            # each tick, so a recompute with newer/fixed code must REFRESH the persisted state
+            # rather than keep the stale first-written one (DO NOTHING left v2_state_history
+            # permanently out of date after every code change). The WHERE guard skips no-op
+            # rewrites in steady state (same state/transition/duration → no write, no bloat),
+            # so it self-heals on real changes without churning the table every tick.
+            # v2_state_history is uncompressed, so updates are safe (unlike the compressed feeds).
             await self._conn.executemany(
                 """
                 INSERT INTO v2_state_history
                     (timestamp, state, sub_state, state_features,
                      transition_from, transition_via, duration_4h)
                 VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
-                ON CONFLICT DO NOTHING
+                ON CONFLICT (timestamp) DO UPDATE SET
+                    state = EXCLUDED.state,
+                    sub_state = EXCLUDED.sub_state,
+                    state_features = EXCLUDED.state_features,
+                    transition_from = EXCLUDED.transition_from,
+                    transition_via = EXCLUDED.transition_via,
+                    duration_4h = EXCLUDED.duration_4h
+                WHERE v2_state_history.state IS DISTINCT FROM EXCLUDED.state
+                   OR v2_state_history.transition_from IS DISTINCT FROM EXCLUDED.transition_from
+                   OR v2_state_history.transition_via IS DISTINCT FROM EXCLUDED.transition_via
+                   OR v2_state_history.duration_4h IS DISTINCT FROM EXCLUDED.duration_4h
                 """,
                 rows,
             )
