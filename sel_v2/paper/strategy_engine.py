@@ -322,6 +322,20 @@ class PaperStrategyEngine:
 
         return self._summary(df, states)
 
+    def bar_signal_series(self, df: pd.DataFrame, oi_series=None, funding_series=None,
+                          ofi_series=None) -> np.ndarray:
+        """Per-bar CUSUM-Short z-signal (standardised log return) — the momentum
+        signal that feeds both strategies' triggers. Exposed so its predictive edge
+        (IC / hit-rate vs forward returns) can be measured. Same feature pipeline as
+        process_frame; no trades are taken."""
+        df = df.sort_values("time").reset_index(drop=True)
+        _, sigma_series, log_returns = self._build_runner(df, oi_series, funding_series, ofi_series)
+        n = len(df)
+        sig = np.full(n, np.nan)
+        for i in range(n):
+            sig[i] = self._zscore(float(log_returns[i]), float(sigma_series[i]))
+        return sig
+
     # ── funding accrual ─────────────────────────────────────────────────────────
     def _accrue_funding(self, funding_series, i: int) -> None:
         """Accrue bar i's funding rate onto every open position. funding_series is
