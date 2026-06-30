@@ -12,6 +12,8 @@ from backtest.v2_strategy_backtest import (
     run_v2_backtest,
     evaluate_trades,
     check_pass,
+    effective_calibration_trials,
+    DEFAULT_N_TRIALS,
     _TradeView,
 )
 
@@ -81,6 +83,25 @@ def test_empty_trades_safe():
     assert res["all"]["n_trades"] == 0
     assert res["all"]["sharpe"] == 0.0
     assert res["all"]["max_drawdown"] == 0.0
+
+
+def test_default_trials_non_degenerate_and_deflates_dsr():
+    """DSR must deflate for the calibration search, not collapse to PSR (n_trials=1)."""
+    assert effective_calibration_trials() == DEFAULT_N_TRIALS
+    assert DEFAULT_N_TRIALS > 1   # never the degenerate single-trial default
+
+    # A modestly positive track record: more trials ⇒ lower (more honest) DSR.
+    trades = [
+        _TradeView(exit_time=1000 + i * 86_400_000,
+                   pnl_usd=120.0 if i % 5 else -90.0, strategy="strategy_1",
+                   direction="LONG", entry_time_ms=0)
+        for i in range(80)
+    ]
+    dsr_one = evaluate_trades(trades, 100_000, n_trials=1)["dsr"]
+    dsr_many = evaluate_trades(trades, 100_000, n_trials=DEFAULT_N_TRIALS)["dsr"]
+    assert dsr_many <= dsr_one
+    # default path equals the explicit many-trials path (no accidental n_trials=1)
+    assert evaluate_trades(trades, 100_000)["dsr"] == dsr_many
 
 
 def test_check_pass_flags_weak_metrics():

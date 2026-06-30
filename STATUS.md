@@ -21,14 +21,12 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
-- **P0-4** Real-strategy backtest DSR degenerate (`n_trials=1`).
+- **P0-5** Make the backtest pass-gate binding ("guilty until proven innocent").
 
 ---
 
 ## 📋 Backlog — P0 (live-safety / signal-trust; must precede any live ambition)
 
-- [ ] **P0-4** Real-strategy backtest DSR degenerate (`n_trials=1`,
-      `backtest/v2_strategy_backtest.py:73`) — never deflates for the real search.
 - [ ] **P0-5** No backtest pass-gate is enforced; `passed` is computed but consumed
       by nothing (`gateway/main.py:399`). Make "guilty until proven innocent" binding.
 - [ ] **P0-6** Frontend violates observe-only iron law (recommendation cards +
@@ -63,6 +61,11 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+- **P0-4** Real-strategy backtest DSR no longer degenerate: `n_trials` defaults to
+      `effective_calibration_trials()` (product of the calibration knobs the deployed
+      config was selected over, = 81), so DSR deflates for selection bias instead of
+      collapsing to PSR-vs-0. Documented `CALIBRATION_KNOBS`, overridable. 1 new test.
+      `backtest/v2_strategy_backtest.py`, `tests/backtest/test_v2_strategy_backtest.py`.
 - **P0-3** Exchange-native protective stops: `place_stop_order` on the adapter
       interface (base default = unsupported; real Binance `STOP_MARKET` + OKX algo
       `conditional`); live fills now place a reduce-only native stop that survives a

@@ -15,9 +15,15 @@ and funding (sub_account, P0-4), so the metrics reflect realistic net performanc
 
 `oos_start_ms` slices the metrics to an out-of-sample window (e.g. the period after
 the calibration window), which is the evidence that must exist before any live
-capital decision. n_trials defaults to 1 (a single fixed strategy configuration —
-no per-fold grid search), so DSR honestly collapses to PSR-vs-0 rather than
-over-deflating.
+capital decision.
+
+`n_trials` is the number of independent strategy configurations effectively searched
+when the deployed strategies were calibrated — the Deflated Sharpe (Bailey & López de
+Prado) must deflate for that selection. It defaults NOT to 1 (which would make DSR
+collapse to PSR-vs-0 and ignore selection bias entirely — "guilty until proven
+innocent" requires the opposite) but to the product of the calibration knobs the
+strategies were tuned over (see CALIBRATION_KNOBS). Callers who know their exact
+search can override it.
 """
 from __future__ import annotations
 
@@ -34,6 +40,31 @@ MIN_WIN_RATE = 0.50
 MIN_SHARPE = 1.0
 MAX_DRAWDOWN = 0.15
 MIN_DSR = 0.90
+
+# Independent calibration knobs the deployed sel_v2 config was *selected* over. The
+# Deflated Sharpe deflates for the number of trials = the product of these candidate
+# counts (a config is one point in this grid). A documented, conservative floor — real
+# tuning explores at least this much — grounded in the actual code/defaults:
+CALIBRATION_KNOBS = {
+    "tda_l1_percentile":        3,   # {p90, p95, p97} computed side by side (tda_calibration.py:258-260)
+    "cusum_threshold_quantile": 3,   # {0.90, 0.92, 0.95}; DEFAULT_THRESHOLD_QUANTILE=0.95 (cusum_short.py:31), tuned per §28
+    "hawkes_br_threshold":      3,   # {0.80, 0.85, 0.90}; schema default 0.85 (schema.py:102)
+    "state_entry_sigma_pctile": 3,   # {0.85, 0.90, 0.95} state-machine entry σ-percentile threshold
+}
+
+
+def effective_calibration_trials() -> int:
+    """n_trials for the Deflated Sharpe: the number of strategy configurations effectively
+    searched during calibration = product of each tunable knob's candidate count. A
+    conservative floor (see CALIBRATION_KNOBS); never 1, because the deployed config was
+    selected, not handed down."""
+    n = 1
+    for c in CALIBRATION_KNOBS.values():
+        n *= c
+    return n
+
+
+DEFAULT_N_TRIALS = effective_calibration_trials()
 
 
 @dataclass
@@ -70,7 +101,7 @@ def collect_trades(engine) -> list[_TradeView]:
 
 
 def evaluate_trades(trades: list[_TradeView], initial_capital: float,
-                    n_trials: int = 1) -> dict:
+                    n_trials: int = DEFAULT_N_TRIALS) -> dict:
     """Compute the performance/robustness metric panel for a set of trades."""
     n = len(trades)
     if n == 0:
@@ -118,7 +149,7 @@ def run_v2_backtest(df, *, initial_capital: float = 100_000.0,
                     oi_series=None, funding_series=None, ofi_series=None,
                     tick_times=None, micro=None, oos_start_ms: Optional[int] = None,
                     hawkes_params=None, skip_hawkes: bool = False, skip_tda: bool = False,
-                    instrument: str = "BTC-USDT", n_trials: int = 1) -> dict:
+                    instrument: str = "BTC-USDT", n_trials: int = DEFAULT_N_TRIALS) -> dict:
     """Run the deployed sel_v2 engine over `df` and evaluate its trades.
 
     Returns a dict with overall metrics ('all'), per-strategy breakdown, the raw
