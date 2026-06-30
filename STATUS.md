@@ -21,7 +21,7 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
-- **P1-4** WS disconnect gap recovery / detection.
+- **P1-6** Prometheus/Grafana deploy; **P1-7** Decision-trail read API.
 
 ---
 
@@ -30,7 +30,6 @@ rounds (see memory `opt-pr-3`).
 
 ## 📋 Backlog — P1 (core capability gaps)
 
-- [ ] **P1-4** WS disconnect has no gap recovery (`v2_bar_aggregator.py:28`).
 - [ ] **P1-6** No Prometheus/Grafana actually deployed (metrics exposed, unscraped).
 - [ ] **P1-7** Decision Trail has no UI/API read surface (the moat is invisible).
 
@@ -50,6 +49,11 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+- **P1-4** Bar-aggregator gap recovery: an empty 4H bar (WS outage lost its trades) is no
+      longer silently skipped — it's recovered from the official OKX perp candle
+      (tick_count=0 marks REST-recovered) so the 4H series stays contiguous; only an
+      unrecoverable bar logs an explicit GAP. Pure `build_bar_row`/`parse_rest_candle`
+      extracted for testing. 7 new tests. `sel_v2/data/v2_bar_aggregator.py`.
 - **P1-3** Cascade cond-1 reachable: BarRunner now derives `lob_depth_pctile` (rolling
       7-day rank of total top-of-book bid+ask depth) from the collected perp LOB and wires it
       into BarFeatures; paper engine aggregates `AVG(bid_depth+ask_depth)` per bar. A thin book
