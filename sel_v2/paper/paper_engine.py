@@ -284,6 +284,10 @@ class PaperEngine:
                         entry_state=p.entry_state,
                     )
 
+            # Per-bar decision trail (the audit "why" for recent bars, #2).
+            if hasattr(engine, "decision_trail"):
+                await self._writer.write_decision_trail_bulk(engine.decision_trail())
+
             # Latest per-strategy decision (the "why no entry this bar" the UI shows).
             from datetime import datetime as _dt
             for strat, dec in getattr(engine, "latest_decisions", lambda: {})().items():

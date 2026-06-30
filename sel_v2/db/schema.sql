@@ -250,6 +250,20 @@ CREATE INDEX IF NOT EXISTS idx_v2_decision_trail_ts
 CREATE INDEX IF NOT EXISTS idx_v2_decision_trail_component
     ON v2_decision_trail (target_component, timestamp DESC);
 
+-- Per-bar entry decision trail (the audit "why" for every bar, both strategies). One row per
+-- (timestamp, strategy), upserted each replay (self-healing, never duplicates). The full
+-- decision moat, vs v2_paper_latest_decision which is only the latest bar.
+CREATE TABLE IF NOT EXISTS v2_strategy_decision (
+    timestamp     TIMESTAMPTZ NOT NULL,
+    strategy      TEXT        NOT NULL,    -- 'strategy_1' / 'strategy_2'
+    action        TEXT        NOT NULL,    -- ENTER_LONG / ENTER_SHORT / OBSERVE / ABORT
+    reason        TEXT,
+    step_reached  INTEGER,
+    state_4h      TEXT,
+    direction     TEXT,
+    PRIMARY KEY (timestamp, strategy)
+);
+
 -- Latest per-strategy entry decision (runtime status for the UI "why no entry" panel).
 -- One row PER STRATEGY, upserted each replay — NOT an append log, so it never grows.
 CREATE TABLE IF NOT EXISTS v2_paper_latest_decision (

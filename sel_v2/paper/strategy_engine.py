@@ -299,6 +299,8 @@ class PaperStrategyEngine:
         n = len(df)
         states: list[str] = []
         self.records = []   # StateRecord per bar, for DB persistence (item #6)
+        self._s1_trail = []  # per-bar (ts, state, decision) — the full decision trail (#2)
+        self._s2_trail = []
 
         # Tick stream for the H1 Hawkes feed (point-in-time: only ticks ≤ bar time).
         tick_times = None if tick_times is None else list(tick_times)
@@ -340,6 +342,7 @@ class PaperStrategyEngine:
             self._manage_s1_exits(state, mark, ts, s1_trig)
             self._maybe_open_s1(s1_dec, state, mark, ts)
             self._last_s1 = (ts, state, s1_dec)   # latest S1 decision (for the UI "why" panel)
+            self._s1_trail.append((ts, state, s1_dec))
 
             # ── Strategy 2: engine-owned CUSUM-Short feeds the filter and exits ──
             if self._s2_enabled:
@@ -438,6 +441,7 @@ class PaperStrategyEngine:
             subaccount_nav_usdt=self.accounts.subaccount_2.nav,
         )
         self._last_s2 = (ts, state, dec)   # latest S2 decision (for the UI "why" panel)
+        self._s2_trail.append((ts, state, dec))
         if dec.action not in ("ENTER_LONG", "ENTER_SHORT"):
             return
         acct = self.accounts.subaccount_2
@@ -529,6 +533,21 @@ class PaperStrategyEngine:
         """Latest per-strategy decision dicts (None when a strategy didn't evaluate)."""
         return {"strategy_1": self._decision_view(self._last_s1),
                 "strategy_2": self._decision_view(self._last_s2)}
+
+    def decision_trail(self, last_n: int = 300) -> list:
+        """Per-bar decision rows (the audit trail, #2) for the most recent `last_n` bars of
+        each strategy, as (timestamp, strategy, action, reason, step_reached, state_4h,
+        direction) tuples for v2_strategy_decision. Bounded so the per-tick persist stays cheap
+        — sealed bars don't change, so the recent window plus the new bar is enough."""
+        rows = []
+        for strat, trail in (("strategy_1", self._s1_trail), ("strategy_2", self._s2_trail)):
+            for ts, state, d in trail[-last_n:]:
+                rows.append((
+                    _as_dt(ts), strat, getattr(d, "action", None) or "OBSERVE",
+                    getattr(d, "reason", ""), getattr(d, "step_reached", 0), state,
+                    getattr(d, "direction", None) or getattr(d, "cusum_direction", None),
+                ))
+        return rows
 
     def _summary(self, df, states) -> dict:
         from collections import Counter

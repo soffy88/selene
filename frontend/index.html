@@ -512,8 +512,8 @@ td.neu{color:var(--text1)}
   <div class="card">
     <div class="ch">状态历史（BTCUSDT）</div>
     <div style="overflow-x:auto">
-      <table><thead><tr><th>时间</th><th>状态</th><th>来自</th><th>触发</th><th>持续</th><th>特征完整性</th><th>冷启动</th></tr></thead>
-      <tbody id="sel-hist-table"><tr><td colspan="7" class="t-empty">加载中...</td></tr></tbody></table>
+      <table><thead><tr><th>时间</th><th>状态</th><th>来自</th><th>触发</th><th>持续</th><th>特征完整性</th><th>冷启动</th><th>S1决策</th></tr></thead>
+      <tbody id="sel-hist-table"><tr><td colspan="8" class="t-empty">加载中...</td></tr></tbody></table>
     </div>
   </div>
 </div>
@@ -1083,6 +1083,11 @@ async function loadSel(){
       const cs=r.cold_start===true?'<span style="color:var(--amber)">冷启</span>':(r.cold_start===false?'正常':'--');
       const fc=r.feature_completeness!=null?(r.feature_completeness*100).toFixed(0)+'%':'--';
       const dur=r.duration_4h!=null?r.duration_4h+' 根':'--';
+      let s1='--';
+      if(r.s1_action){
+        const ac=r.s1_action.startsWith('ENTER')?'g':r.s1_action==='ABORT'?'r':'a';
+        s1=`<span class="${ac}" title="${(r.s1_reason||'').replace(/"/g,'')}">${r.s1_action}${r.s1_step?'·'+r.s1_step+'步':''}</span>`;
+      }
       return`<tr>
         <td class="neu">${ft(r.time)}</td>
         <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};margin-right:4px"></span>${r.state||'NULL'}</td>
@@ -1091,10 +1096,11 @@ async function loadSel(){
         <td class="neu">${dur}</td>
         <td class="neu">${fc}</td>
         <td>${cs}</td>
+        <td>${s1}</td>
       </tr>`;
     }).join('');
   }else{
-    document.getElementById('sel-hist-table').innerHTML='<tr><td colspan="7" class="t-empty">无数据（系统尚在冷启动）</td></tr>';
+    document.getElementById('sel-hist-table').innerHTML='<tr><td colspan="8" class="t-empty">无数据（系统尚在冷启动）</td></tr>';
   }
 }
 

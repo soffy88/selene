@@ -399,6 +399,32 @@ class DBWriter:
             logger.warning("DBWriter.upsert_trade failed: %s", exc)
             return False
 
+    async def write_decision_trail_bulk(self, rows) -> int:
+        """Upsert per-bar decision rows into v2_strategy_decision (#2). Rows are
+        (timestamp, strategy, action, reason, step_reached, state_4h, direction).
+        Idempotent + self-healing across the per-tick replay (WHERE guard skips no-op writes)."""
+        if self._conn is None or not rows:
+            return 0
+        try:
+            await self._conn.executemany(
+                """
+                INSERT INTO v2_strategy_decision
+                    (timestamp, strategy, action, reason, step_reached, state_4h, direction)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (timestamp, strategy) DO UPDATE SET
+                    action = EXCLUDED.action, reason = EXCLUDED.reason,
+                    step_reached = EXCLUDED.step_reached, state_4h = EXCLUDED.state_4h,
+                    direction = EXCLUDED.direction
+                WHERE v2_strategy_decision.action IS DISTINCT FROM EXCLUDED.action
+                   OR v2_strategy_decision.step_reached IS DISTINCT FROM EXCLUDED.step_reached
+                """,
+                rows,
+            )
+            return len(rows)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("DBWriter.write_decision_trail_bulk failed: %s", exc)
+            return 0
+
     async def upsert_latest_decision(
         self,
         strategy: str,

@@ -129,6 +129,7 @@ def test_state_history_derives_completeness_and_coldstart(monkeypatch):
         "state": "Surging", "transition_from": "Cascade", "transition_via": "Exhaustion",
         "duration_4h": 3,
         "state_features": {"a": 1, "b": None, "c": 2, "d": None, "cold_start": False},
+        "s1_action": "OBSERVE", "s1_step": 1, "s1_reason": "Step 1: state filter",
     }]
     _patch_pool(monkeypatch, _Conn(rows=rows))
     out = asyncio.run(api.state_history(symbol="BTC-USDT"))
@@ -138,6 +139,8 @@ def test_state_history_derives_completeness_and_coldstart(monkeypatch):
     # 3 of 5 feature keys non-null
     assert r["feature_completeness"] == 0.6
     assert r["cold_start"] is False
+    # per-bar S1 decision joined in (#2)
+    assert r["s1_action"] == "OBSERVE" and r["s1_step"] == 1
     # the fake direction/confidence columns are gone
     assert "direction" not in r and "confidence" not in r
 
@@ -148,6 +151,7 @@ def test_state_history_handles_jsonb_string(monkeypatch):
         "timestamp": datetime(2026, 6, 30, tzinfo=timezone.utc), "state": "Cascade",
         "transition_from": None, "transition_via": None, "duration_4h": 1,
         "state_features": _json.dumps({"x": 1, "cold_start": True}),   # asyncpg may hand back a str
+        "s1_action": None, "s1_step": None, "s1_reason": None,
     }]
     _patch_pool(monkeypatch, _Conn(rows=rows))
     out = asyncio.run(api.state_history(symbol="BTC-USDT"))
@@ -208,3 +212,33 @@ def test_decision_view_flattens_entry_decision():
     assert view["action"] == "OBSERVE" and view["step_reached"] == 2
     assert view["state_4h"] == "Surging" and view["direction"] == "LONG"
     assert PaperStrategyEngine._decision_view(None) is None
+
+
+def test_decision_trail_emits_bounded_rows():
+    from sel_v2.paper.strategy_engine import PaperStrategyEngine
+
+    class _D:
+        def __init__(self, a): self.action = a; self.reason = "r"; self.step_reached = 1
+        direction = None; cusum_direction = None
+    eng = PaperStrategyEngine.__new__(PaperStrategyEngine)   # bypass __post_init__
+    ts0 = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    eng._s1_trail = [(ts0, "Surging", _D("OBSERVE")) for _ in range(500)]
+    eng._s2_trail = [(ts0, "Surging", _D("ABORT")) for _ in range(10)]
+    rows = eng.decision_trail(last_n=300)
+    # bounded to 300 per strategy: 300 (S1) + 10 (S2)
+    assert len(rows) == 310
+    ts, strat, action, reason, step, state, direction = rows[0]
+    assert strat == "strategy_1" and action == "OBSERVE" and step == 1
+
+
+def test_write_decision_trail_bulk_upserts(monkeypatch):
+    import asyncio as _aio
+    from unittest.mock import AsyncMock
+    from sel_v2.strategies.db_writer import DBWriter
+    w = DBWriter()
+    w._conn = AsyncMock()
+    rows = [(datetime(2026, 6, 1, tzinfo=timezone.utc), "strategy_1", "OBSERVE", "r", 1, "Surging", None)]
+    n = _aio.run(w.write_decision_trail_bulk(rows))
+    assert n == 1
+    sql = w._conn.executemany.call_args[0][0]
+    assert "ON CONFLICT (timestamp, strategy) DO UPDATE" in sql and "DO NOTHING" not in sql

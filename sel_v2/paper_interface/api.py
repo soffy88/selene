@@ -90,8 +90,12 @@ async def state_history(symbol: str = Query("BTC-USDT"), hours: int = 24, limit:
     p = await get_pool()
     async with p.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT timestamp, state, transition_from, transition_via, duration_4h, state_features "
-            "FROM v2_state_history ORDER BY timestamp DESC LIMIT $1", limit
+            "SELECT h.timestamp, h.state, h.transition_from, h.transition_via, h.duration_4h, "
+            "  h.state_features, d.action AS s1_action, d.step_reached AS s1_step, d.reason AS s1_reason "
+            "FROM v2_state_history h "
+            "LEFT JOIN v2_strategy_decision d "
+            "  ON d.timestamp = h.timestamp AND d.strategy = 'strategy_1' "
+            "ORDER BY h.timestamp DESC LIMIT $1", limit
         )
     out = []
     for r in rows:
@@ -109,6 +113,10 @@ async def state_history(symbol: str = Query("BTC-USDT"), hours: int = 24, limit:
             "duration_4h": r["duration_4h"],
             "feature_completeness": round(non_null / total, 3) if total else None,
             "cold_start": bool(f.get("cold_start")) if "cold_start" in f else None,
+            # per-bar S1 decision (#2): what Strategy 1 decided on this bar and which step blocked
+            "s1_action": r["s1_action"],
+            "s1_step": r["s1_step"],
+            "s1_reason": r["s1_reason"],
         })
     return out
 
