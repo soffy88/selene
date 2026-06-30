@@ -129,6 +129,30 @@ def evaluate_trades(trades: list[_TradeView], initial_capital: float,
     }
 
 
+class BacktestRejected(Exception):
+    """Raised when a strategy fails (or lacks) out-of-sample validation. Makes the
+    pass/fail verdict *binding*: code that gates a deploy on validation must either pass
+    the gate or handle this — the verdict can no longer be computed and silently ignored."""
+
+
+def enforce_oos_gate(result: dict) -> dict:
+    """Guilty-until-proven-innocent enforcement (audit P0-5).
+
+    A backtest verdict is worthless if nothing consumes it. Call this anywhere a strategy
+    would be promoted toward live: it RAISES BacktestRejected unless the result carries an
+    out-of-sample slice that PASSED the gate. Returns the result unchanged on pass so it
+    can be used inline. Absent OOS (`run_v2_backtest` called without oos_start_ms) is a
+    rejection, not a pass — no evidence is not innocence."""
+    if "oos" not in result or "oos_passed" not in result:
+        raise BacktestRejected(
+            "no out-of-sample evaluation present — run run_v2_backtest(..., oos_start_ms=...) "
+            "to produce binding OOS evidence")
+    if not result["oos_passed"]:
+        raise BacktestRejected(
+            "out-of-sample validation FAILED: " + "; ".join(result.get("oos_fail_reasons", [])))
+    return result
+
+
 def check_pass(metrics: dict) -> tuple[bool, list[str]]:
     """Apply the WFO-parity pass gate. Returns (passed, failed_reasons)."""
     fails = []

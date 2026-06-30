@@ -8,10 +8,14 @@ import math
 import numpy as np
 import pandas as pd
 
+import pytest
+
 from backtest.v2_strategy_backtest import (
     run_v2_backtest,
     evaluate_trades,
     check_pass,
+    enforce_oos_gate,
+    BacktestRejected,
     effective_calibration_trials,
     DEFAULT_N_TRIALS,
     _TradeView,
@@ -102,6 +106,19 @@ def test_default_trials_non_degenerate_and_deflates_dsr():
     assert dsr_many <= dsr_one
     # default path equals the explicit many-trials path (no accidental n_trials=1)
     assert evaluate_trades(trades, 100_000)["dsr"] == dsr_many
+
+
+def test_enforce_oos_gate_is_binding():
+    # missing OOS slice → rejected (no evidence is not innocence)
+    with pytest.raises(BacktestRejected, match="no out-of-sample"):
+        enforce_oos_gate({"all": {"n_trades": 100}})
+    # OOS present but failed → rejected with reasons
+    with pytest.raises(BacktestRejected, match="FAILED"):
+        enforce_oos_gate({"oos": {}, "oos_passed": False,
+                          "oos_fail_reasons": ["sharpe 0.20 < 1.0"]})
+    # OOS passed → returns the result unchanged (usable inline)
+    good = {"oos": {}, "oos_passed": True, "oos_fail_reasons": []}
+    assert enforce_oos_gate(good) is good
 
 
 def test_check_pass_flags_weak_metrics():

@@ -21,14 +21,12 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
-- **P0-5** Make the backtest pass-gate binding ("guilty until proven innocent").
+- **P0-6** Frontend observe-only iron law.
 
 ---
 
 ## 📋 Backlog — P0 (live-safety / signal-trust; must precede any live ambition)
 
-- [ ] **P0-5** No backtest pass-gate is enforced; `passed` is computed but consumed
-      by nothing (`gateway/main.py:399`). Make "guilty until proven innocent" binding.
 - [ ] **P0-6** Frontend violates observe-only iron law (recommendation cards +
       execute buttons + "建议" language). Honor the law without destroying function.
 
@@ -61,6 +59,13 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+- **P0-5** Backtest verdict is now binding at two real boundaries:
+      `enforce_oos_gate()` *raises* `BacktestRejected` on a failing/absent OOS slice (the
+      verdict can't be computed-then-ignored), and the live boot guard
+      (`_assert_safe_exec_mode`) now also requires `I_HAVE_OOS_EVIDENCE=yes` so no live
+      mode can start without proven out-of-sample evidence — guilty until proven innocent.
+      NOTIFY_ONLY/PAPER/dev unaffected. 2 new tests + updated guard tests.
+      `services/execution/main.py`, `backtest/v2_strategy_backtest.py`.
 - **P0-4** Real-strategy backtest DSR no longer degenerate: `n_trials` defaults to
       `effective_calibration_trials()` (product of the calibration knobs the deployed
       config was selected over, = 81), so DSR deflates for selection bias instead of

@@ -631,17 +631,36 @@ LIVE_EXEC_MODES = ("AUTO_EXEC", "CONFIRM_THEN_EXEC")
 
 def _assert_safe_exec_mode():
     """Fail-fast guard: refuse to place orders against a live (production) exchange unless an
-    operator has explicitly acknowledged it. Both AUTO_EXEC and CONFIRM_THEN_EXEC reach mainnet
-    (the latter after a manual /orders/{id}/confirm), so both are gated (item #7). Prevents an
-    accidental live deploy from trading real money. Override with I_UNDERSTAND_LIVE_AUTO_EXEC=yes."""
+    operator has explicitly acknowledged it AND the strategy has out-of-sample evidence.
+
+    Both AUTO_EXEC and CONFIRM_THEN_EXEC reach mainnet (the latter after a manual
+    /orders/{id}/confirm), so both are gated (item #7). Two independent acks are required:
+
+      - I_UNDERSTAND_LIVE_AUTO_EXEC=yes  — operator understands this trades real money.
+      - I_HAVE_OOS_EVIDENCE=yes          — "guilty until proven innocent" (audit P0-5): the
+        deployed strategy has PASSED out-of-sample validation (run the real-strategy
+        backtest, enforce_oos_gate must pass). Without proven OOS evidence the system has no
+        business risking capital, so a green backtest verdict is now *binding* at the live
+        boundary, not a number nobody reads.
+
+    Defaults (NOTIFY_ONLY / development) require neither, so paper/observe stays frictionless."""
     env = os.getenv("ENVIRONMENT", "development")
-    ack = os.getenv("I_UNDERSTAND_LIVE_AUTO_EXEC", "").lower() in ("1", "true", "yes")
-    if EXEC_MODE in LIVE_EXEC_MODES and env == "production" and not ack:
-        raise RuntimeError(
-            f"Refusing to start: EXEC_MODE={EXEC_MODE} with ENVIRONMENT=production. "
-            "This would place orders against real funds. "
-            "Set I_UNDERSTAND_LIVE_AUTO_EXEC=yes to override."
-        )
+    if EXEC_MODE in LIVE_EXEC_MODES and env == "production":
+        ack = os.getenv("I_UNDERSTAND_LIVE_AUTO_EXEC", "").lower() in ("1", "true", "yes")
+        if not ack:
+            raise RuntimeError(
+                f"Refusing to start: EXEC_MODE={EXEC_MODE} with ENVIRONMENT=production. "
+                "This would place orders against real funds. "
+                "Set I_UNDERSTAND_LIVE_AUTO_EXEC=yes to override."
+            )
+        oos = os.getenv("I_HAVE_OOS_EVIDENCE", "").lower() in ("1", "true", "yes")
+        if not oos:
+            raise RuntimeError(
+                f"Refusing to start: EXEC_MODE={EXEC_MODE} with ENVIRONMENT=production but no "
+                "out-of-sample evidence asserted. The deployed strategy must PASS the real-strategy "
+                "backtest (backtest.v2_strategy_backtest.enforce_oos_gate) before risking capital — "
+                "guilty until proven innocent. Set I_HAVE_OOS_EVIDENCE=yes once it has."
+            )
 
 
 @asynccontextmanager
