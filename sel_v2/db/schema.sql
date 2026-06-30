@@ -123,6 +123,22 @@ SELECT create_hypertable('v2_bars_4h', 'time',
     if_not_exists => TRUE);
 CREATE UNIQUE INDEX IF NOT EXISTS uix_v2_bars_4h ON v2_bars_4h (time, symbol);
 
+-- Point-in-time microstructure / OFI feature store. Previously the OFI proxy was
+-- recomputed in-memory from v2_ticks on every engine run (no stored, reproducible
+-- feature). This table persists the per-4H-bar features so they are point-in-time
+-- correct and re-derivable. Written by sel_v2/data/ofi_persister.py.
+CREATE TABLE IF NOT EXISTS v2_ofi_features (
+    time        TIMESTAMPTZ NOT NULL,   -- bar open time (4H grid)
+    symbol      TEXT        NOT NULL DEFAULT 'BTC-USDT',
+    taker_net   NUMERIC,                -- signed OFI proxy: Σ buy size − Σ sell size
+    taker_vol   NUMERIC,                -- total taken volume in the bar
+    lob_imb     NUMERIC,                -- mean(bid_depth − ask_depth) over the bar
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+SELECT create_hypertable('v2_ofi_features', 'time',
+    if_not_exists => TRUE);
+CREATE UNIQUE INDEX IF NOT EXISTS uix_v2_ofi_features ON v2_ofi_features (time, symbol);
+
 -- State machine history
 CREATE TABLE IF NOT EXISTS v2_state_history (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),

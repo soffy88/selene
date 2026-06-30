@@ -468,6 +468,24 @@ services:
       - helios-net
     restart: unless-stopped
 
+  v2-ofi-persister:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    command: python -m sel_v2.data.ofi_persister
+    env_file: .env
+    environment:
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
+      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - SYMBOLS=BTC-USDT
+    networks:
+      - helios-net
+    restart: unless-stopped
+    depends_on:
+      - v2-bar-aggregator
+
   v2-paper-engine:
     build:
       context: .
