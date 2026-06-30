@@ -31,7 +31,6 @@ rounds (see memory `opt-pr-3`).
 ## 📋 Backlog — P1 (core capability gaps)
 
 - [ ] **P1-6** No Prometheus/Grafana actually deployed (metrics exposed, unscraped).
-- [ ] **P1-7** Decision Trail has no UI/API read surface (the moat is invisible).
 
 ## 📋 Backlog — P2 (cleanup / UX)
 
@@ -49,6 +48,11 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+- **P1-7** Rich decision-trail read API: `GET /sel/decision-trail/full` exposes the per-bar
+      `sel_decision_trail` (feature snapshot, state+reason, proposed-vs-final action, matched
+      rule, risk veto+details, fill, config_hash) — the Helios moat that was persisted but had
+      no read surface. Degrades to [] when the table is absent. 2 new tests.
+      `sel_v2/paper_interface/api.py`. (Frontend trail tab still pending — see P0-6 Needs-Human.)
 - **P1-4** Bar-aggregator gap recovery: an empty 4H bar (WS outage lost its trades) is no
       longer silently skipped — it's recovered from the official OKX perp candle
       (tick_count=0 marks REST-recovered) so the 4H series stays contiguous; only an

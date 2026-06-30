@@ -132,3 +132,24 @@ async def decision_trail_recent(limit: int = 20):
             "SELECT * FROM v2_decision_trail ORDER BY timestamp DESC LIMIT $1", limit
         )
         return [record_to_dict(r) for r in rows]
+
+
+@router.get("/sel/decision-trail/full")
+async def decision_trail_full(symbol: str = Query("BTC-USDT"), limit: int = 50):
+    """Read surface for the rich per-bar decision trail (`sel_decision_trail`): the full WHY
+    of each decision — feature snapshot, state + reason, proposed vs final action, the matched
+    rule, risk veto + details, fill, config_hash. This is the Helios differentiator that was
+    persisted but had no read API (audit P1-7), so operators couldn't see it.
+
+    Returns [] (not an error) when the table doesn't exist yet, so the UI degrades gracefully
+    before the paper engine has written any trail."""
+    p = await get_pool()
+    async with p.acquire() as conn:
+        try:
+            rows = await conn.fetch(
+                "SELECT * FROM sel_decision_trail WHERE symbol=$1 ORDER BY time DESC LIMIT $2",
+                normalize_symbol(symbol), limit,
+            )
+        except Exception:
+            return []
+        return [record_to_dict(r) for r in rows]
