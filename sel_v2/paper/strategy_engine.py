@@ -44,6 +44,11 @@ _ABSORB_MOVE = 0.0015      # high volume but |return| ≤ 0.15% → flow Absorbe
 _OFI_PERSIST_BARS = 2      # net taker flow same direction for this many bars
 _TYPE_A_SEQ_BARS = 6       # an Absorption within this many bars before a Sweep → Type A
 
+# Cache for the expensive price-only per-bar series (σ / Hawkes BR / TDA L¹), keyed on a
+# closes signature. The full-history replay runs on every tick; these series only change when a
+# new 4H bar seals, so caching skips the heavy TDA(ripser)/Hawkes recompute on every tick (#4).
+_PRECOMPUTE_CACHE: dict = {"sig": None, "data": None}
+
 
 # Inlined from sel_v2/scheduler/replay.py (kept identical) so this engine is importable
 # without ripser when TDA is disabled — replay imports tda_critical at module load.
@@ -142,25 +147,43 @@ class PaperStrategyEngine:
         self._last_s2 = None
 
     # ── feature pipeline (mirrors replay.run_replay) ───────────────────────────
-    def _build_runner(self, df: pd.DataFrame, oi_series=None, funding_series=None,
-                      ofi_series=None, lob_depth_series=None, entropy_series=None) -> tuple[BarRunner, np.ndarray, np.ndarray]:
-        closes = df["close"].values.astype(float)
+    def _precompute_price_features(self, closes):
+        """The expensive, price-only per-bar series (σ, Hawkes branching ratio, TDA L¹).
+        These are pure functions of `closes` and depend only on trailing windows, so for a
+        sealed bar their value never changes — yet the full-history replay recomputed them on
+        EVERY tick (TDA via ripser over all ~4500 bars was the hog). Cache by a closes signature
+        and reuse when the price history is unchanged (the dominant case: ticks arrive far more
+        often than a new 4H bar), so the heavy TDA/Hawkes only runs when a bar actually sealed."""
+        import numpy as _np
         n = len(closes)
-        sigma_series, sigma_pctile = precompute_sigma_series(closes)
+        sig = (n, float(closes[0]) if n else 0.0, float(closes[-1]) if n else 0.0,
+               self.skip_hawkes, self.skip_tda)
+        cached = _PRECOMPUTE_CACHE.get("sig")
+        if cached == sig:
+            return _PRECOMPUTE_CACHE["data"]
 
+        sigma_series, sigma_pctile = precompute_sigma_series(closes)
         if self.skip_hawkes:
-            hawkes_br = np.full(n, np.nan)
+            hawkes_br = _np.full(n, _np.nan)
         else:
             from sel_v2.states.hawkes_critical import precompute_branching_ratios
             hawkes_br = precompute_branching_ratios(closes)
-
         if self.skip_tda:
-            tda_l1 = np.full(n, np.nan)
-            tda_pctile = np.full(n, np.nan)
+            tda_l1 = _np.full(n, _np.nan); tda_pctile = _np.full(n, _np.nan)
         else:
             from sel_v2.states.tda_critical import precompute_tda_l1
             tda_l1 = precompute_tda_l1(closes)
             tda_pctile = precompute_tda_pctile_series(tda_l1)
+
+        data = (sigma_series, sigma_pctile, hawkes_br, tda_l1, tda_pctile)
+        _PRECOMPUTE_CACHE["sig"] = sig
+        _PRECOMPUTE_CACHE["data"] = data
+        return data
+
+    def _build_runner(self, df: pd.DataFrame, oi_series=None, funding_series=None,
+                      ofi_series=None, lob_depth_series=None, entropy_series=None) -> tuple[BarRunner, np.ndarray, np.ndarray]:
+        closes = df["close"].values.astype(float)
+        sigma_series, sigma_pctile, hawkes_br, tda_l1, tda_pctile = self._precompute_price_features(closes)
 
         runner = BarRunner.from_precomputed(
             df=df, sigma_series=sigma_series, sigma_pctile_series=sigma_pctile,
