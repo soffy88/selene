@@ -114,17 +114,22 @@ class SmartRouter:
             # 计算可用深度（前5档）
             depth_usd = sum(p * q for p, q in levels[:5])
 
-            # 价格冲击：吃掉 qty_usd 需要的加权均价 vs 最优价
-            consumed = 0.0
-            notional = 0.0
+            # 价格冲击：吃掉 qty_usd 需要的加权均价 vs 最优价。
+            # avg_price = 实际花费USD / 实际买到的base数量。必须分开累计base数量
+            # （take/price），否则 notional==consumed 会让 avg_price 恒等于 best_price、
+            # impact 恒为 0，路由就只剩价差+手续费、跨所拆单失效。
+            consumed = 0.0       # USD filled
+            base_qty = 0.0       # base units acquired
             for price, qty in levels:
                 level_usd = price * qty
                 take = min(level_usd, qty_usd - consumed)
-                notional  += take / price * price   # = take
+                if take <= 0:
+                    break
+                base_qty  += take / price
                 consumed  += take
                 if consumed >= qty_usd:
                     break
-            avg_price  = notional / (consumed / best_price) if consumed > 0 else best_price
+            avg_price  = consumed / base_qty if base_qty > 0 else best_price
             impact_pct = abs(avg_price - best_price) / best_price
 
             # 买卖价差

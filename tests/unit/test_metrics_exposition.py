@@ -26,6 +26,25 @@ def test_labels_sorted_and_escaped():
     assert out.index('a="') < out.index('b="')
 
 
+def test_non_finite_values_use_prometheus_tokens():
+    # Python repr would emit 'nan'/'inf' which Prometheus rejects, failing the
+    # entire scrape. A missing value must render as NaN, not crash on int(None).
+    assert render_metric("x", float("nan")).endswith("x NaN")
+    assert render_metric("x", float("inf")).endswith("x +Inf")
+    assert render_metric("x", float("-inf")).endswith("x -Inf")
+    assert render_metric("x", None).endswith("x NaN")
+
+
+def test_render_prometheus_survives_nan_in_a_dict():
+    # A single NaN value must not crash the whole endpoint.
+    body = render_prometheus([
+        {"name": "selene_equity", "value": float("nan")},
+        {"name": "selene_up", "value": 1},
+    ])
+    assert "selene_equity NaN" in body
+    assert "selene_up 1" in body
+
+
 def test_render_prometheus_multiple_and_trailing_newline():
     body = render_prometheus([
         {"name": "selene_up", "value": 1, "help": "up"},

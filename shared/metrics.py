@@ -9,6 +9,7 @@ Format ref: https://prometheus.io/docs/instrumenting/exposition_formats/
 """
 from __future__ import annotations
 
+import math
 from typing import Iterable, Optional
 
 
@@ -34,9 +35,19 @@ def render_metric(name: str, value, *, mtype: str = "gauge",
 
 
 def _num(value) -> str:
+    # Prometheus exposition requires the exact tokens NaN / +Inf / -Inf, and a
+    # missing value rendered as "NaN" — Python's repr ('nan'/'inf') or int(None)
+    # would emit a line the scraper rejects, failing the WHOLE /metrics endpoint.
+    if value is None:
+        return "NaN"
     if isinstance(value, bool):
         return "1" if value else "0"
-    return repr(float(value)) if isinstance(value, float) else str(int(value))
+    f = float(value)
+    if math.isnan(f):
+        return "NaN"
+    if math.isinf(f):
+        return "+Inf" if f > 0 else "-Inf"
+    return repr(f) if isinstance(value, float) else str(int(value))
 
 
 def render_prometheus(metrics: Iterable[dict]) -> str:
