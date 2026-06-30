@@ -16,6 +16,14 @@ logger = logging.getLogger("paper_engine")
 # engine's full-history replays (item #6 — makes persistence idempotent).
 _TRADE_NS = uuid.UUID("6f1a7e2c-0b3d-4a5e-9c8b-2d1f0a3b4c5d")
 
+# Cadence of the Strategy-2 tick loop (reprocess when new ticks arrive, so S2's
+# H1 Hawkes / micro state stays current ahead of the 4H bar boundary).
+S2_TICK_INTERVAL_SEC = int(os.environ.get("S2_TICK_INTERVAL_SEC", "300"))
+# Cadence of the intra-bar position-risk monitor.
+POSITION_MGMT_INTERVAL_SEC = int(os.environ.get("POSITION_MGMT_INTERVAL_SEC", "60"))
+# Intra-bar unrealized-loss fraction that raises a risk alert between bars.
+PAPER_HARD_STOP_PCT = float(os.environ.get("PAPER_HARD_STOP_PCT", "0.05"))
+
 
 def _trade_id(strategy: str, sub_account: str, entry_time, direction: str, entry_price: float) -> str:
     key = f"{strategy}|{sub_account}|{entry_time}|{direction}|{entry_price}"
@@ -40,6 +48,11 @@ class PaperEngine:
         self._degraded = False
         self._engine = None
         self._writer = None
+        # Serialise reprocessing: the 4H loop and the S2 tick loop both trigger a
+        # full-history replay, and they must never run concurrently (they share
+        # self._engine and write the same v2_* rows).
+        self._reprocess_lock = asyncio.Lock()
+        self._last_tick_ts = None    # newest v2_ticks timestamp the tick loop has seen
 
     async def _load_last_bar_ts(self) -> datetime | None:
         try:
@@ -174,6 +187,13 @@ class PaperEngine:
         return sign * vol
 
     async def _reprocess(self):
+        """Lock-serialised full-history replay. The 4H loop and the S2 tick loop both
+        call this; the lock guarantees only one replay mutates self._engine / the
+        v2_* rows at a time."""
+        async with self._reprocess_lock:
+            await self._reprocess_inner()
+
+    async def _reprocess_inner(self):
         """Replay the full bar history through the strategy engine. Positions are a pure
         function of history, so a fresh engine each tick gives deterministic, idempotent state.
         TDA is skipped unless `ripser` is installed; OI/funding are fed when available."""
@@ -306,25 +326,153 @@ class PaperEngine:
                 logger.error(f"Error in strategy1 loop: {e}")
             await asyncio.sleep(60)
 
+    # ── Strategy 2 tick loop ────────────────────────────────────────────────────
+    async def _latest_tick_ts(self):
+        async with self._pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT MAX(timestamp) FROM v2_ticks WHERE symbol=$1", self._symbol)
+
+    async def _maybe_reprocess_on_new_ticks(self) -> bool:
+        """Trigger a replay when new ticks have arrived since the last one seen, so
+        Strategy 2's tick-fed H1 Hawkes intensity and microstructure stay current
+        between 4H bars. Authoritative entries/exits remain bar-gated (they occur at
+        sealed 4H bars inside process_frame); this only keeps S2 state fresh and is
+        rate-limited by the loop's sleep. Returns True if a replay was run."""
+        latest = await self._latest_tick_ts()
+        if latest is not None and (self._last_tick_ts is None or latest > self._last_tick_ts):
+            self._last_tick_ts = latest
+            await self._reprocess()
+            return True
+        return False
+
+    async def _strategy2_tick_loop(self):
+        while True:
+            try:
+                await self._maybe_reprocess_on_new_ticks()
+            except Exception as e:
+                logger.error(f"Error in strategy2 tick loop: {e}")
+            await asyncio.sleep(S2_TICK_INTERVAL_SEC)
+
+    # ── Position management (intra-bar risk monitor) ────────────────────────────
+    async def _latest_mark(self):
+        """Most recent traded price (falls back to the latest sealed bar close)."""
+        try:
+            async with self._pool.acquire() as conn:
+                v = await conn.fetchval(
+                    "SELECT price FROM v2_ticks WHERE symbol=$1 ORDER BY timestamp DESC LIMIT 1",
+                    self._symbol)
+                if v is None:
+                    v = await conn.fetchval(
+                        "SELECT close FROM v2_bars_4h WHERE symbol=$1 ORDER BY time DESC LIMIT 1",
+                        self._symbol)
+            return None if v is None else float(v)
+        except Exception as e:
+            logger.warning("failed to read latest mark: %s", e)
+            return None
+
+    def _current_open_positions(self) -> list[dict]:
+        """Open positions to monitor. Prefer the live engine (authoritative, costed);
+        fall back to the v2_trades snapshot restored at startup before the first replay."""
+        if self._engine is not None:
+            out = []
+            for acct in (self._engine.accounts.subaccount_1, self._engine.accounts.subaccount_2):
+                for p in acct.open_positions:
+                    out.append({"strategy": p.strategy, "sub_account": p.sub_account,
+                                "direction": _dir_str(p.direction).upper(),
+                                "entry_price": float(p.entry_price),
+                                "notional_usdt": float(p.notional_usdt)})
+            return out
+        return [{"strategy": r["strategy"], "sub_account": r["sub_account"],
+                 "direction": str(r["direction"]).upper(),
+                 "entry_price": float(r["entry_price"]),
+                 "notional_usdt": float(r["size"]) * float(r["leverage"])}
+                for r in self._open_positions]
+
+    def _position_risk_snapshot(self, positions: list[dict], mark: float) -> dict:
+        """Pure: unrealized PnL per open position vs `mark`, plus hard-stop breaches.
+        Monitoring only — authoritative exits stay with the deterministic replay."""
+        rows, total_unreal, breaches = [], 0.0, []
+        for p in positions:
+            entry = p["entry_price"]
+            if entry <= 0:
+                continue
+            upnl_pct = ((mark - entry) / entry if p["direction"] == "LONG"
+                        else (entry - mark) / entry)
+            upnl_usdt = upnl_pct * p["notional_usdt"]
+            total_unreal += upnl_usdt
+            row = {**p, "mark": mark, "unrealized_pnl_pct": upnl_pct,
+                   "unrealized_pnl_usdt": upnl_usdt}
+            rows.append(row)
+            if upnl_pct <= -PAPER_HARD_STOP_PCT:
+                breaches.append(row)
+        return {"mark": mark, "n_open": len(rows),
+                "total_unrealized_usdt": total_unreal,
+                "positions": rows, "breaches": breaches}
+
+    async def _publish_position_risk(self) -> dict | None:
+        mark = await self._latest_mark()
+        if mark is None:
+            return None
+        snapshot = self._position_risk_snapshot(self._current_open_positions(), mark)
+        try:
+            await self._redis.set("v2:paper:position_risk", json.dumps(snapshot, default=str))
+            if snapshot["breaches"]:
+                logger.warning("intra-bar hard-stop breach on %d position(s) @ mark=%.2f",
+                               len(snapshot["breaches"]), mark)
+                await self._redis.set("v2:paper:risk_alert",
+                                      json.dumps(snapshot["breaches"], default=str))
+        except Exception as e:
+            logger.warning("failed to publish position risk: %s", e)
+        return snapshot
+
+    async def _position_management_loop(self):
+        while True:
+            try:
+                await self._publish_position_risk()
+            except Exception as e:
+                logger.error(f"Error in position management loop: {e}")
+            await asyncio.sleep(POSITION_MGMT_INTERVAL_SEC)
+
+    # ── Startup position restore ────────────────────────────────────────────────
+    async def _load_open_positions(self):
+        """Restore the open-position snapshot from v2_trades (exit_time IS NULL) so
+        the position monitor and the paper API have immediate visibility after a
+        restart, before the first full-history replay rebuilds authoritative state."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch(
+                    "SELECT id, strategy, sub_account, direction, entry_price, size, "
+                    "leverage, instrument, entry_time, entry_state "
+                    "FROM v2_trades WHERE exit_time IS NULL AND instrument=$1 "
+                    "ORDER BY entry_time ASC", self._symbol)
+            self._open_positions = [dict(r) for r in rows]
+            logger.info("restored %d open positions from v2_trades", len(self._open_positions))
+        except Exception as e:
+            logger.warning("failed to restore open positions: %s", e)
+            self._open_positions = []
+
     async def run(self):
         self._pool = await asyncpg.create_pool(self._db_url)
         self._redis = redis.from_url(self._redis_url)
         self._writer = DBWriter(self._db_url)
         await self._writer.connect()
         await self._load_strategy_params()
+        await self._load_open_positions()
         await self._process_backlog()
 
         logger.info("Paper Engine started, entering main loops")
-        # Strategy 2 and exit management already run for every 4H bar inside
-        # _process_bar -> PaperStrategyEngine.process_frame (full deterministic
-        # replay). The sub-bar enhancements below are deferred — they need the
-        # live tick stream and crash-restart position reload, which require a real
-        # deploy (DB/Redis/websockets_proxy) to validate before enabling:
-        #   - _strategy2_tick_loop():      tick-frequency S2 reactions between bars
-        #   - _position_management_loop(): continuous exit checks between bars
-        #   - _load_open_positions():      restore open positions after a restart
+        # Authoritative entries/exits are computed for every sealed 4H bar inside
+        # _process_bar -> process_frame (deterministic full-history replay). The
+        # two sub-bar loops are coherent with that model:
+        #   - _strategy2_tick_loop():      replay when new ticks arrive so S2's H1
+        #                                  Hawkes/micro stay current between bars
+        #                                  (lock-serialised with the 4H loop).
+        #   - _position_management_loop(): intra-bar risk monitor + alert (non-
+        #                                  authoritative; exits remain bar-gated).
         await asyncio.gather(
             self._strategy1_4h_loop(),
+            self._strategy2_tick_loop(),
+            self._position_management_loop(),
         )
 
 if __name__ == "__main__":
