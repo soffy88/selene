@@ -76,13 +76,14 @@ def test_full_trail_degrades_to_empty_when_table_absent(monkeypatch):
 # ── strategy summary (S1/S2 frontend panel) ─────────────────────────────────
 
 class _SummaryConn:
-    """Returns per-strategy aggregate rows for fetch(), a state row for fetchrow(),
-    and a bar count for fetchval() — matching strategy_summary's three queries."""
-    def __init__(self, rows, state_row, bars):
-        self._rows, self._state, self._bars = rows, state_row, bars
+    """strategy_summary issues two fetch()es (aggregates, then latest decisions), one
+    fetchrow() (state) and one fetchval() (bars). Return them in order."""
+    def __init__(self, agg_rows, decision_rows, state_row, bars):
+        self._fetches = [agg_rows, decision_rows]
+        self._state, self._bars = state_row, bars
 
     async def fetch(self, *a):
-        return self._rows
+        return self._fetches.pop(0) if self._fetches else []
 
     async def fetchrow(self, *a):
         return self._state
@@ -92,24 +93,44 @@ class _SummaryConn:
 
 
 def test_strategy_summary_partitions_and_zero_fills(monkeypatch):
-    rows = [
+    agg = [
         {"strategy": "strategy_1", "open_trades": 1, "closed_trades": 4, "wins": 3,
          "realized_pnl": 125.50},
         # strategy_2 absent → must zero-fill, not error
     ]
+    decisions = [
+        {"strategy": "strategy_1", "action": "ABORT", "reason": "Step 1: state filter",
+         "step_reached": 1, "state_4h": "Surging", "direction": None,
+         "timestamp": datetime(2026, 6, 30, tzinfo=timezone.utc), "updated_at": None},
+    ]
     state_row = {"state": "Surging", "timestamp": datetime(2026, 6, 30, tzinfo=timezone.utc)}
-    _patch_pool(monkeypatch, _SummaryConn(rows, state_row, 4487))
+    _patch_pool(monkeypatch, _SummaryConn(agg, decisions, state_row, 4487))
     out = asyncio.run(api.strategy_summary(symbol="BTC-USDT"))
-    assert out["strategy_1"] == {"strategy": "strategy_1", "open_trades": 1,
-                                 "closed_trades": 4, "realized_pnl": 125.5, "win_rate": 0.75}
-    # absent strategy is present and zeroed (win_rate None when no closed trades)
-    assert out["strategy_2"]["closed_trades"] == 0 and out["strategy_2"]["win_rate"] is None
-    assert out["current_state"] == "Surging"
-    assert out["total_bars"] == 4487
+    s1 = out["strategy_1"]
+    assert s1["open_trades"] == 1 and s1["closed_trades"] == 4 and s1["win_rate"] == 0.75
+    # the "why no entry" decision is attached
+    assert s1["last_decision"]["action"] == "ABORT" and s1["last_decision"]["step_reached"] == 1
+    # absent strategy is present, zeroed, with no decision
+    assert out["strategy_2"]["closed_trades"] == 0 and out["strategy_2"]["last_decision"] is None
+    assert out["current_state"] == "Surging" and out["total_bars"] == 4487
 
 
 def test_strategy_summary_empty_is_valid(monkeypatch):
-    _patch_pool(monkeypatch, _SummaryConn([], None, 0))
+    _patch_pool(monkeypatch, _SummaryConn([], [], None, 0))
     out = asyncio.run(api.strategy_summary(symbol="BTC-USDT"))
     assert out["strategy_1"]["closed_trades"] == 0
+    assert out["strategy_1"]["last_decision"] is None
     assert out["current_state"] is None
+
+
+def test_decision_view_flattens_entry_decision():
+    from sel_v2.paper.strategy_engine import PaperStrategyEngine
+
+    class _D:
+        action = "OBSERVE"; reason = "Step 1b: Hawkes λ* below threshold"
+        step_reached = 2; direction = None; cusum_direction = "LONG"
+    view = PaperStrategyEngine._decision_view(
+        (datetime(2026, 6, 30, tzinfo=timezone.utc), "Surging", _D()))
+    assert view["action"] == "OBSERVE" and view["step_reached"] == 2
+    assert view["state_4h"] == "Surging" and view["direction"] == "LONG"
+    assert PaperStrategyEngine._decision_view(None) is None

@@ -136,6 +136,10 @@ class PaperStrategyEngine:
             logger.warning("Strategy 2 disabled — H2 Hawkes params unavailable (%s). "
                            "Run Wave 1 hawkes_calibration to enable S2; S1 continues.", exc)
         self._s2_cusum = CUSUMShort()
+        # Latest per-strategy entry decision (action/reason/step) — for the "why no entry"
+        # UI panel. Captured on the final bar of each replay.
+        self._last_s1 = None
+        self._last_s2 = None
 
     # ── feature pipeline (mirrors replay.run_replay) ───────────────────────────
     def _build_runner(self, df: pd.DataFrame, oi_series=None, funding_series=None,
@@ -312,6 +316,7 @@ class PaperStrategyEngine:
             s1_trig = self._s1_trigger_from_decision(s1_dec)
             self._manage_s1_exits(state, mark, ts, s1_trig)
             self._maybe_open_s1(s1_dec, state, mark, ts)
+            self._last_s1 = (ts, state, s1_dec)   # latest S1 decision (for the UI "why" panel)
 
             # ── Strategy 2: engine-owned CUSUM-Short feeds the filter and exits ──
             if self._s2_enabled:
@@ -409,6 +414,7 @@ class PaperStrategyEngine:
             ofi_persistent_same_direction=ofi_persist,
             subaccount_nav_usdt=self.accounts.subaccount_2.nav,
         )
+        self._last_s2 = (ts, state, dec)   # latest S2 decision (for the UI "why" panel)
         if dec.action not in ("ENTER_LONG", "ENTER_SHORT"):
             return
         acct = self.accounts.subaccount_2
@@ -480,10 +486,32 @@ class PaperStrategyEngine:
         self._s1_meta.pop(pos_id, None)
         self._s2_meta.pop(pos_id, None)
 
+    @staticmethod
+    def _decision_view(captured) -> Optional[dict]:
+        """Flatten a captured (ts, state, EntryDecision) into a UI-friendly dict — the
+        'why no entry' explanation for the latest bar."""
+        if not captured:
+            return None
+        ts, state, d = captured
+        return {
+            "action": getattr(d, "action", None),
+            "reason": getattr(d, "reason", ""),
+            "step_reached": getattr(d, "step_reached", 0),
+            "state_4h": state,
+            "direction": getattr(d, "direction", None) or getattr(d, "cusum_direction", None),
+            "timestamp": _as_dt(ts).isoformat(),
+        }
+
+    def latest_decisions(self) -> dict:
+        """Latest per-strategy decision dicts (None when a strategy didn't evaluate)."""
+        return {"strategy_1": self._decision_view(self._last_s1),
+                "strategy_2": self._decision_view(self._last_s2)}
+
     def _summary(self, df, states) -> dict:
         from collections import Counter
         mark = float(df["close"].iloc[-1])
         a1, a2 = self.accounts.subaccount_1, self.accounts.subaccount_2
+        dec = self.latest_decisions()
         return {
             "bars": len(df),
             "state_counts": dict(Counter(states)),
@@ -491,6 +519,8 @@ class PaperStrategyEngine:
                    "closed": len(a1.closed_positions)},
             "s2": {"nav": round(a2.nav, 2), "open": len(a2.open_positions),
                    "closed": len(a2.closed_positions)},
+            "s1_decision": dec["strategy_1"],
+            "s2_decision": dec["strategy_2"],
             "total_equity": round(self.accounts.total_equity(mark), 2),
         }
 

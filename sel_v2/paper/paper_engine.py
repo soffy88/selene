@@ -283,6 +283,18 @@ class PaperEngine:
                         size=p.size_usdt, leverage=p.leverage, instrument=p.instrument,
                         entry_state=p.entry_state,
                     )
+
+            # Latest per-strategy decision (the "why no entry this bar" the UI shows).
+            from datetime import datetime as _dt
+            for strat, dec in getattr(engine, "latest_decisions", lambda: {})().items():
+                if not dec:
+                    continue
+                ts = dec.get("timestamp")
+                ts = _dt.fromisoformat(ts) if isinstance(ts, str) else ts
+                await self._writer.upsert_latest_decision(
+                    strategy=strat, timestamp=ts, action=dec.get("action") or "OBSERVE",
+                    reason=dec.get("reason"), step_reached=dec.get("step_reached"),
+                    state_4h=dec.get("state_4h"), direction=dec.get("direction"))
         except Exception as e:
             logger.warning("failed to persist engine results: %s", e)
 

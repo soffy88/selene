@@ -937,8 +937,17 @@ async function loadSel(){
     const card=(s)=>{
       const pnl=+(s.realized_pnl||0); const wr=s.win_rate!=null?(s.win_rate*100).toFixed(0)+'%':'--';
       const col=pnl>0?'g':pnl<0?'r':'neu';
+      const d=s.last_decision;
+      let why='';
+      if(d){
+        const act=d.action||'--';
+        const ac=act.startsWith('ENTER')?'g':act==='ABORT'?'r':'a';
+        why=`<br><span style="font-size:10px;color:var(--text2)">本根决策 <span class="${ac}">${act}</span>`+
+            (d.step_reached?` · 卡在第${d.step_reached}步`:'')+`</span>`+
+            (d.reason?`<br><span style="font-size:10px;color:var(--text2)" title="${(d.reason+'').replace(/"/g,'')}">${(d.reason+'').slice(0,64)}${(d.reason+'').length>64?'…':''}</span>`:'');
+      }
       return `持仓 <b>${s.open_trades}</b> · 平仓 <b>${s.closed_trades}</b> · 胜率 ${wr}<br>`+
-             `<span class="${col}">PnL ${pnl>=0?'+':''}${pnl.toFixed(2)}</span>`;
+             `<span class="${col}">PnL ${pnl>=0?'+':''}${pnl.toFixed(2)}</span>`+why;
     };
     document.getElementById('sel-s1').innerHTML=card(summ.strategy_1);
     document.getElementById('sel-s2').innerHTML=card(summ.strategy_2);

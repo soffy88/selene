@@ -250,6 +250,19 @@ CREATE INDEX IF NOT EXISTS idx_v2_decision_trail_ts
 CREATE INDEX IF NOT EXISTS idx_v2_decision_trail_component
     ON v2_decision_trail (target_component, timestamp DESC);
 
+-- Latest per-strategy entry decision (runtime status for the UI "why no entry" panel).
+-- One row PER STRATEGY, upserted each replay — NOT an append log, so it never grows.
+CREATE TABLE IF NOT EXISTS v2_paper_latest_decision (
+    strategy      TEXT        PRIMARY KEY,   -- 'strategy_1' / 'strategy_2'
+    timestamp     TIMESTAMPTZ NOT NULL,      -- the bar this decision is for
+    action        TEXT        NOT NULL,      -- ENTER_LONG / ENTER_SHORT / OBSERVE / ABORT
+    reason        TEXT,                      -- human-readable "why" (which step blocked)
+    step_reached  INTEGER,
+    state_4h      TEXT,
+    direction     TEXT,
+    updated_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Strategy parameters: flat key/value store.
 -- Convention: param_key = '{strategy}_{name}' (e.g. 'h2_mu_ref', 'tda1_l1_threshold_p95').
 -- param_value is a JSONB scalar. Read via sel_v2/strategies/params_loader.load_strategy_params,

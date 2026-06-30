@@ -382,6 +382,39 @@ class DBWriter:
             logger.warning("DBWriter.upsert_trade failed: %s", exc)
             return False
 
+    async def upsert_latest_decision(
+        self,
+        strategy: str,
+        timestamp: datetime,
+        action: str,
+        reason: Optional[str],
+        step_reached: Optional[int],
+        state_4h: Optional[str],
+        direction: Optional[str],
+    ) -> bool:
+        """Upsert the latest entry decision for a strategy (one row per strategy) so the UI
+        can show 'why no entry this bar'. Idempotent across the per-tick full replay."""
+        if self._conn is None:
+            return False
+        try:
+            await self._conn.execute(
+                """
+                INSERT INTO v2_paper_latest_decision
+                    (strategy, timestamp, action, reason, step_reached, state_4h, direction, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+                ON CONFLICT (strategy) DO UPDATE SET
+                    timestamp = EXCLUDED.timestamp, action = EXCLUDED.action,
+                    reason = EXCLUDED.reason, step_reached = EXCLUDED.step_reached,
+                    state_4h = EXCLUDED.state_4h, direction = EXCLUDED.direction,
+                    updated_at = NOW()
+                """,
+                strategy, timestamp, action, reason, step_reached, state_4h, direction,
+            )
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("DBWriter.upsert_latest_decision failed: %s", exc)
+            return False
+
     async def write_trade_exit(
         self,
         trade_id: str,

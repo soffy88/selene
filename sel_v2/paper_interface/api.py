@@ -136,7 +136,13 @@ async def strategy_summary(symbol: str = Query("BTC-USDT")):
         latest = await conn.fetchrow(
             "SELECT state, timestamp FROM v2_state_history ORDER BY timestamp DESC LIMIT 1")
         bars = await conn.fetchval("SELECT count(*) FROM v2_bars_4h WHERE symbol = $1", sym)
+        # Latest per-strategy decision ("why no entry this bar"); table may not exist yet.
+        try:
+            dec_rows = await conn.fetch("SELECT * FROM v2_paper_latest_decision")
+        except Exception:
+            dec_rows = []
     by = {r["strategy"]: r for r in rows}
+    decisions = {r["strategy"]: record_to_dict(r) for r in dec_rows}
 
     def strat(name: str) -> dict:
         r = by.get(name)
@@ -148,6 +154,7 @@ async def strategy_summary(symbol: str = Query("BTC-USDT")):
             "closed_trades": closed,
             "realized_pnl": float(r["realized_pnl"]) if r else 0.0,
             "win_rate": round(wins / closed, 3) if closed else None,
+            "last_decision": decisions.get(name),   # {action, reason, step_reached, state_4h, ...}
         }
 
     return {
