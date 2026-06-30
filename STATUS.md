@@ -21,7 +21,7 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
-- **P1-1** Gated live execution bridge for the sel_v2 strategy.
+- **P1-5** Correlation static-fallback side mismatch fix.
 
 ---
 
@@ -30,8 +30,6 @@ rounds (see memory `opt-pr-3`).
 
 ## 📋 Backlog — P1 (core capability gaps)
 
-- [ ] **P1-1** sel_v2 strategy has no live execution bridge (paper↔live divergent).
-      Build a gated bridge; flag for human verification before any live use.
 - [ ] **P1-2** Strategy 2 inert + upper state machine unreachable (LOB/OFI/liq STUB).
 - [ ] **P1-3** Cascade extreme defense dead (needs depth/liq/spread data).
 - [ ] **P1-4** WS disconnect has no gap recovery (`v2_bar_aggregator.py:28`).
@@ -57,6 +55,13 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+- **P1-1** Gated sel_v2 → live execution bridge: `decision_to_scored_signal` translates a
+      deployed S1/S2 entry decision into the canonical ScoredSignal (protective stop from the
+      REAL drawdown-stop pct, regime mapped from 4H state), and `LiveBridge.emit` publishes
+      it onto `signal.scored` so the paper-validated strategy reaches the same Kelly-sizing +
+      risk-gate (incl. P0-1 liq guard) + P0-3 native-stop path. Default OFF
+      (`SEL_V2_LIVE_BRIDGE`); only controls *reachability*, loosens no gate. 7 new tests.
+      `sel_v2/paper_interface/live_bridge.py`, `tests/sel_v2/test_live_bridge.py`.
 - **P0-6** Observe-only iron law (backend language): the mode-switch surface no longer
       *advises* — "建议切换到 AUTO_EXEC" → neutral threshold-status with an explicit
       "是否切换为人工决策，系统不作建议" disclaimer (report.py advisor + rendered §⑧ +
@@ -107,6 +112,11 @@ rounds (see memory `opt-pr-3`).
   dashboard as a separate product, or build/ship an observe-only Helios UI (decision-trail,
   regime, observation tools) as the primary surface? I did not delete a working feature on
   a judgment call. (Execution remains NOTIFY_ONLY regardless, so the buttons are inert today.)
+- **P1-1 bridge end-to-end live validation**: the translator + gated publisher are unit-
+  tested, but the full sel_v2-decision → signal.scored → portfolio → risk → execution loop
+  needs a real Redis/services run to validate (call-site wiring in the paper/strategy engine
+  to actually invoke `LiveBridge.emit` is intentionally NOT added yet — that is the live
+  cut-over step and must be a deliberate human action with OOS evidence in hand).
 - **P0-3 live bracket lifecycle** needs real-exchange verification before any live use
   (cannot be integration-tested here): native stop placement on the *WebSocket* fill
   path (currently wired only on the immediate-FILLED branch), OCO pairing with take-profit,
