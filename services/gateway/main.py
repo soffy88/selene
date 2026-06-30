@@ -511,18 +511,21 @@ async def monitor_trigger(days: int = Query(1)):
                 "hint": "确认 monitoring-service 已启动"}
 
 
-@app.get("/api/v4/monitor/recommendation")
-async def monitor_recommendation():
-    """只返回切换建议（Dashboard 首页展示用）"""
+@app.get("/api/v4/monitor/mode-thresholds")
+@app.get("/api/v4/monitor/recommendation")   # deprecated alias (Helios observe-only: prefer /mode-thresholds)
+async def monitor_mode_thresholds():
+    """返回模式切换门槛的【观察状态】（不是建议；Dashboard 首页展示用）。"""
     r   = get_redis()
     raw = await r.get("cw4:monitor:latest_report")
     if not raw:
         return {"status": "no_data"}
     data = json.loads(raw)
+    rec = data.get("data", {}).get("recommendation", {})
     return {
-        "recommendation": data.get("data", {}).get("recommendation", {}),
-        "trend":          data.get("trend", {}),
-        "generated_at":   data.get("generated_at"),
+        "mode_thresholds": rec,
+        "recommendation":  rec,   # deprecated key kept for back-compat
+        "trend":           data.get("trend", {}),
+        "generated_at":    data.get("generated_at"),
     }
 
 

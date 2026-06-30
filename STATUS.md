@@ -21,14 +21,12 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
-- **P0-6** Frontend observe-only iron law.
+- **P1-1** Gated live execution bridge for the sel_v2 strategy.
 
 ---
 
 ## 📋 Backlog — P0 (live-safety / signal-trust; must precede any live ambition)
 
-- [ ] **P0-6** Frontend violates observe-only iron law (recommendation cards +
-      execute buttons + "建议" language). Honor the law without destroying function.
 
 ## 📋 Backlog — P1 (core capability gaps)
 
@@ -59,6 +57,13 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+- **P0-6** Observe-only iron law (backend language): the mode-switch surface no longer
+      *advises* — "建议切换到 AUTO_EXEC" → neutral threshold-status with an explicit
+      "是否切换为人工决策，系统不作建议" disclaimer (report.py advisor + rendered §⑧ +
+      monitoring Telegram push). Endpoints renamed `/monitor/recommendation` →
+      `/monitor/mode-thresholds` with deprecated aliases + back-compat keys (also closes
+      P2-6), in both monitoring and gateway. 3 new tests. NOTE: the v4 *execute-UI*
+      (confirm/reject/execute buttons) is a product decision → Needs-Human.
 - **P0-5** Backtest verdict is now binding at two real boundaries:
       `enforce_oos_gate()` *raises* `BacktestRejected` on a failing/absent OOS slice (the
       verdict can't be computed-then-ignored), and the live boot guard
@@ -95,6 +100,13 @@ rounds (see memory `opt-pr-3`).
 
 ## 🚨 Needs Human
 
+- **P0-6 frontend product decision**: the only shipped UI is the v4 recommendation/
+  execution dashboard (signal cards with entry/SL/TP + confirm/reject/execute buttons).
+  Backend advisory *language* is now neutralized, but the execute-UI itself is structurally
+  at odds with the Helios observe-only doctrine. Decision needed: keep the v4 execution
+  dashboard as a separate product, or build/ship an observe-only Helios UI (decision-trail,
+  regime, observation tools) as the primary surface? I did not delete a working feature on
+  a judgment call. (Execution remains NOTIFY_ONLY regardless, so the buttons are inert today.)
 - **P0-3 live bracket lifecycle** needs real-exchange verification before any live use
   (cannot be integration-tested here): native stop placement on the *WebSocket* fill
   path (currently wired only on the immediate-FILLED branch), OCO pairing with take-profit,

@@ -170,11 +170,12 @@ async def generate_and_push(days: int = REPORT_DAYS) -> dict:
         next_mode = last.get("next_mode", "")
         if next_mode and next_mode != EXEC_MODE:
             _push_telegram(
-                f"🎉 CryptoWatch v4 连续 {trend_analysis['consecutive_pass']} 天满足切换条件！\n\n"
-                f"建议切换: {EXEC_MODE} → {next_mode}\n"
+                f"👁 CryptoWatch v4 观察：连续 {trend_analysis['consecutive_pass']} 天满足 "
+                f"{next_mode} 的切换门槛\n\n"
+                f"门槛已满足的模式: {EXEC_MODE} → {next_mode}（是否切换为人工决策，系统不作建议）\n"
                 f"IC 均值（近7天）: {trend_analysis['avg_recent']:.4f}\n\n"
-                f"操作：修改 .env EXEC_MODE={next_mode}\n"
-                f"然后运行：docker compose restart execution-service"
+                f"若人工决定切换：修改 .env EXEC_MODE={next_mode}，"
+                f"然后运行 docker compose restart execution-service"
             )
 
     # 写 Redis 缓存（供 gateway API 读取）
@@ -366,19 +367,22 @@ async def trend():
     }
 
 
-@app.get("/recommendation")
-async def recommendation():
-    """只返回切换建议，供 gateway dashboard 展示"""
+@app.get("/mode-thresholds")
+@app.get("/recommendation")   # deprecated alias (Helios observe-only: prefer /mode-thresholds)
+async def mode_thresholds():
+    """返回模式切换门槛的【观察状态】（不是建议）。供 dashboard 展示。"""
     r   = await get_redis()
     raw = await r.get("cw4:monitor:latest_report")
     if not raw:
         return {"status": "no_data"}
     data = json.loads(raw)
+    rec = data.get("data", {}).get("recommendation", {})
     return {
-        "recommendation": data.get("data", {}).get("recommendation", {}),
-        "trend":          data.get("trend", {}),
-        "generated_at":   data.get("generated_at"),
-        "exec_mode":      EXEC_MODE,
+        "mode_thresholds": rec,
+        "recommendation":  rec,   # deprecated key kept for back-compat
+        "trend":           data.get("trend", {}),
+        "generated_at":    data.get("generated_at"),
+        "exec_mode":       EXEC_MODE,
     }
 
 

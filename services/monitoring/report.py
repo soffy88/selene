@@ -318,8 +318,10 @@ def generate_recommendation(
     current_mode:    str,
 ) -> dict:
     """
-    基于所有指标输出切换建议。
-    返回 {next_mode, confidence, reasons, blockers}
+    输出执行模式切换门槛的【观察状态】（哪些门槛已满足/被阻断）。
+    遵守 Helios "只观察不建议" 铁律 + 实盘安全纪律:本函数不作切换建议,
+    是否切换模式始终是人工决策。`next_mode` 仅表示"门槛已满足的模式",非推荐。
+    返回 {next_mode, confidence, action(观察陈述), reasons, blockers}
     """
     T = THRESHOLDS
     reasons  = []
@@ -366,7 +368,7 @@ def generate_recommendation(
         return {
             "next_mode":  current_mode,
             "confidence": "LOW",
-            "action":     "继续观察，不建议切换",
+            "action":     "切换门槛被阻断，维持当前模式（观察）",
             "reasons":    reasons,
             "blockers":   blockers,
         }
@@ -395,7 +397,7 @@ def generate_recommendation(
             return {
                 "next_mode":  "CONFIRM_THEN_EXEC",
                 "confidence": "HIGH" if len(reasons) >= 4 else "MEDIUM",
-                "action":     "建议切换到 CONFIRM_THEN_EXEC（每笔手动确认）",
+                "action":     "CONFIRM_THEN_EXEC 的切换门槛已满足（是否切换为人工决策，系统不作建议）",
                 "reasons":    reasons,
                 "blockers":   [],
             }
@@ -405,7 +407,7 @@ def generate_recommendation(
             return {
                 "next_mode":  "AUTO_EXEC",
                 "confidence": "HIGH" if len(reasons) >= 5 else "MEDIUM",
-                "action":     "建议切换到 AUTO_EXEC（全自动执行）",
+                "action":     "AUTO_EXEC 的切换门槛已满足（是否切换为人工决策，系统不作建议）",
                 "reasons":    reasons,
                 "blockers":   [],
             }
@@ -413,7 +415,7 @@ def generate_recommendation(
     return {
         "next_mode":  current_mode,
         "confidence": "MEDIUM",
-        "action":     "继续积累数据，暂不切换",
+        "action":     "门槛尚未满足，继续积累数据（观察）",
         "reasons":    reasons,
         "blockers":   [],
     }
@@ -600,13 +602,13 @@ def render_report(data: dict, days: int) -> str:
                 f"  {sym:<12} score={score:+.3f} {score_bar}  regime={regime}  {fused_str}"
             )
 
-    # ── 切换建议 ──
-    h("⑧ 切换建议")
+    # ── 切换门槛状态（观察，不作建议）──
+    h("⑧ 模式切换门槛状态")
     conf_icon = {"HIGH": "🟢", "MEDIUM": "🟡", "LOW": "🔴"}.get(rec["confidence"], "⚪")
-    lines.append(f"  {conf_icon} 置信度: {rec['confidence']}")
-    lines.append(f"  📋 建议: {rec['action']}")
+    lines.append(f"  {conf_icon} 门槛达成度: {rec['confidence']}")
+    lines.append(f"  👁 观察: {rec['action']}")
     if rec.get("next_mode") != mode:
-        lines.append(f"  🔄 当前: {mode} → 建议: {rec['next_mode']}")
+        lines.append(f"  🔄 当前: {mode} ｜ 门槛已满足的模式: {rec['next_mode']}（是否切换为人工决策）")
     if rec["reasons"]:
         lines.append("\n  达标指标:")
         for r in rec["reasons"]:
@@ -616,19 +618,19 @@ def render_report(data: dict, days: int) -> str:
         for b in rec["blockers"]:
             lines.append(f"    {b}")
 
-    # ── 切换操作说明 ──
+    # ── 切换操作说明（仅供人工决定切换时参考，系统不作建议）──
     if rec.get("next_mode") != mode and not rec["blockers"]:
         next_m = rec["next_mode"]
         lines.append(f"""
-  操作步骤（修改 .env 后重启服务）:
+  ⚠️ 系统只观察、不建议切换；若人工决定切换，操作步骤（修改 .env 后重启服务）:
     EXEC_MODE={next_m}
-    {'KELLY_FRACTION=0.25  # 建议保守值' if next_m == 'AUTO_EXEC' else ''}
+    {'KELLY_FRACTION=0.25  # 保守值' if next_m == 'AUTO_EXEC' else ''}
     docker compose restart execution-service""")
 
     # ── 底部 ──
     lines.append(f"\n{'━'*48}")
     lines.append(f"  生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"  下次建议检查: {(datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d 09:00')}")
+    lines.append(f"  下次观察检查: {(datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d 09:00')}")
     lines.append(f"{'━'*48}\n")
 
     return "\n".join(lines)
