@@ -119,7 +119,7 @@ class PaperEngine:
             return None
         return np.array([r["timestamp"].timestamp() for r in rows], dtype=float)
 
-    async def _load_microstructure_series(self, df, lookback_days: int = 14):
+    async def _load_microstructure_series(self, df, lookback_days: int = 120):
         """Per-4H-bar microstructure features from real v2_ticks + v2_lob_snapshots,
         used to derive the Strategy-2 inverse-vocab tags (Sweep/Absorption) and OFI
         persistence. Aggregated in SQL via time_bucket for efficiency; aligned to the

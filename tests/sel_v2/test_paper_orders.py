@@ -123,6 +123,60 @@ def test_micro_vocab_classifier_tags():
     assert all(len(s) == 0 for s in v0)
 
 
+def test_type_a_absorption_then_sweep_sequence():
+    # Build 30 flat bars; bar 15 = Absorption (high vol, ~0 move), bar 17 = Sweep
+    # (high vol, +1% move). The Sweep bar must inherit Absorption → Type A vocab.
+    from datetime import datetime, timezone, timedelta
+    n = 30
+    t0 = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    rows = []
+    base = 30000.0
+    for i in range(n):
+        o = base
+        c = base * (1.01 if i == 17 else 1.0)   # only the sweep bar moves +1%
+        rows.append({"time": t0 + timedelta(hours=4 * i), "open": o, "high": max(o, c),
+                     "low": min(o, c), "close": c, "volume": 100})
+    df = pd.DataFrame(rows)
+    taker_vol = np.full(n, 100.0)
+    taker_vol[15] = 10_000.0   # absorption bar: high activity
+    taker_vol[17] = 10_000.0   # sweep bar: high activity
+    taker_net = np.full(n, 50.0)   # positive flow (flow_dir +1, matches +1% sweep)
+    micro = {"taker_net": taker_net, "taker_vol": taker_vol, "lob_imb": np.full(n, np.nan)}
+    eng = PaperStrategyEngine(total_nav_usdt=100_000, skip_tda=True,
+                              hawkes_params=(0.09, 0.023, 0.04))
+    vocab, _ = eng._micro_vocab_series(df, micro)
+    assert "Absorption" in vocab[15]
+    assert "Sweep" in vocab[17]
+    # Type-A sequence: the sweep bar carries the recent absorption → {Absorption, Sweep}.
+    assert "Absorption" in vocab[17] and "Sweep" in vocab[17]
+
+
+def test_s2_opens_when_all_conditions_align():
+    # End-to-end proof that S2 places an order when every gate is satisfied:
+    # CUSUM-Short triggered + H1 (cold pass-through) + Type-A vocab {Absorption,Sweep}.
+    from datetime import datetime, timezone
+    from sel_v2.strategies.cusum_short import CUSUMTrigger
+
+    eng = PaperStrategyEngine(total_nav_usdt=100_000, skip_tda=True,
+                              hawkes_params=(0.09, 0.023, 0.04))
+    assert eng._s2_enabled
+    # Make H1 intensity high so it clears even once a threshold builds.
+    for k in range(50):
+        eng._s2_tracker.add_event(1_000_000.0 + k * 0.01)
+
+    trig = CUSUMTrigger(triggered=True, direction="LONG", cusum_positive=3.0,
+                        cusum_negative=0.0, threshold=1.0, intensity_coeff=3.0)
+    ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    before = len(eng.accounts.subaccount_2.open_positions)
+    eng._maybe_open_s2(t_unix=1_000_001.0, trig=trig, state="Surging",
+                       mark=30_000.0, ts=ts,
+                       vocab={"Absorption", "Sweep"}, flow_dir=1.0)
+    after = len(eng.accounts.subaccount_2.open_positions)
+    assert after == before + 1, "S2 did not open a position despite all gates satisfied"
+    # Type A = reversal → opposite the CUSUM (LONG) direction → SHORT.
+    assert eng.accounts.subaccount_2.open_positions[0].direction == "SHORT"
+
+
 def test_engine_no_orders_without_flow_inputs():
     # Price-only (the old behaviour) → collapses to Drifting_Calm, no orders.
     df = _bars()

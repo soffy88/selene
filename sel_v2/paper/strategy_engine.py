@@ -41,6 +41,7 @@ _VOCAB_VOL_Q = 0.80        # taker volume above this percentile = "high activity
 _SWEEP_MOVE = 0.005        # |bar return| ≥ 0.5% with flow → aggressive Sweep
 _ABSORB_MOVE = 0.0015      # high volume but |return| ≤ 0.15% → flow Absorbed
 _OFI_PERSIST_BARS = 2      # net taker flow same direction for this many bars
+_TYPE_A_SEQ_BARS = 6       # an Absorption within this many bars before a Sweep → Type A
 
 
 # Inlined from sel_v2/scheduler/replay.py (kept identical) so this engine is importable
@@ -236,6 +237,17 @@ class PaperStrategyEngine:
             if flow_dir[i] != 0 and i >= _OFI_PERSIST_BARS - 1:
                 if all(flow_dir[i - k] == flow_dir[i] for k in range(_OFI_PERSIST_BARS)):
                     vocab[i].add("Crowding")
+
+        # Type-A sequence: an Absorption (large limit orders soak up flow) followed
+        # within _TYPE_A_SEQ_BARS by a Sweep is the canonical reversal setup. Carry
+        # the recent Absorption onto the Sweep bar so its vocab = {Absorption, Sweep},
+        # which Strategy2._classify_entry_type reads as Type A (reversal).
+        for i in range(n):
+            if "Sweep" not in vocab[i]:
+                continue
+            lo = max(0, i - _TYPE_A_SEQ_BARS)
+            if any("Absorption" in vocab[j] for j in range(lo, i)):
+                vocab[i].add("Absorption")
         return vocab, flow_dir
 
     # ── per-bar processing ─────────────────────────────────────────────────────
