@@ -312,14 +312,19 @@ class PaperEngine:
         self._writer = DBWriter(self._db_url)
         await self._writer.connect()
         await self._load_strategy_params()
-        # await self._load_open_positions()
         await self._process_backlog()
-        
+
         logger.info("Paper Engine started, entering main loops")
+        # Strategy 2 and exit management already run for every 4H bar inside
+        # _process_bar -> PaperStrategyEngine.process_frame (full deterministic
+        # replay). The sub-bar enhancements below are deferred — they need the
+        # live tick stream and crash-restart position reload, which require a real
+        # deploy (DB/Redis/websockets_proxy) to validate before enabling:
+        #   - _strategy2_tick_loop():      tick-frequency S2 reactions between bars
+        #   - _position_management_loop(): continuous exit checks between bars
+        #   - _load_open_positions():      restore open positions after a restart
         await asyncio.gather(
             self._strategy1_4h_loop(),
-            # self._strategy2_tick_loop(),
-            # self._position_management_loop(),
         )
 
 if __name__ == "__main__":
