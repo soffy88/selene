@@ -970,10 +970,14 @@ async function loadSelChart(){
   }
   _selSeries.setMarkers(markers);
   _selChart.timeScale().fitContent();
-  // 图例(只列出现过的状态)
-  document.getElementById('sel-chart-legend').innerHTML=[...seen].map(s=>
-    `<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${SEL_STATE_COLORS[s]||'#bbb'};margin-right:3px"></span>${s}</span>`
-  ).join('');
+  // 图例:始终列全 6 态(模型完整词汇表),本窗口未出现的灰显标注
+  const SEL_STATES_6=['Coiling','Drifting_Charged','Drifting_Calm','Surging','Critical','Cascade'];
+  document.getElementById('sel-chart-legend').innerHTML=SEL_STATES_6.map(s=>{
+    const on=seen.has(s);
+    return `<span style="opacity:${on?1:.4}" title="${on?'本窗口出现':'本窗口未出现'}">`+
+           `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${SEL_STATE_COLORS[s]||'#bbb'};margin-right:3px"></span>`+
+           `${s}${on?'':' (未出现)'}</span>`;
+  }).join('');
 }
 
 async function loadSel(){
