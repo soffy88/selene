@@ -337,6 +337,10 @@ services:
       <<: *common_env
       SERVICE_NAME: gateway
       SERVICE_PORT: "5000"
+      # The mounted sel_v2 paper API (/api/v2/sel/*) reads DB_URL to reach the platform DB;
+      # without it every sel_v2 endpoint 500s ("DB_URL must be set"). Same target the v2
+      # collectors / paper engine use.
+      DB_URL: postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
     depends_on:
       - signal-service
       - portfolio-service
