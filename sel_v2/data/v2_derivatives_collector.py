@@ -14,11 +14,42 @@ logger = logging.getLogger("v2_derivatives_collector")
 _guard = InsertGuard("v2_derivatives_snapshots")
 
 DB_URL = os.environ.get("DB_URL")
-SYMBOL = "BTC-USDT-SWAP"
+BASE_SYMBOL = os.environ.get("SYMBOLS", "BTC-USDT")          # stored symbol
+INST_ID = os.environ.get("DERIV_INST_ID", f"{BASE_SYMBOL}-SWAP")  # OKX SWAP instId
 BASE_URL = "https://www.okx.com"
+REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=10)
+
+
+def _opt_float(d, key):
+    """float(d[key]) or None when the field is absent/blank — never a 0.0 that
+    reads as a real value."""
+    if not d:
+        return None
+    v = d.get(key)
+    if v in (None, ""):
+        return None
+    return float(v)
+
+
+def build_deriv_row(funding_data, oi_data, mark_data, symbol, now_ms):
+    """Map OKX REST responses to a v2_derivatives_snapshots row tuple, or None if
+    the required funding+OI are missing. Missing mark/index price → None (NULL),
+    not 0.0: a $0 price is a valid-looking value that silently corrupts any
+    basis/premium (mark-index) calculation downstream."""
+    if not (funding_data and oi_data):
+        return None
+    ts_val = max(int(oi_data.get("ts", 0)), int(funding_data.get("ts", 0))) or now_ms
+    ts = datetime.fromtimestamp(ts_val / 1000, tz=timezone.utc)
+    return (ts, symbol,
+            _opt_float(funding_data, "fundingRate"),
+            _opt_float(oi_data, "oi"),
+            _opt_float(mark_data, "markPx"),
+            _opt_float(mark_data, "idxPx"))
+
 
 async def fetch_data(session, path):
-    async with session.get(f"{BASE_URL}{path}?instId={SYMBOL}") as response:
+    async with session.get(f"{BASE_URL}{path}?instId={INST_ID}",
+                           timeout=REQUEST_TIMEOUT) as response:
         data = await response.json()
         if data.get("code") == "0" and data.get("data"):
             return data["data"][0]
@@ -36,22 +67,13 @@ async def main():
                 oi_data = await fetch_data(session, "/api/v5/public/open-interest")
                 mark_data = await fetch_data(session, "/api/v5/public/mark-price")
                 
-                if funding_data and oi_data:
-                    # Sometimes OKX time is slightly off, we use max timestamp among returned data or just current time
-                    ts_val = max(int(oi_data.get("ts", 0)), int(funding_data.get("ts", 0)))
-                    if ts_val == 0:
-                        ts_val = int(datetime.now(timezone.utc).timestamp() * 1000)
-                    ts = datetime.fromtimestamp(ts_val/1000, tz=timezone.utc)
-                    
-                    funding_rate = float(funding_data.get("fundingRate", 0))
-                    open_interest = float(oi_data.get("oi", 0))
-                    mark_price = float(mark_data.get("markPx", 0)) if mark_data else 0.0
-                    index_price = float(mark_data.get("idxPx", 0)) if mark_data else 0.0
-                    
+                now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+                row = build_deriv_row(funding_data, oi_data, mark_data, BASE_SYMBOL, now_ms)
+                if row is not None:
                     try:
                         await pool.execute(
                             "INSERT INTO v2_derivatives_snapshots (timestamp, symbol, funding_rate, open_interest, mark_price, index_price) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
-                            ts, "BTC-USDT", funding_rate, open_interest, mark_price, index_price
+                            *row
                         )
                         _guard.ok()
                         insert_count += 1

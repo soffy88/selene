@@ -5,7 +5,6 @@ import os
 import math
 from datetime import datetime, timezone
 import asyncpg
-from websockets_proxy import proxy_connect, Proxy
 
 from sel_v2.db.migrations import apply_schema
 from sel_v2.data.insert_guard import InsertGuard, InsertFailureLimitExceeded
@@ -16,7 +15,11 @@ logger = logging.getLogger("v2_lob_collector")
 _guard = InsertGuard("v2_lob_snapshots")
 
 DB_URL = os.environ.get("DB_URL")
-SYMBOL = os.environ.get("SYMBOLS", "BTC-USDT")
+# Stored symbol (downstream joins on this base symbol).
+BASE_SYMBOL = os.environ.get("SYMBOLS", "BTC-USDT")
+# Subscribe to the PERPETUAL book — the strategy trades the swap, so its order-book
+# imbalance/entropy must come from the swap, not spot BTC-USDT (see tick collector).
+INST_ID = os.environ.get("LOB_INST_ID", f"{BASE_SYMBOL}-SWAP")
 PROXY_URL = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
 
 def calc_entropy(bids, asks):
@@ -27,18 +30,19 @@ def calc_entropy(bids, asks):
     return -sum(p * math.log2(p) for p in probs)
 
 async def collect_lob(pool):
+    from websockets_proxy import proxy_connect, Proxy   # lazy: keep module import-safe without the proxy lib
     insert_count = 0
     proxy = Proxy.from_url(PROXY_URL) if PROXY_URL else None
-    
+
     async with proxy_connect(
         "wss://ws.okx.com:8443/ws/v5/public",
         proxy=proxy
     ) as ws:
         await ws.send(json.dumps({
             "op": "subscribe",
-            "args": [{"channel": "books5", "instId": SYMBOL}]
+            "args": [{"channel": "books5", "instId": INST_ID}]
         }))
-        logger.info(f"Subscribed to books5 for {SYMBOL} via proxy: {PROXY_URL}")
+        logger.info(f"Subscribed to books5 for {INST_ID} (stored as {BASE_SYMBOL}) via proxy: {PROXY_URL}")
         
         async for msg in ws:
             data = json.loads(msg)
@@ -55,7 +59,7 @@ async def collect_lob(pool):
                     try:
                         await pool.execute(
                             "INSERT INTO v2_lob_snapshots (timestamp, symbol, bids, asks, bid_depth, ask_depth, entropy) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING",
-                            ts, SYMBOL, json.dumps(bids), json.dumps(asks), bid_depth, ask_depth, entropy
+                            ts, BASE_SYMBOL, json.dumps(bids), json.dumps(asks), bid_depth, ask_depth, entropy
                         )
                         _guard.ok()
                         insert_count += 1

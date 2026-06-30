@@ -4,7 +4,6 @@ import logging
 import os
 from datetime import datetime, timezone
 import asyncpg
-from websockets_proxy import proxy_connect, Proxy
 
 from sel_v2.db.migrations import apply_schema
 from sel_v2.data.insert_guard import InsertGuard, InsertFailureLimitExceeded
@@ -15,10 +14,14 @@ logger = logging.getLogger("v2_liquidation_collector")
 _guard = InsertGuard("v2_liquidations")
 
 DB_URL = os.environ.get("DB_URL")
-SYMBOL = "BTC-USDT-SWAP"
+# Stored symbol (base) vs the OKX swap instId we filter the SWAP feed by — already
+# perp, kept consistent/configurable with the other v2 collectors.
+BASE_SYMBOL = os.environ.get("SYMBOLS", "BTC-USDT")
+INST_ID = os.environ.get("LIQ_INST_ID", f"{BASE_SYMBOL}-SWAP")
 PROXY_URL = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
 
 async def collect_liquidations(pool):
+    from websockets_proxy import proxy_connect, Proxy   # lazy: keep module import-safe without the proxy lib
     insert_count = 0
     proxy = Proxy.from_url(PROXY_URL) if PROXY_URL else None
     
@@ -37,7 +40,7 @@ async def collect_liquidations(pool):
             if "data" in data:
                 for item in data["data"]:
                     for detail in item.get("details", []):
-                        if detail.get("instId") != SYMBOL:
+                        if detail.get("instId") != INST_ID:
                             continue
                         ts = datetime.fromtimestamp(int(detail["ts"])/1000, tz=timezone.utc)
                         side = detail["side"]
@@ -48,7 +51,7 @@ async def collect_liquidations(pool):
                         try:
                             await pool.execute(
                                 "INSERT INTO v2_liquidations (timestamp, symbol, side, size, price, loss) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
-                                ts, "BTC-USDT", side, size, price, loss
+                                ts, BASE_SYMBOL, side, size, price, loss
                             )
                             _guard.ok()
                             insert_count += 1

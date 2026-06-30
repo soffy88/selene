@@ -21,15 +21,12 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
-- **P0-2** Spot-price-drives-perp-strategy — making the instrument configurable, default perp.
+- **P0-3** Exchange-native stop capability (gated; never runs under NOTIFY_ONLY).
 
 ---
 
 ## 📋 Backlog — P0 (live-safety / signal-trust; must precede any live ambition)
 
-- [ ] **P0-2** Spot-price-drives-perp-strategy. Tick/LOB use spot `BTC-USDT`
-      (`v2_tick_collector.py:18`) while OI/funding/liq + traded instrument are perp
-      `BTC-USDT-SWAP`. Make instrument configurable, default to the perp.
 - [ ] **P0-3** Synthetic in-process stop. Add exchange-native STOP order capability
       + slippage bound (gated; never runs under NOTIFY_ONLY).
 - [ ] **P0-4** Real-strategy backtest DSR degenerate (`n_trials=1`,
@@ -68,6 +65,12 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+- **P0-2** Microstructure feed now matches the traded instrument: tick + LOB
+      collectors subscribe to the perp `BTC-USDT-SWAP` (was spot), storing the shared
+      base symbol so downstream joins are unchanged. Liquidation/derivatives made
+      symmetric+configurable; `websockets_proxy` lazy-imported so the modules are now
+      unit-testable. 8 new tests. `sel_v2/data/v2_{tick,lob,liquidation,derivatives}_collector.py`,
+      `tests/sel_v2/test_collector_instrument.py`.
 - **P0-1** Perp liquidation-distance guard in RiskGate (`check_liquidation_distance`,
       Gate 5b in `approve()`): rejects when post-trade cross-leverage sits within
       MIN_LIQ_BUFFER_PCT of liquidation, or when the protective stop is at/beyond the
