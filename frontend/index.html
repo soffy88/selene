@@ -506,10 +506,10 @@ td.neu{color:var(--text1)}
     </div>
   </div>
   <div class="card">
-    <div class="ch">状态历史（最近24h · BTCUSDT）</div>
+    <div class="ch">状态历史（BTCUSDT）</div>
     <div style="overflow-x:auto">
-      <table><thead><tr><th>时间</th><th>状态</th><th>方向</th><th>置信度</th><th>特征完整性</th><th>冷启动</th></tr></thead>
-      <tbody id="sel-hist-table"><tr><td colspan="6" class="t-empty">加载中...</td></tr></tbody></table>
+      <table><thead><tr><th>时间</th><th>状态</th><th>来自</th><th>触发</th><th>持续</th><th>特征完整性</th><th>冷启动</th></tr></thead>
+      <tbody id="sel-hist-table"><tr><td colspan="7" class="t-empty">加载中...</td></tr></tbody></table>
     </div>
   </div>
 </div>
@@ -1045,22 +1045,23 @@ async function loadSel(){
     document.getElementById('sel-state').textContent=topState?topState[0]:'冷启动';
   }
   if(hst&&hst.length){
-    const STATE_COL={DCalm:'g',DCaution:'a',DCritical:'r',Ranging:'b',Trending:'b',Volatile:'a'};
     document.getElementById('sel-hist-table').innerHTML=hst.map(r=>{
-      const sc=STATE_COL[r.state]||'neu';
-      const cs=r.is_cold_start?'<span style="color:var(--amber)">冷启</span>':'--';
+      const col=SEL_STATE_COLORS[r.state]||'#bbb';
+      const cs=r.cold_start===true?'<span style="color:var(--amber)">冷启</span>':(r.cold_start===false?'正常':'--');
       const fc=r.feature_completeness!=null?(r.feature_completeness*100).toFixed(0)+'%':'--';
+      const dur=r.duration_4h!=null?r.duration_4h+' 根':'--';
       return`<tr>
-        <td class="neu">${ft(r.bar_time)}</td>
-        <td class="${sc}">${r.state||'NULL'}</td>
-        <td class="neu">${r.direction||'--'}</td>
-        <td class="neu">${r.confidence||'--'}</td>
+        <td class="neu">${ft(r.time)}</td>
+        <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};margin-right:4px"></span>${r.state||'NULL'}</td>
+        <td class="neu">${r.transition_from||'--'}</td>
+        <td class="neu">${r.transition_via||'--'}</td>
+        <td class="neu">${dur}</td>
         <td class="neu">${fc}</td>
         <td>${cs}</td>
       </tr>`;
     }).join('');
   }else{
-    document.getElementById('sel-hist-table').innerHTML='<tr><td colspan="6" class="t-empty">无数据（系统尚在冷启动）</td></tr>';
+    document.getElementById('sel-hist-table').innerHTML='<tr><td colspan="7" class="t-empty">无数据（系统尚在冷启动）</td></tr>';
   }
 }
 

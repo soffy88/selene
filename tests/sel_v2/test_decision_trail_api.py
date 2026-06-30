@@ -123,6 +123,37 @@ def test_strategy_summary_empty_is_valid(monkeypatch):
     assert out["current_state"] is None
 
 
+def test_state_history_derives_completeness_and_coldstart(monkeypatch):
+    rows = [{
+        "timestamp": datetime(2026, 6, 30, 4, tzinfo=timezone.utc),
+        "state": "Surging", "transition_from": "Cascade", "transition_via": "Exhaustion",
+        "duration_4h": 3,
+        "state_features": {"a": 1, "b": None, "c": 2, "d": None, "cold_start": False},
+    }]
+    _patch_pool(monkeypatch, _Conn(rows=rows))
+    out = asyncio.run(api.state_history(symbol="BTC-USDT"))
+    r = out[0]
+    assert r["state"] == "Surging" and r["transition_from"] == "Cascade"
+    assert r["transition_via"] == "Exhaustion" and r["duration_4h"] == 3
+    # 3 of 5 feature keys non-null
+    assert r["feature_completeness"] == 0.6
+    assert r["cold_start"] is False
+    # the fake direction/confidence columns are gone
+    assert "direction" not in r and "confidence" not in r
+
+
+def test_state_history_handles_jsonb_string(monkeypatch):
+    import json as _json
+    rows = [{
+        "timestamp": datetime(2026, 6, 30, tzinfo=timezone.utc), "state": "Cascade",
+        "transition_from": None, "transition_via": None, "duration_4h": 1,
+        "state_features": _json.dumps({"x": 1, "cold_start": True}),   # asyncpg may hand back a str
+    }]
+    _patch_pool(monkeypatch, _Conn(rows=rows))
+    out = asyncio.run(api.state_history(symbol="BTC-USDT"))
+    assert out[0]["cold_start"] is True and out[0]["feature_completeness"] == 1.0
+
+
 def test_sel_chart_returns_ascending_ohlc_with_state(monkeypatch):
     import decimal
     # endpoint queries DESC; it must return ascending unix-second OHLC + state

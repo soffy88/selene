@@ -1,4 +1,5 @@
 import os
+import json
 import asyncpg
 from fastapi import APIRouter, Query, HTTPException
 from typing import Dict, List, Optional
@@ -80,13 +81,36 @@ async def state_health(symbol: str = Query("BTC-USDT")):
 
 @router.get("/sel/state/history")
 async def state_history(symbol: str = Query("BTC-USDT"), hours: int = 24, limit: int = 100):
+    """Recent regime states with the fields that actually exist in v2_state_history:
+    the state, where it transitioned FROM, the transition trigger (Release/Stress/Exhaustion),
+    how long it has held (duration_4h), feature completeness (computed from state_features),
+    and cold-start. The old 'direction'/'confidence' columns had no backing data — the state
+    machine is deterministic and never populated sub_state — so they are dropped."""
     symbol = normalize_symbol(symbol)
     p = await get_pool()
     async with p.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT * FROM v2_state_history ORDER BY timestamp DESC LIMIT $1", limit
+            "SELECT timestamp, state, transition_from, transition_via, duration_4h, state_features "
+            "FROM v2_state_history ORDER BY timestamp DESC LIMIT $1", limit
         )
-        return [record_to_dict(r) for r in rows]
+    out = []
+    for r in rows:
+        f = r["state_features"]
+        if isinstance(f, str):
+            f = json.loads(f)
+        f = f or {}
+        total = len(f)
+        non_null = sum(1 for v in f.values() if v is not None)
+        out.append({
+            "time": r["timestamp"].isoformat(),
+            "state": r["state"],
+            "transition_from": r["transition_from"],
+            "transition_via": r["transition_via"],
+            "duration_4h": r["duration_4h"],
+            "feature_completeness": round(non_null / total, 3) if total else None,
+            "cold_start": bool(f.get("cold_start")) if "cold_start" in f else None,
+        })
+    return out
 
 @router.get("/sel/chart")
 async def sel_chart(symbol: str = Query("BTC-USDT"), bars: int = 300):
