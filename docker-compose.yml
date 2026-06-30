@@ -15,7 +15,11 @@ x-common-env: &common_env
   TIMESCALE_URL:        ${TIMESCALE_URL}
   REDIS_URL:            ${REDIS_URL}
   LOG_LEVEL:            ${LOG_LEVEL:-INFO}
-  ENVIRONMENT:          ${ENVIRONMENT:-production}
+  # Default to development: execution adapters use testnet unless ENVIRONMENT
+  # =production, and the live-exec boot guard only arms in production. A safe
+  # default means an accidental deploy without an explicit env lands on testnet,
+  # not mainnet. Set ENVIRONMENT=production deliberately for a real deploy.
+  ENVIRONMENT:          ${ENVIRONMENT:-development}
   DEBUG:                ${DEBUG:-false}
   EXEC_MODE:            ${EXEC_MODE:-NOTIFY_ONLY}
   MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-OKX}
