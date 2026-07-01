@@ -143,6 +143,28 @@ async def sel_chart(symbol: str = Query("BTC-USDT"), bars: int = 300):
     ]
 
 
+@router.get("/sel/observations")
+async def sel_observations():
+    """Latest reading of each observation-only tool (HMM regime / HMM boundary / TDA clustering /
+    permutation entropy / transfer entropy / wavelet / Hawkes cascade). These never touch trading
+    — they're a second, independent read on the market. Graceful [] until populated."""
+    _NAMES = {"B1": "HMM 状态分歧", "B2": "HMM 边界套利", "TDA2": "TDA 聚类分歧",
+              "I1": "排列熵(随机度)", "T2": "转移熵(资金费→价)", "W2": "小波多重分形",
+              "H3": "Hawkes 级联预警"}
+    p = await get_pool()
+    async with p.acquire() as conn:
+        try:
+            rows = await conn.fetch("SELECT * FROM v2_observation_latest ORDER BY tool_id")
+        except Exception:
+            return []
+    out = []
+    for r in rows:
+        d = record_to_dict(r)
+        d["name"] = _NAMES.get(r["tool_id"], r["tool_id"])
+        out.append(d)
+    return out
+
+
 @router.get("/sel/counterfactual")
 async def sel_counterfactual():
     """Counterfactual S1/S2 entries over the full price history, computed by ASSUMING the

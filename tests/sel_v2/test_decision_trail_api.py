@@ -176,6 +176,42 @@ def test_sel_chart_returns_ascending_ohlc_with_state(monkeypatch):
     assert out[1]["close"] == 2.5 and out[1]["high"] == 3.0
 
 
+def test_observations_endpoint_adds_names(monkeypatch):
+    rows = [
+        {"tool_id": "B1", "source": "hmm", "signal": False, "value": 0.07, "threshold": 0.6,
+         "label": "LOW_VOL", "confidence": 0.93, "timestamp": datetime(2026, 6, 30, tzinfo=timezone.utc),
+         "updated_at": datetime(2026, 6, 30, tzinfo=timezone.utc)},
+        {"tool_id": "H3", "source": "hawkes", "signal": True, "value": 300.0, "threshold": 212.0,
+         "label": "WARNING", "confidence": 0.8, "timestamp": datetime(2026, 6, 30, tzinfo=timezone.utc),
+         "updated_at": datetime(2026, 6, 30, tzinfo=timezone.utc)},
+    ]
+    _patch_pool(monkeypatch, _Conn(rows=rows))
+    out = asyncio.run(api.sel_observations())
+    assert len(out) == 2
+    assert out[0]["tool_id"] == "B1" and out[0]["name"]        # human name attached
+    assert out[1]["signal"] is True and out[1]["label"] == "WARNING"
+
+
+def test_observations_graceful_when_table_absent(monkeypatch):
+    _patch_pool(monkeypatch, _Conn(raise_on_fetch=True))
+    assert asyncio.run(api.sel_observations()) == []
+
+
+def test_run_recent_observations_returns_seven_tools():
+    import numpy as np
+    import pandas as pd
+    from sel_v2.observation_tools.runner import run_recent_observations
+    rng = np.random.default_rng(3)
+    n = 600
+    close = 30000 * np.exp(np.cumsum(rng.normal(0, 0.01, n)))
+    df = pd.DataFrame({"time": [pd.Timestamp("2024-01-01") + pd.Timedelta(hours=4 * i) for i in range(n)],
+                       "close": close, "volume": 1000.0})
+    res = run_recent_observations(df, window=540)
+    assert len(res) == 7
+    assert {r.tool_id for r in res} == {"B1", "B2", "TDA2", "I1", "T2", "W2", "H3"}
+    assert all(hasattr(r, "signal") and hasattr(r, "value") for r in res)
+
+
 def test_counterfactual_summarises_trades(monkeypatch):
     e1 = datetime(2024, 7, 15, tzinfo=timezone.utc); x1 = datetime(2024, 7, 22, tzinfo=timezone.utc)
     e2 = datetime(2024, 9, 6, tzinfo=timezone.utc); x2 = datetime(2024, 9, 9, tzinfo=timezone.utc)

@@ -159,3 +159,63 @@ class ObservationRunner:
         for t in self._tools:
             t.reset()
         self._bars_processed = 0
+
+
+# ── Recent-window driver (UI surface, #3) ───────────────────────────────────────
+def run_recent_observations(df, *, oi_series=None, funding_series=None, window: int = 540):
+    """Feed the last `window` 4H bars through a fresh ObservationRunner and return the LATEST
+    per-tool results (the 7 observation-only tools' current readings).
+
+    The tools are observation-only (they never touch trading), but they had no caller and no UI
+    — this warms them up over the recent window so the SEL panel can show what HMM / TDA / TE /
+    wavelet / permutation-entropy / Hawkes-cascade are currently saying. Returns
+    list[ObservationResult] (empty if too few bars)."""
+    import numpy as np
+    n = len(df)
+    if n < 2:
+        return []
+    closes = df["close"].values.astype(float)
+    vols = df["volume"].values.astype(float) if "volume" in df else np.ones(n)
+    times = list(df["time"])
+    lo = max(1, n - window)
+    runner = ObservationRunner(db_writer=None)
+    results = []
+    for i in range(lo, n):
+        ts = times[i]
+        ts = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
+        bar = BarFeatures(
+            timestamp=ts,
+            log_return=float(np.log(closes[i] / closes[i - 1])) if closes[i - 1] > 0 else 0.0,
+            volume=float(vols[i]),
+            funding_rate=(float(funding_series[i]) if funding_series is not None
+                          and np.isfinite(funding_series[i]) else None),
+            open_interest=(float(oi_series[i]) if oi_series is not None
+                           and np.isfinite(oi_series[i]) else None),
+        )
+        results = runner.process_bar_sync(bar)   # last iteration = current reading
+    return results
+
+
+async def persist_latest_observations(conn, results) -> int:
+    """Upsert the latest per-tool observation readings into v2_observation_latest (one row per
+    tool). Idempotent — the SEL observation panel reads this."""
+    n = 0
+    for r in results:
+        try:
+            await conn.execute(
+                """
+                INSERT INTO v2_observation_latest
+                    (tool_id, source, signal, value, threshold, label, confidence, timestamp, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                ON CONFLICT (tool_id) DO UPDATE SET
+                    source = EXCLUDED.source, signal = EXCLUDED.signal, value = EXCLUDED.value,
+                    threshold = EXCLUDED.threshold, label = EXCLUDED.label,
+                    confidence = EXCLUDED.confidence, timestamp = EXCLUDED.timestamp, updated_at = NOW()
+                """,
+                r.tool_id, _TOOL_SOURCE_MAP.get(r.tool_id), bool(r.signal), float(r.value),
+                float(r.threshold), r.label, float(r.confidence), r.timestamp,
+            )
+            n += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("persist_latest_observations(%s): %s", r.tool_id, exc)
+    return n

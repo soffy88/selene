@@ -237,9 +237,29 @@ class PaperEngine:
         self._engine = engine
         await self._persist_summary(summary)
         await self._persist_results(engine)
+        await self._refresh_observations(df, oi_series, funding_series)
         logger.info("strategy engine: bars=%s state=%s s1=%s s2=%s equity=%s",
                     summary["bars"], list(summary["state_counts"])[-1:],
                     summary["s1"], summary["s2"], summary["total_equity"])
+
+    async def _refresh_observations(self, df, oi_series, funding_series):
+        """Run the 7 observation-only tools over the recent window and persist their latest
+        readings for the SEL observation panel (#3). Throttled to a NEW BAR only — the tools
+        are windowed and expensive (HMM refit etc.), and don't change intra-bar, so running
+        them on every tick would be wasteful. Non-blocking: failures never stop the engine."""
+        try:
+            latest_ts = df["time"].iloc[-1]
+            if getattr(self, "_last_obs_bar_ts", None) == latest_ts:
+                return   # already ran for this bar
+            from sel_v2.observation_tools.runner import (
+                run_recent_observations, persist_latest_observations)
+            results = run_recent_observations(df, oi_series=oi_series, funding_series=funding_series)
+            if results:
+                async with self._pool.acquire() as conn:
+                    await persist_latest_observations(conn, results)
+                self._last_obs_bar_ts = latest_ts
+        except Exception as e:  # noqa: BLE001
+            logger.warning("observation refresh failed: %s", e)
 
     async def _persist_summary(self, summary: dict):
         """Publish the latest engine summary to Redis for the UI/monitoring layer."""

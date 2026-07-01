@@ -499,6 +499,12 @@ td.neu{color:var(--text1)}
     </div>
   </div>
   <div class="card">
+    <div class="ch">观察工具 <span style="font-size:10px;color:var(--text2)">(只观察不交易 · 独立第二视角 · 每根4H刷新)</span></div>
+    <div class="cb">
+      <div id="sel-obs" style="display:flex;flex-wrap:wrap;gap:8px"><div style="font-size:11px;color:var(--text2)">加载中...</div></div>
+    </div>
+  </div>
+  <div class="card">
     <div class="ch">冷启动进度 <span style="font-size:10px;color:var(--text2)">(需要180条4H数据)</span></div>
     <div class="cb">
       <div class="progress mt2" style="margin-bottom:8px">
@@ -1013,9 +1019,23 @@ async function loadSelChart(){
   _selChart.timeScale().fitContent();
 }
 
+async function loadSelObs(){
+  const d=await fetch('/api/v2/sel/observations').then(r=>r.ok?r.json():null).catch(()=>null);
+  const el=document.getElementById('sel-obs'); if(!el)return;
+  if(!Array.isArray(d)||!d.length){el.innerHTML='<div style="font-size:11px;color:var(--text2)">暂无观察数据（等下一根 4H bar 刷新）</div>';return;}
+  el.innerHTML=d.map(t=>{
+    const on=t.signal===true; const conf=t.confidence!=null?(t.confidence*100).toFixed(0)+'%':'--';
+    return `<div class="stat" style="flex:1;min-width:155px;border-left:3px solid ${on?'var(--amber)':'transparent'}">
+      <div class="stat-label">${t.name||t.tool_id} <span style="opacity:.5">${t.tool_id}</span></div>
+      <div style="font-size:12px;color:${on?'var(--amber)':'var(--text2)'}">${on?'⚠ '+(t.label||'触发'):(t.label||'正常')}</div>
+      <div class="stat-sub" style="font-size:10px">值 ${(+t.value).toFixed(4)} / 阈 ${(+t.threshold).toFixed(4)} · 置信 ${conf}</div>
+    </div>`;
+  }).join('');
+}
 async function loadSel(){
   const sym='BTC-USDT';
   loadSelChart();
+  loadSelObs();
   const [hd,hst,summ,trec,topen]=await Promise.all([
     fetch(`/api/v2/sel/state/health?symbol=${sym}`).then(r=>r.ok?r.json():null).catch(()=>null),
     fetch(`/api/v2/sel/state/history?symbol=${sym}&hours=24&limit=24`).then(r=>r.ok?r.json():null).catch(()=>null),

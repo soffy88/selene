@@ -250,6 +250,20 @@ CREATE INDEX IF NOT EXISTS idx_v2_decision_trail_ts
 CREATE INDEX IF NOT EXISTS idx_v2_decision_trail_component
     ON v2_decision_trail (target_component, timestamp DESC);
 
+-- Latest reading of each observation-only tool (HMM/TDA/TE/wavelet/PE/Hawkes-cascade), for the
+-- SEL observation panel. One row per tool, upserted — the tools never touch trading.
+CREATE TABLE IF NOT EXISTS v2_observation_latest (
+    tool_id     TEXT        PRIMARY KEY,   -- B1/B2/TDA2/I1/T2/W2/H3
+    source      TEXT,                      -- hmm / tda / transfer_entropy / ...
+    signal      BOOLEAN,
+    value       DOUBLE PRECISION,
+    threshold   DOUBLE PRECISION,
+    label       TEXT,
+    confidence  DOUBLE PRECISION,
+    timestamp   TIMESTAMPTZ,
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Per-bar entry decision trail (the audit "why" for every bar, both strategies). One row per
 -- (timestamp, strategy), upserted each replay (self-healing, never duplicates). The full
 -- decision moat, vs v2_paper_latest_decision which is only the latest bar.
