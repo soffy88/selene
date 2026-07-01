@@ -215,85 +215,6 @@ services:
       resources:
         limits: {cpus: '0.3', memory: 128M}
 
-  # ── sel Bar-Close Scheduler ──────────────────────────────────────────────
-  sel-bar-runner:
-    <<: *defaults
-    build:
-      context: .
-      dockerfile: services/sel_bar_runner/Dockerfile
-    command: python -m services.sel_bar_runner.main
-    environment:
-      <<: *common_env
-      SERVICE_NAME: sel-bar-runner
-      SEL_SYMBOL:   ${SEL_SYMBOL:-BTCUSDT}
-      SEL_INST_ID:  ${SEL_INST_ID:-BTC-USDT-SWAP}
-    deploy:
-      resources:
-        limits: {cpus: '0.5', memory: 256M}
-    healthcheck:
-      test: ["CMD-SHELL", "python -c 'from sel_engine.scheduler.health import check; exit(0 if check() else 1)'"]
-      interval: 5m
-      timeout: 30s
-      retries: 3
-      start_period: 75m
-
-  # ── sel Collectors ───────────────────────────────────────────────────────
-  sel-orderbook:
-    <<: *defaults
-    build:
-      context: .
-      dockerfile: services/sel_collectors/Dockerfile
-    command: python -m services.sel_collectors.run_orderbook
-    environment:
-      <<: *common_env
-      SERVICE_NAME: sel-orderbook
-      SEL_SYMBOL:   ${SEL_SYMBOL:-BTCUSDT}
-      SEL_INST_ID:  ${SEL_INST_ID:-BTC-USDT-SWAP}
-    # Real liveness check (item #22): confirm the collector process is running by
-    # scanning /proc (portable, no extra tools) instead of the fake `true`.
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import glob,sys; sys.exit(0 if any(b'run_orderbook' in open(p,'rb').read() for p in glob.glob('/proc/[0-9]*/cmdline')) else 1)\""]
-      interval: 60s
-    deploy:
-      resources:
-        limits: {cpus: '0.2', memory: 128M}
-
-  sel-trade-flow:
-    <<: *defaults
-    build:
-      context: .
-      dockerfile: services/sel_collectors/Dockerfile
-    command: python -m services.sel_collectors.run_trade_flow
-    environment:
-      <<: *common_env
-      SERVICE_NAME: sel-trade-flow
-      SEL_SYMBOL:   ${SEL_SYMBOL:-BTCUSDT}
-      SEL_INST_ID:  ${SEL_INST_ID:-BTC-USDT-SWAP}
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import glob,sys; sys.exit(0 if any(b'run_trade_flow' in open(p,'rb').read() for p in glob.glob('/proc/[0-9]*/cmdline')) else 1)\""]
-      interval: 60s
-    deploy:
-      resources:
-        limits: {cpus: '0.2', memory: 128M}
-
-  sel-oi:
-    <<: *defaults
-    build:
-      context: .
-      dockerfile: services/sel_collectors/Dockerfile
-    command: python -m services.sel_collectors.run_oi
-    environment:
-      <<: *common_env
-      SERVICE_NAME: sel-oi
-      SEL_SYMBOL:   ${SEL_SYMBOL:-BTCUSDT}
-      SEL_INST_ID:  ${SEL_INST_ID:-BTC-USDT-SWAP}
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import glob,sys; sys.exit(0 if any(b'run_oi' in open(p,'rb').read() for p in glob.glob('/proc/[0-9]*/cmdline')) else 1)\""]
-      interval: 60s
-    deploy:
-      resources:
-        limits: {cpus: '0.1', memory: 64M}
-
   # ── Monitoring ────────────────────────────────────────────────────────────
   monitoring-service:
     <<: *defaults
@@ -519,46 +440,9 @@ services:
       - v2-bar-aggregator
     restart: unless-stopped
 
-  # ── Observability stack (audit P1-6) ────────────────────────────────────────
-  # The gateway already exposes a real /metrics; these scrape + visualise it. Other
-  # FastAPI services appear automatically once they adopt shared/metrics.py (their
-  # scrape jobs are pre-declared in infra/prometheus/prometheus.yml).
-  prometheus:
-    image: prom/prometheus:v2.54.1
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.retention.time=30d'
-    volumes:
-      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    ports: ['9090:9090']
-    networks: [helios-net]
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options: {max-size: "50m", max-file: "5"}
-
-  grafana:
-    image: grafana/grafana:11.2.0
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
-      - GF_USERS_ALLOW_SIGN_UP=false
-    volumes:
-      - grafana_data:/var/lib/grafana
-    ports: ['3000:3000']
-    depends_on:
-      - prometheus
-    networks: [helios-net]
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options: {max-size: "50m", max-file: "5"}
-
 networks:
   helios-net:
     external: true
 
 volumes:
   onchain_history:    # SQLite 历史胜率数据持久化
-  prometheus_data:    # Prometheus TSDB (P1-6)
-  grafana_data:       # Grafana dashboards/state (P1-6)

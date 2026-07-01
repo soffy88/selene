@@ -1,3 +1,0 @@
-asyncpg>=0.29
-redis[asyncio]>=5.0
-numpy>=1.26
