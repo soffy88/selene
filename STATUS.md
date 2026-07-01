@@ -43,6 +43,73 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+### SEL live-ops rounds (2026-06-30 → 07-01) — commits `d9297ec`…`ebb636b`
+
+Live-deployment debugging + optimization of the sel_v2 (SEL) subsystem, driven against the
+running docker-compose stack (real DB/collectors/paper engine). Distinct from the audit
+backlog above. All verified live; all tests green (suite ~1148+).
+
+**Frontend / observability (SEL tab now a real cockpit):**
+- `f9949da` — gateway had **no `DB_URL`**, so EVERY `/api/v2/sel/*` PG endpoint 500'd — the
+  real reason "S1/S2 were invisible". Added DB_URL to the gateway env. (Root infra bug.)
+- `a13ce52` — S1/S2 strategy panel + `GET /sel/strategy/summary` (open/closed/PnL/win-rate
+  from `v2_trades`, current state, no Redis).
+- `74f3b07` — per-bar "why no entry": engine captures the latest S1/S2 `EntryDecision`,
+  persisted to `v2_paper_latest_decision`, shown on the panel (action·step·reason).
+- `bf80c6e` — **BTC candlestick chart + regime-state annotation** on the SEL tab (vendored
+  TradingView Lightweight Charts, no CDN; `GET /sel/chart` joins bars⋈state). Repopulated
+  `v2_state_history` with current-code states so markers are meaningful.
+- `d86074c` — chart legend lists all **6 states**, dims the 2 that never occur
+  (Coiling / Drifting-Charged — the OI/entropy-gated states, same root as S1 not trading).
+- `d76f770` — state-history table columns fixed: the blank 方向/置信度 (no source — the
+  state machine is deterministic, `sub_state` always NULL) replaced by real
+  from/via/duration; feature-completeness + cold-start derived from `state_features`.
+- `6ec73f4` — **counterfactual S1 overlay** on the chart (toggle): assuming the unavailable
+  OI/entropy/funding gates pass, S1 had ~68 entries over 2yr (40% win, +11k USDT) — shown as
+  ▲/▼/○ markers with a loud "NOT a validated backtest" banner. `v2_counterfactual_trades` +
+  `GET /sel/counterfactual`.
+- `fde3eee` (#2) — **full per-bar decision trail** persisted to `v2_strategy_decision`
+  (self-healing upsert), joined into state-history as an "S1决策" column (per-bar action·step).
+- `ebb636b` (#3) — the **7 observation-only tools** (HMM regime/boundary, TDA clustering,
+  permutation/transfer entropy, wavelet, Hawkes cascade) had a runner but NO caller — now run
+  over the recent window, persisted to `v2_observation_latest` (throttled to new-bar),
+  `GET /sel/observations` + a SEL observation panel.
+
+**Signal correctness / data:**
+- `d9297ec` — **Coiling/Drifting-Charged never formed** because `entropy_pctile` /
+  `funding_pctile` / `oi_change_rate_pctile` were 100% null. Wired LOB entropy into BarFeatures
+  and made the rolling-percentile window **adaptive** (emit once ≥30 obs) so a recently-started
+  feed produces a percentile instead of waiting for the full 360-bar window.
+- `2d90d24` — **liquidation collector filtered the wrong field**: OKX puts `instId` on the
+  outer item (details[].instId is None), so `v2_liquidations` was **永远 0** and the Cascade
+  liquidation-pulse defense was dead. Now filters on item.instId (captured from the live
+  channel; pure `extract_liquidation_rows` + tests).
+- `708903d` — `okx_backfill` fetched **spot** candles (historical bars were spot while the live
+  feed is perp). Now defaults to the perp `{symbol}-SWAP`. NOTE: measured basis is only ~0.05%,
+  so re-backfilling the existing 2yr is **low-value** — code fixed for future, existing data
+  left as-is by choice.
+- `d837b4a` (P1-4) — `write_states_bulk` now `ON CONFLICT DO UPDATE` (was DO NOTHING) with a
+  WHERE guard, so `v2_state_history` **self-heals** on recompute instead of keeping stale
+  first-written states (no more manual TRUNCATE+repopulate).
+
+**Performance:**
+- `97035f6` (#4) — the full-history replay ran on every tick, recomputing σ/Hawkes/**TDA(ripser
+  over ~4500 bars)** each time. Now cached by a closes signature and reused when no new 4H bar
+  sealed (the dominant case). Engine output unchanged (verified state_counts identical).
+
+**Diagnosis that did NOT need a code change (documented for the record):**
+- **S1/S2 have 0 trades** — verified NOT a bug: the only ~15 days with OI/LOB data were a
+  sustained high-vol regime, so S1's entry states (Coiling/Drifting-Charged, which need low/mid
+  vol) never formed. Pipeline is wired; S1 will trade when the market consolidates.
+- **OI history is unbackfillable** — OKX caps `open-interest-history` at ~16 days (pagination
+  no-ops). So a faithful historical S1/S2 OOS is impossible from OKX; a 3rd-party OI source
+  (Coinglass/…) is the only path. See Needs-Human.
+
+**Deferred SEL follow-ups (not yet done):** 3rd-party historical OI (for real OOS);
+`v2_ofi_features` orphan store (table doesn't even exist — decide wire-or-drop); Cascade
+cond-2 needs live liquidation data to actually flow (collector now fixed, awaiting events);
+Surging Up/Down direction (sub_state unused); S2 counterfactual (needs tick-driven Hawkes).
+
 - **P2-5** VWAP now NULL (unknown) instead of fake 0.0 where it can't be computed (REST
       backfill + zero-volume bars), so a reader can't mistake a placeholder for a real VWAP.
       `sel_v2/data/{okx_backfill,v2_bar_aggregator}.py`. (P2-6 done with P0-6.)
@@ -134,6 +201,12 @@ rounds (see memory `opt-pr-3`).
 
 ## 🚨 Needs Human
 
+- **SEL historical OOS is blocked by data, not code** (2026-07-01): S1/S2 entry states need OI,
+  and OKX only serves ~16 days of OI history (LOB/entropy: no history at all). So a faithful
+  "where would S1/S2 have traded" backtest is impossible from OKX — decision needed on a
+  **3rd-party historical OI source** (Coinglass/Laevitas/Amberdata; some paid). Until then S1
+  can only accrue evidence *forward* (it trades once the market consolidates). The chart's
+  "反事实成交" toggle shows the OI-gates-assumed upper bound, clearly labelled as not-a-backtest.
 - **P0-6 frontend product decision**: the only shipped UI is the v4 recommendation/
   execution dashboard (signal cards with entry/SL/TP + confirm/reject/execute buttons).
   Backend advisory *language* is now neutralized, but the execute-UI itself is structurally
