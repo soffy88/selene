@@ -9,6 +9,7 @@ import logging
 from typing import AsyncIterator, Callable, Optional
 
 import redis.asyncio as aioredis
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from shared.events.streams import MAXLEN, encode, decode, StreamEvent
 
@@ -122,6 +123,12 @@ async def consume(
         except asyncio.CancelledError:
             logger.info(f"Consumer '{consumer}' stopped")
             break
+        except (RedisTimeoutError, asyncio.TimeoutError):
+            # Benign: with a blocking XREADGROUP (block=block_ms) and no client socket_timeout,
+            # redis-py's read timeout races the server's BLOCK window, so a quiet stream raises
+            # a spurious TimeoutError every empty cycle. It means "no new messages" — just loop
+            # (don't log a traceback or sleep 1s, which would drop the next block window).
+            continue
         except Exception as e:
             logger.error(f"Stream consumer error: {e}", exc_info=True)
             await asyncio.sleep(1)
