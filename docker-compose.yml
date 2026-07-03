@@ -383,12 +383,15 @@ services:
     build:
       context: .
       dockerfile: sel_v2/Dockerfile
-    command: python -m sel_v2.data.binance_backfill --loop 600 --years 0.05
+    # 采集层合并 P2b:Binance 4H bar 改读中立 iris/md(marketdata.md.ohlcv),不再自打 fapi/klines。
+    # 回滚:command 切回 `python -m sel_v2.data.binance_backfill --loop 600 --years 0.05`
+    # (旧文件保留;深史一次性回填也用它)。DB→DB, 无 egress/代理。
+    command: python -m sel_v2.data.v2_bars_md_adapter --loop 600
     env_file: .env
     environment:
-      - BINANCE_PROXY=${BINANCE_PROXY:-http://helios-proxy:2080}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - MD_DSN=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/marketdata
     networks:
       - helios-net
     restart: unless-stopped
