@@ -20,8 +20,9 @@ logger = logging.getLogger("signal.onchain_bridge")
 
 # ── signal.raw 中 onchain-sentinel 写入的 factor 更新消费 ─────────────────────
 
+
 async def consume_onchain_factor_updates(
-    rescore_fn,   # async fn(symbol: str) → None，由 signal-service 提供
+    rescore_fn,  # async fn(symbol: str) → None，由 signal-service 提供
 ):
     """
     持续消费 signal.raw 中来自 onchain-sentinel 的 factor 更新消息。
@@ -30,10 +31,14 @@ async def consume_onchain_factor_updates(
     在 signal-service 的 main 协程中 create_task 即可：
         asyncio.create_task(consume_onchain_factor_updates(rescore))
     """
-    from shared.db.redis_client import get_redis
-    from shared.events.streams import STREAM_SIGNAL_RAW, CG_SIGNAL, ensure_consumer_group
+    # NB: use connections.get_redis (the pool the signal-service actually initialises).
+    # The old code imported get_redis from shared.db.redis_client — a *different*,
+    # never-initialised global — and imported a non-existent `ensure_consumer_group`
+    # from streams, so this module raised on import and was never wired. (audit P1-a)
+    from shared.db.connections import get_redis
+    from shared.events.streams import STREAM_SIGNAL_RAW, CG_SIGNAL
 
-    r = get_redis()
+    r = await get_redis()
     consumer = "signal-onchain-bridge"
 
     try:
@@ -47,9 +52,11 @@ async def consume_onchain_factor_updates(
     while True:
         try:
             results = await r.xreadgroup(
-                CG_SIGNAL, consumer,
+                CG_SIGNAL,
+                consumer,
                 {STREAM_SIGNAL_RAW: ">"},
-                count=20, block=1000,
+                count=20,
+                block=1000,
             )
             if not results:
                 continue
