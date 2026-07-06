@@ -314,13 +314,15 @@ services:
     build:
       context: .
       dockerfile: sel_v2/Dockerfile
-    command: python -m sel_v2.data.v2_tick_collector
+    # 采集层合并 P4:逐笔成交改读中立 iris/md(marketdata.md.trades,venue=okx——实测
+    # Binance WS 经 helios-proxy 不通,只有 OKX 经 10808 隧道可行)。不再自连 OKX WS。
+    # 回滚:command 切回 `python -m sel_v2.data.v2_tick_collector`(旧文件保留)。
+    command: python -m sel_v2.data.v2_ticks_md_adapter --loop 5
     env_file: .env
     environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://helios-proxy:2080}
-      - HTTP_PROXY=${HTTP_PROXY:-http://helios-proxy:2080}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - MD_DSN=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/marketdata
       - SYMBOLS=BTC-USDT
     networks:
       - helios-net
@@ -347,13 +349,15 @@ services:
     build:
       context: .
       dockerfile: sel_v2/Dockerfile
-    command: python -m sel_v2.data.v2_liquidation_collector
+    # 采集层合并 P5:清算事件改读中立 iris/md(marketdata.md.liquidations,venue=okx,
+    # 与 P4 trades 共用 iris 侧同一条 WS 连接)。不再自连 OKX WS。回滚:command 切回
+    # `python -m sel_v2.data.v2_liquidation_collector`(旧文件保留)。
+    command: python -m sel_v2.data.v2_liquidations_md_adapter --loop 15
     env_file: .env
     environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://helios-proxy:2080}
-      - HTTP_PROXY=${HTTP_PROXY:-http://helios-proxy:2080}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - MD_DSN=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/marketdata
     networks:
       - helios-net
     restart: unless-stopped
