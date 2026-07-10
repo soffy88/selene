@@ -14,6 +14,7 @@ DB/Redis; the async engine calls `process_frame()` and persists the resulting po
 Feature series (σ, Hawkes BR, TDA L¹) are built with the same precompute functions the offline
 replay uses, so paper and replay produce identical states for identical input.
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,11 +25,18 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from sel_v2.runtime.staleness import StalenessEnforcement
 from sel_v2.scheduler.bar_runner import BarRunner
 from sel_v2.strategies.cusum_short import CUSUMShort, CUSUMTrigger
 from sel_v2.strategies.strategy1_entry import Strategy1EntryFilter
 from sel_v2.strategies.strategy2_entry import Strategy2EntryFilter
-from sel_v2.strategies.strategy_exit import check_strategy1_exit, check_strategy2_exit
+from sel_v2.strategies.strategy_exit import (
+    ExitDecision,
+    _P_CUSUM_REVERSE,
+    _P_HOLD,
+    check_strategy1_exit,
+    check_strategy2_exit,
+)
 from sel_v2.strategies.sub_account import DualSubAccountEngine
 
 logger = logging.getLogger("paper_strategy_engine")
@@ -37,12 +45,12 @@ _SIGMA_WINDOW = 180
 
 # Strategy-2 inverse-vocab classifier thresholds (v1 heuristics on real tick/LOB
 # microstructure — documented & replaceable). See _micro_vocab_series.
-_VOCAB_VOL_WINDOW = 60      # bars for the rolling taker-volume percentile baseline
-_VOCAB_VOL_Q = 0.80        # taker volume above this percentile = "high activity"
-_SWEEP_MOVE = 0.005        # |bar return| ≥ 0.5% with flow → aggressive Sweep
-_ABSORB_MOVE = 0.0015      # high volume but |return| ≤ 0.15% → flow Absorbed
-_OFI_PERSIST_BARS = 2      # net taker flow same direction for this many bars
-_TYPE_A_SEQ_BARS = 6       # an Absorption within this many bars before a Sweep → Type A
+_VOCAB_VOL_WINDOW = 60  # bars for the rolling taker-volume percentile baseline
+_VOCAB_VOL_Q = 0.80  # taker volume above this percentile = "high activity"
+_SWEEP_MOVE = 0.005  # |bar return| ≥ 0.5% with flow → aggressive Sweep
+_ABSORB_MOVE = 0.0015  # high volume but |return| ≤ 0.15% → flow Absorbed
+_OFI_PERSIST_BARS = 2  # net taker flow same direction for this many bars
+_TYPE_A_SEQ_BARS = 6  # an Absorption within this many bars before a Sweep → Type A
 
 # Cache for the expensive price-only per-bar series (σ / Hawkes BR / TDA L¹), keyed on a
 # closes signature. The full-history replay runs on every tick; these series only change when a
@@ -58,20 +66,22 @@ def precompute_sigma_series(close: np.ndarray):
     sigma = np.full(n, np.nan)
     sigma_pctile = np.full(n, np.nan)
     for i in range(_SIGMA_WINDOW, n):
-        sigma[i] = float(np.std(log_returns[i - _SIGMA_WINDOW: i]))
+        sigma[i] = float(np.std(log_returns[i - _SIGMA_WINDOW : i]))
     for i in range(_SIGMA_WINDOW * 2, n):
-        window = sigma[i - _SIGMA_WINDOW: i]
+        window = sigma[i - _SIGMA_WINDOW : i]
         valid = window[np.isfinite(window)]
         if len(valid) > 0:
             sigma_pctile[i] = float(np.mean(valid <= sigma[i]))
     return sigma, sigma_pctile
 
 
-def precompute_tda_pctile_series(tda_l1: np.ndarray, pctile_window: int = 540, q: float = 0.95):
+def precompute_tda_pctile_series(
+    tda_l1: np.ndarray, pctile_window: int = 540, q: float = 0.95
+):
     n = len(tda_l1)
     pctile = np.full(n, np.nan)
     for i in range(pctile_window, n):
-        seg = tda_l1[i - pctile_window: i]
+        seg = tda_l1[i - pctile_window : i]
         valid = seg[np.isfinite(seg) & (seg > 0)]
         if len(valid) >= 10:
             pctile[i] = float(np.mean(valid <= tda_l1[i]))
@@ -124,12 +134,16 @@ class PaperStrategyEngine:
         # silent fallback). Strategy 1 (CUSUM + state machine) does not need them and runs.
         self._s2_enabled = True
         try:
-            from sel_v2.strategies.hawkes_intensity import HawkesParams, HawkesIntensityTracker
+            from sel_v2.strategies.hawkes_intensity import (
+                HawkesParams,
+                HawkesIntensityTracker,
+            )
+
             if self.hawkes_params is not None:
                 mu, alpha, beta = self.hawkes_params
                 params = HawkesParams(mu=mu, alpha=alpha, beta=beta)
             else:
-                params = HawkesParams.from_h2_reference()   # reads v2_strategy_params
+                params = HawkesParams.from_h2_reference()  # reads v2_strategy_params
             # store_history=False: the per-bar tick feed (process_frame) pushes the
             # full tick stream through this tracker, so unbounded history would blow up.
             self._s2_tracker = HawkesIntensityTracker(params, store_history=False)
@@ -138,13 +152,22 @@ class PaperStrategyEngine:
             self._s2_enabled = False
             self._s2_filter = None
             self._s2_tracker = None
-            logger.warning("Strategy 2 disabled — H2 Hawkes params unavailable (%s). "
-                           "Run Wave 1 hawkes_calibration to enable S2; S1 continues.", exc)
+            logger.warning(
+                "Strategy 2 disabled — H2 Hawkes params unavailable (%s). "
+                "Run Wave 1 hawkes_calibration to enable S2; S1 continues.",
+                exc,
+            )
         self._s2_cusum = CUSUMShort()
         # Latest per-strategy entry decision (action/reason/step) — for the "why no entry"
         # UI panel. Captured on the final bar of each replay.
         self._last_s1 = None
         self._last_s2 = None
+        # Decision trails: (re)initialised per replay in process_frame; also set here so
+        # the open/exit helpers are callable directly (unit tests drive them without a
+        # frame — _maybe_open_s2 appended to a nonexistent attribute and crashed).
+        self._s1_trail = []
+        self._s2_trail = []
+        self._cusum_events = []  # (ts, cusum_type, direction, peak, threshold, z_window)
 
     # ── feature pipeline (mirrors replay.run_replay) ───────────────────────────
     def _precompute_price_features(self, closes):
@@ -155,9 +178,15 @@ class PaperStrategyEngine:
         and reuse when the price history is unchanged (the dominant case: ticks arrive far more
         often than a new 4H bar), so the heavy TDA/Hawkes only runs when a bar actually sealed."""
         import numpy as _np
+
         n = len(closes)
-        sig = (n, float(closes[0]) if n else 0.0, float(closes[-1]) if n else 0.0,
-               self.skip_hawkes, self.skip_tda)
+        sig = (
+            n,
+            float(closes[0]) if n else 0.0,
+            float(closes[-1]) if n else 0.0,
+            self.skip_hawkes,
+            self.skip_tda,
+        )
         cached = _PRECOMPUTE_CACHE.get("sig")
         if cached == sig:
             return _PRECOMPUTE_CACHE["data"]
@@ -167,11 +196,14 @@ class PaperStrategyEngine:
             hawkes_br = _np.full(n, _np.nan)
         else:
             from sel_v2.states.hawkes_critical import precompute_branching_ratios
+
             hawkes_br = precompute_branching_ratios(closes)
         if self.skip_tda:
-            tda_l1 = _np.full(n, _np.nan); tda_pctile = _np.full(n, _np.nan)
+            tda_l1 = _np.full(n, _np.nan)
+            tda_pctile = _np.full(n, _np.nan)
         else:
             from sel_v2.states.tda_critical import precompute_tda_l1
+
             tda_l1 = precompute_tda_l1(closes)
             tda_pctile = precompute_tda_pctile_series(tda_l1)
 
@@ -180,17 +212,34 @@ class PaperStrategyEngine:
         _PRECOMPUTE_CACHE["data"] = data
         return data
 
-    def _build_runner(self, df: pd.DataFrame, oi_series=None, funding_series=None,
-                      ofi_series=None, lob_depth_series=None, entropy_series=None) -> tuple[BarRunner, np.ndarray, np.ndarray]:
+    def _build_runner(
+        self,
+        df: pd.DataFrame,
+        oi_series=None,
+        funding_series=None,
+        ofi_series=None,
+        lob_depth_series=None,
+        entropy_series=None,
+    ) -> tuple[BarRunner, np.ndarray, np.ndarray]:
         closes = df["close"].values.astype(float)
-        sigma_series, sigma_pctile, hawkes_br, tda_l1, tda_pctile = self._precompute_price_features(closes)
+        sigma_series, sigma_pctile, hawkes_br, tda_l1, tda_pctile = (
+            self._precompute_price_features(closes)
+        )
 
         runner = BarRunner.from_precomputed(
-            df=df, sigma_series=sigma_series, sigma_pctile_series=sigma_pctile,
-            hawkes_br_series=hawkes_br, tda_l1_series=tda_l1, tda_l1_pctile_series=tda_pctile,
-            hawkes_br_threshold=self.hawkes_threshold, tda_l1_threshold=self.tda_threshold,
-            oi_series=oi_series, funding_series=funding_series, ofi_proxy_series=ofi_series,
-            lob_depth_series=lob_depth_series, entropy_series=entropy_series,
+            df=df,
+            sigma_series=sigma_series,
+            sigma_pctile_series=sigma_pctile,
+            hawkes_br_series=hawkes_br,
+            tda_l1_series=tda_l1,
+            tda_l1_pctile_series=tda_pctile,
+            hawkes_br_threshold=self.hawkes_threshold,
+            tda_l1_threshold=self.tda_threshold,
+            oi_series=oi_series,
+            funding_series=funding_series,
+            ofi_proxy_series=ofi_series,
+            lob_depth_series=lob_depth_series,
+            entropy_series=entropy_series,
         )
         log_returns = np.diff(np.log(closes), prepend=np.log(closes[0]))
         return runner, sigma_series, log_returns
@@ -215,10 +264,39 @@ class PaperStrategyEngine:
         triggered = dec.action in ("ENTER_LONG", "ENTER_SHORT")
         direction = dec.direction if triggered else None
         return CUSUMTrigger(
-            triggered=triggered, direction=direction,
-            cusum_positive=dec.cusum_positive, cusum_negative=dec.cusum_negative,
-            threshold=dec.cusum_threshold, intensity_coeff=0.0,
+            triggered=triggered,
+            direction=direction,
+            cusum_positive=dec.cusum_positive,
+            cusum_negative=dec.cusum_negative,
+            threshold=dec.cusum_threshold,
+            intensity_coeff=0.0,
         )
+
+    def _collect_cusum_cross(
+        self, ts, cusum_type: str, c_pos: float, c_neg: float, threshold: float
+    ) -> None:
+        """Record a CUSUM threshold-cross event into self._cusum_events, mirroring
+        CUSUMShort.update's trigger judgment (C+ > h → 'up', C- > h → 'down', dominant on
+        tie). Used for both accumulators: 'short' (S2, engine-owned) and 'mid' (S1, from the
+        entry filter's reported C±, so strategy1_entry stays untouched). Guards threshold>0
+        so the CUSUM-Mid cold-start default (0.0, set on bars that never reach S1 Step 3)
+        emits nothing. Idempotent-keyed by (ts, cusum_type) at persist time."""
+        if threshold is None or threshold <= 0:
+            return
+        up, down = c_pos > threshold, c_neg > threshold
+        if up and down:  # both crossed → dominant excursion (as in CUSUMShort.update)
+            if c_pos >= c_neg:
+                down = False
+            else:
+                up = False
+        if up:
+            self._cusum_events.append(
+                (_as_dt(ts), cusum_type, "up", float(c_pos), float(threshold), None)
+            )
+        elif down:
+            self._cusum_events.append(
+                (_as_dt(ts), cusum_type, "down", float(c_neg), float(threshold), None)
+            )
 
     def _micro_vocab_series(self, df: pd.DataFrame, micro: Optional[dict]):
         """Per-bar Strategy-2 inputs from real microstructure (item: S2 vocab wiring).
@@ -244,8 +322,15 @@ class PaperStrategyEngine:
 
         # Flow direction: taker net if present, else LOB imbalance.
         for i in range(n):
-            v = taker_net[i] if (taker_net is not None and np.isfinite(taker_net[i])) else (
-                lob_imb[i] if (lob_imb is not None and np.isfinite(lob_imb[i])) else np.nan)
+            v = (
+                taker_net[i]
+                if (taker_net is not None and np.isfinite(taker_net[i]))
+                else (
+                    lob_imb[i]
+                    if (lob_imb is not None and np.isfinite(lob_imb[i]))
+                    else np.nan
+                )
+            )
             flow_dir[i] = 0.0 if not np.isfinite(v) else float(np.sign(v))
 
         for i in range(n):
@@ -258,13 +343,20 @@ class PaperStrategyEngine:
                 continue
             vol_high = taker_vol[i] >= np.quantile(window, _VOCAB_VOL_Q)
             pm = (close[i] - open_[i]) / open_[i] if open_[i] else 0.0
-            if vol_high and abs(pm) >= _SWEEP_MOVE and np.sign(pm) == flow_dir[i] and flow_dir[i] != 0:
+            if (
+                vol_high
+                and abs(pm) >= _SWEEP_MOVE
+                and np.sign(pm) == flow_dir[i]
+                and flow_dir[i] != 0
+            ):
                 vocab[i].add("Sweep")
             if vol_high and abs(pm) <= _ABSORB_MOVE:
                 vocab[i].add("Absorption")
             # Crowding: persistent same-direction net flow.
             if flow_dir[i] != 0 and i >= _OFI_PERSIST_BARS - 1:
-                if all(flow_dir[i - k] == flow_dir[i] for k in range(_OFI_PERSIST_BARS)):
+                if all(
+                    flow_dir[i - k] == flow_dir[i] for k in range(_OFI_PERSIST_BARS)
+                ):
                     vocab[i].add("Crowding")
 
         # Type-A sequence: an Absorption (large limit orders soak up flow) followed
@@ -280,13 +372,39 @@ class PaperStrategyEngine:
         return vocab, flow_dir
 
     # ── per-bar processing ─────────────────────────────────────────────────────
-    def process_frame(self, df: pd.DataFrame, oi_series=None, funding_series=None,
-                      ofi_series=None, tick_times=None, micro=None) -> dict:
+    def process_frame(
+        self,
+        df: pd.DataFrame,
+        oi_series=None,
+        funding_series=None,
+        ofi_series=None,
+        tick_times=None,
+        micro=None,
+        staleness: Optional[dict] = None,
+    ) -> dict:
         """Run the full engine over a frame of 4H bars (ascending by time).
         Optional OI/funding/OFI series (helixa-derived) unlock the Coiling / Drifting-Charged
         entry states. ``tick_times`` (sorted Unix-second array of trade arrivals) drives the
         Strategy-2 H1 Hawkes intensity so it reflects real trade clustering instead of a flat
-        baseline. Returns a summary dict; positions/PnL live in `self.accounts`."""
+        baseline. ``staleness`` (GL1 T0.4) is a {source: StalenessEnforcement} dict for
+        currently-stale sources only (fresh sources simply absent); it gates new entries and
+        suppresses the CUSUM-reversal exit per the T0.4 matrix — this is a LIVE-cadence concept
+        (age vs wall-clock now), so callers doing historical replay just pass None (nothing
+        was ever "stale" relative to itself). Returns a summary dict; positions/PnL live in
+        `self.accounts`."""
+        staleness = staleness or {}
+        block_s1_entry = staleness.get(
+            "funding_oi", StalenessEnforcement("funding_oi", False)
+        ).block_s1_entry
+        block_s2_entry = staleness.get(
+            "ticks", StalenessEnforcement("ticks", False)
+        ).block_s2_entry
+        pause_cusum_reversal = staleness.get(
+            "ticks", StalenessEnforcement("ticks", False)
+        ).pause_cusum_reversal_exit
+        stale_reason_codes = sorted(
+            e.reason_code for e in staleness.values() if e.stale and e.reason_code
+        )
         df = df.sort_values("time").reset_index(drop=True)
         # Total top-of-book depth per bar (bid+ask) feeds the Cascade thin-book condition
         # (audit P1-3); LOB entropy per bar feeds Coiling's entropy_low condition (follow-up
@@ -294,13 +412,19 @@ class PaperStrategyEngine:
         lob_depth_series = micro.get("lob_depth") if micro else None
         entropy_series = micro.get("entropy") if micro else None
         runner, sigma_series, log_returns = self._build_runner(
-            df, oi_series, funding_series, ofi_series,
-            lob_depth_series=lob_depth_series, entropy_series=entropy_series)
+            df,
+            oi_series,
+            funding_series,
+            ofi_series,
+            lob_depth_series=lob_depth_series,
+            entropy_series=entropy_series,
+        )
         n = len(df)
         states: list[str] = []
-        self.records = []   # StateRecord per bar, for DB persistence (item #6)
-        self._s1_trail = []  # per-bar (ts, state, decision) — the full decision trail (#2)
+        self.records = []  # StateRecord per bar, for DB persistence (item #6)
+        self._s1_trail = []  # per-bar (ts, state, decision, snapshot) — the full decision trail (#2, GL1 T0.3)
         self._s2_trail = []
+        self._cusum_events = []  # CUSUM threshold-cross events this replay → v2_cusum_events
 
         # Tick stream for the H1 Hawkes feed (point-in-time: only ticks ≤ bar time).
         tick_times = None if tick_times is None else list(tick_times)
@@ -311,14 +435,34 @@ class PaperStrategyEngine:
         vocab_series, flow_dir = self._micro_vocab_series(df, micro)
 
         for i in range(n):
+            # Staleness (GL1 T0.4) is a live-cadence concept (data age vs wall-clock
+            # now) — it only means something for the bar being evaluated *right now*.
+            # process_frame() replays the *entire* history every cycle (idempotent
+            # engine rebuild), so applying "now"'s staleness to bars from days ago
+            # would incorrectly flag data that was perfectly fresh at the time.
+            is_current_bar = i == n - 1
             rec = runner.process_bar(i)
             self.records.append(rec)
             raw_state = rec.state.value
-            state = self._strategy_label(raw_state)   # strategy-convention label
+            state = self._strategy_label(raw_state)  # strategy-convention label
             ts = rec.timestamp
             mark = float(df["close"].iloc[i])
             z_t = self._zscore(float(log_returns[i]), float(sigma_series[i]))
             t_unix = ts.timestamp() if hasattr(ts, "timestamp") else float(i)
+
+            # Full numeric input snapshot for this bar (GL1 T0.3/D1): everything the
+            # state machine + strategies actually read this bar, audited alongside the
+            # decision it produced — not a separately-recomputed value (v2_ofi_features
+            # was a write-only duplicate of this same data; see D1, STATUS.md P2-1).
+            snapshot = self._bar_snapshot(
+                runner.build_features(i),
+                z_t,
+                self._series_val(funding_series, i),
+                micro,
+                i,
+            )
+            if is_current_bar and stale_reason_codes:
+                snapshot["stale_reason_codes"] = stale_reason_codes
 
             # Accrue one bar of funding on positions already open (entered in a
             # prior bar) before this bar's opens/exits, so funding cost is deducted
@@ -327,7 +471,11 @@ class PaperStrategyEngine:
 
             # Feed real trade arrivals up to this bar time into the S2 Hawkes tracker,
             # so λ*(t) captures recent trade clustering (item: tick→H1 wiring).
-            if self._s2_enabled and tick_times is not None and self._s2_tracker is not None:
+            if (
+                self._s2_enabled
+                and tick_times is not None
+                and self._s2_tracker is not None
+            ):
                 while tick_idx < n_ticks and tick_times[tick_idx] <= t_unix:
                     self._s2_tracker.add_event(float(tick_times[tick_idx]))
                     tick_idx += 1
@@ -335,21 +483,83 @@ class PaperStrategyEngine:
             # ── Strategy 1: entry filter updates CUSUM-Mid once, gives decision ──
             s1_dec = self._s1_filter.evaluate(
                 bar_timestamp=ts if hasattr(ts, "timestamp") else _as_dt(ts),
-                z_t=z_t, state_4h=state, current_duration_4h=rec.duration_4h,
+                z_t=z_t,
+                state_4h=state,
+                current_duration_4h=rec.duration_4h,
                 subaccount_nav_usdt=self.accounts.subaccount_1.nav,
             )
             s1_trig = self._s1_trigger_from_decision(s1_dec)
-            self._manage_s1_exits(state, mark, ts, s1_trig)
-            self._maybe_open_s1(s1_dec, state, mark, ts)
-            self._last_s1 = (ts, state, s1_dec)   # latest S1 decision (for the UI "why" panel)
-            self._s1_trail.append((ts, state, s1_dec))
+            self._manage_s1_exits(
+                state,
+                mark,
+                ts,
+                s1_trig,
+                pause_cusum_reversal=is_current_bar and pause_cusum_reversal,
+            )
+            self._maybe_open_s1(
+                s1_dec,
+                state,
+                mark,
+                ts,
+                blocked=is_current_bar and block_s1_entry,
+            )
+            self._last_s1 = (
+                ts,
+                state,
+                s1_dec,
+            )  # latest S1 decision (for the UI "why" panel)
+            self._s1_trail.append(
+                (
+                    ts,
+                    state,
+                    s1_dec,
+                    {
+                        **snapshot,
+                        "cusum_positive": s1_trig.cusum_positive,
+                        "cusum_negative": s1_trig.cusum_negative,
+                        "cusum_threshold": s1_trig.threshold,
+                    },
+                )
+            )
+            # CUSUM-Mid trigger event (raw threshold cross reported by the S1 filter this bar,
+            # independent of the downstream state/funding gates that decide entry).
+            self._collect_cusum_cross(
+                ts,
+                "mid",
+                s1_trig.cusum_positive,
+                s1_trig.cusum_negative,
+                s1_trig.threshold,
+            )
 
             # ── Strategy 2: engine-owned CUSUM-Short feeds the filter and exits ──
             if self._s2_enabled:
                 s2_trig = self._s2_cusum.update(z_t, t_unix)
-                self._manage_s2_exits(state, mark, ts, s2_trig)
-                self._maybe_open_s2(t_unix, s2_trig, state, mark, ts,
-                                    vocab=vocab_series[i], flow_dir=flow_dir[i])
+                # CUSUM-Short trigger event (the engine-owned accumulator's threshold cross).
+                self._collect_cusum_cross(
+                    ts,
+                    "short",
+                    s2_trig.cusum_positive,
+                    s2_trig.cusum_negative,
+                    s2_trig.threshold,
+                )
+                self._manage_s2_exits(
+                    state,
+                    mark,
+                    ts,
+                    s2_trig,
+                    pause_cusum_reversal=is_current_bar and pause_cusum_reversal,
+                )
+                self._maybe_open_s2(
+                    t_unix,
+                    s2_trig,
+                    state,
+                    mark,
+                    ts,
+                    vocab=vocab_series[i],
+                    flow_dir=flow_dir[i],
+                    snapshot=snapshot,
+                    blocked=is_current_bar and block_s2_entry,
+                )
 
             # ── portfolio-wide cascade red line ──
             if state == "Cascade":
@@ -361,14 +571,17 @@ class PaperStrategyEngine:
 
         return self._summary(df, states)
 
-    def bar_signal_series(self, df: pd.DataFrame, oi_series=None, funding_series=None,
-                          ofi_series=None) -> np.ndarray:
+    def bar_signal_series(
+        self, df: pd.DataFrame, oi_series=None, funding_series=None, ofi_series=None
+    ) -> np.ndarray:
         """Per-bar CUSUM-Short z-signal (standardised log return) — the momentum
         signal that feeds both strategies' triggers. Exposed so its predictive edge
         (IC / hit-rate vs forward returns) can be measured. Same feature pipeline as
         process_frame; no trades are taken."""
         df = df.sort_values("time").reset_index(drop=True)
-        _, sigma_series, log_returns = self._build_runner(df, oi_series, funding_series, ofi_series)
+        _, sigma_series, log_returns = self._build_runner(
+            df, oi_series, funding_series, ofi_series
+        )
         n = len(df)
         sig = np.full(n, np.nan)
         for i in range(n):
@@ -392,9 +605,64 @@ class PaperStrategyEngine:
             for pos in acct.open_positions:
                 pos.accrue_funding(fr)
 
+    # ── decision-trail snapshot (GL1 T0.3 / D1) ─────────────────────────────────
+    @staticmethod
+    def _series_val(series, i: int) -> Optional[float]:
+        if series is None:
+            return None
+        try:
+            v = float(series[i])
+        except (IndexError, TypeError, ValueError):
+            return None
+        return v if math.isfinite(v) else None
+
+    @classmethod
+    def _bar_snapshot(
+        cls,
+        feat,
+        z_t: float,
+        funding_val: Optional[float],
+        micro: Optional[dict],
+        i: int,
+    ) -> dict:
+        """Full numeric input snapshot for one bar: everything the state machine and
+        strategies actually read this bar (GL1 T0.3 / D1 — "决策用什么就审什么").
+        v2_ofi_features (ofi_persister) recomputed this same OFI/LOB data as a
+        write-only duplicate table; this captures it inline, alongside the decision
+        it fed, instead (STATUS.md P2-1)."""
+        return {
+            "z_t": z_t,
+            "sigma_4h": feat.sigma_4h,
+            "sigma_pctile": feat.sigma_pctile,
+            "entropy_4h": feat.entropy_4h,
+            "entropy_pctile": feat.entropy_pctile,
+            "entropy_variance": feat.entropy_variance,
+            "entropy_variance_rising": feat.entropy_variance_rising,
+            "oi_change_rate": feat.oi_change_rate,
+            "oi_change_rate_pctile": feat.oi_change_rate_pctile,
+            "oi_acceleration": feat.oi_acceleration,
+            "funding_rate": funding_val,
+            "funding_pctile": feat.funding_pctile,
+            "funding_persistent": feat.funding_persistent,
+            "hawkes_br": feat.hawkes_br,
+            "hawkes_br_threshold": feat.hawkes_br_threshold,
+            "tda_l1": feat.tda_l1,
+            "tda_l1_pctile": feat.tda_l1_pctile,
+            "lob_depth_pctile": feat.lob_depth_pctile,
+            "ofi_cumulative_pctile": feat.ofi_cumulative_pctile,
+            "taker_net": cls._series_val(micro.get("taker_net") if micro else None, i),
+            "taker_vol": cls._series_val(micro.get("taker_vol") if micro else None, i),
+            "lob_imb": cls._series_val(micro.get("lob_imb") if micro else None, i),
+        }
+
     # ── Strategy 1 helpers ─────────────────────────────────────────────────────
-    def _maybe_open_s1(self, dec, state, mark, ts) -> None:
+    def _maybe_open_s1(self, dec, state, mark, ts, blocked: bool = False) -> None:
         if dec.action not in ("ENTER_LONG", "ENTER_SHORT"):
+            return
+        if (
+            blocked
+        ):  # GL1 T0.4: funding/OI stale -> S1 risk check unavailable, no new entry
+            logger.info("S1 new entry blocked (STALE_FUNDING_OI)")
             return
         acct = self.accounts.subaccount_1
         if not acct.can_open():
@@ -403,30 +671,60 @@ class PaperStrategyEngine:
         if size_pct <= 0:
             return
         pos = acct.open_position(
-            direction=dec.direction, entry_price=mark, size_pct=size_pct,
-            leverage=dec.suggested_leverage, instrument=self.instrument,
-            entry_time=ts, entry_state=state,
+            direction=dec.direction,
+            entry_price=mark,
+            size_pct=size_pct,
+            leverage=dec.suggested_leverage,
+            instrument=self.instrument,
+            entry_time=ts,
+            entry_state=state,
         )
         if pos:
             self._s1_meta[pos.id] = _S1Meta(dec.direction, mark, ts)
-            logger.info("S1 OPEN %s %s size%%=%.3f lev=%.1f @ %.2f",
-                        dec.direction, state, size_pct, dec.suggested_leverage, mark)
+            logger.info(
+                "S1 OPEN %s %s size%%=%.3f lev=%.1f @ %.2f",
+                dec.direction,
+                state,
+                size_pct,
+                dec.suggested_leverage,
+                mark,
+            )
 
-    def _manage_s1_exits(self, state, mark, ts, trig) -> None:
+    def _manage_s1_exits(
+        self, state, mark, ts, trig, pause_cusum_reversal: bool = False
+    ) -> None:
         acct = self.accounts.subaccount_1
         for pos in list(acct.open_positions):
             meta = self._s1_meta.get(pos.id)
             if meta is None:
                 continue
             dec = check_strategy1_exit(
-                direction=meta.direction, entry_price=meta.entry_price, entry_time=meta.entry_time,
-                mark_price=mark, current_time=ts, state_4h=state, cusum_trigger=trig,
-                prev_state_4h=self._prev_state, critical_already_reduced=meta.critical_reduced,
+                direction=meta.direction,
+                entry_price=meta.entry_price,
+                entry_time=meta.entry_time,
+                mark_price=mark,
+                current_time=ts,
+                state_4h=state,
+                cusum_trigger=trig,
+                prev_state_4h=self._prev_state,
+                critical_already_reduced=meta.critical_reduced,
             )
+            dec = self._suppress_cusum_reversal(dec, pause_cusum_reversal)
             self._apply_exit(acct, pos.id, dec, mark, ts, is_s1=True)
 
     # ── Strategy 2 helpers ─────────────────────────────────────────────────────
-    def _maybe_open_s2(self, t_unix, trig, state, mark, ts, vocab=None, flow_dir=0.0) -> None:
+    def _maybe_open_s2(
+        self,
+        t_unix,
+        trig,
+        state,
+        mark,
+        ts,
+        vocab=None,
+        flow_dir=0.0,
+        snapshot=None,
+        blocked: bool = False,
+    ) -> None:
         # OFI persistently same direction as the CUSUM signal: real taker-flow sign
         # (flow_dir, already persistence-gated via the Crowding tag) agrees with the
         # CUSUM direction. None when there's no flow data → Type B stays conservative.
@@ -435,14 +733,34 @@ class PaperStrategyEngine:
             cusum_sign = 1.0 if trig.direction == "LONG" else -1.0
             ofi_persist = ("Crowding" in (vocab or set())) and (flow_dir == cusum_sign)
         dec = self._s2_filter.evaluate(
-            t=t_unix, cusum_trigger=trig, state_4h=state,
+            t=t_unix,
+            cusum_trigger=trig,
+            state_4h=state,
             inverse_vocab=list(vocab) if vocab else None,
             ofi_persistent_same_direction=ofi_persist,
             subaccount_nav_usdt=self.accounts.subaccount_2.nav,
         )
-        self._last_s2 = (ts, state, dec)   # latest S2 decision (for the UI "why" panel)
-        self._s2_trail.append((ts, state, dec))
+        self._last_s2 = (ts, state, dec)  # latest S2 decision (for the UI "why" panel)
+        self._s2_trail.append(
+            (
+                ts,
+                state,
+                dec,
+                {
+                    **(snapshot or {}),
+                    "cusum_positive": trig.cusum_positive,
+                    "cusum_negative": trig.cusum_negative,
+                    "cusum_threshold": trig.threshold,
+                    "ofi_persistent_same_direction": ofi_persist,
+                    "flow_dir": float(flow_dir) if flow_dir is not None else None,
+                    "inverse_vocab": sorted(vocab) if vocab else [],
+                },
+            )
+        )
         if dec.action not in ("ENTER_LONG", "ENTER_SHORT"):
+            return
+        if blocked:  # GL1 T0.4: ticks stale -> S2 (tick-flow-driven) new entry blocked
+            logger.info("S2 new entry blocked (STALE_TICKS)")
             return
         acct = self.accounts.subaccount_2
         if not acct.can_open():
@@ -454,37 +772,80 @@ class PaperStrategyEngine:
         if size_pct <= 0:
             size_pct = 0.10  # §14.4 base = 10% of sub-account-2
         pos = acct.open_position(
-            direction=direction, entry_price=mark, size_pct=size_pct,
-            leverage=dec.suggested_leverage, instrument=self.instrument,
-            entry_time=ts, entry_state=state,
+            direction=direction,
+            entry_price=mark,
+            size_pct=size_pct,
+            leverage=dec.suggested_leverage,
+            instrument=self.instrument,
+            entry_time=ts,
+            entry_state=state,
         )
         if pos:
-            self._s2_meta[pos.id] = _S2Meta(direction, mark, ts,
-                                            cusum_peak=abs(trig.cusum_positive if direction == "LONG"
-                                                           else trig.cusum_negative))
-            logger.info("S2 OPEN %s %s lev=%.1f @ %.2f", direction, state, dec.suggested_leverage, mark)
+            self._s2_meta[pos.id] = _S2Meta(
+                direction,
+                mark,
+                ts,
+                cusum_peak=abs(
+                    trig.cusum_positive if direction == "LONG" else trig.cusum_negative
+                ),
+            )
+            logger.info(
+                "S2 OPEN %s %s lev=%.1f @ %.2f",
+                direction,
+                state,
+                dec.suggested_leverage,
+                mark,
+            )
 
-    def _manage_s2_exits(self, state, mark, ts, trig) -> None:
+    def _manage_s2_exits(
+        self, state, mark, ts, trig, pause_cusum_reversal: bool = False
+    ) -> None:
         acct = self.accounts.subaccount_2
         for pos in list(acct.open_positions):
             meta = self._s2_meta.get(pos.id)
             if meta is None:
                 continue
-            cval = trig.cusum_positive if meta.direction == "LONG" else trig.cusum_negative
+            cval = (
+                trig.cusum_positive if meta.direction == "LONG" else trig.cusum_negative
+            )
             meta.cusum_peak = max(meta.cusum_peak, abs(cval))
             dec = check_strategy2_exit(
-                direction=meta.direction, entry_price=meta.entry_price, entry_time=meta.entry_time,
-                mark_price=mark, current_time=ts, state_4h=state, cusum_trigger=trig,
-                cusum_peak_since_entry=meta.cusum_peak, batches_triggered=meta.batches,
+                direction=meta.direction,
+                entry_price=meta.entry_price,
+                entry_time=meta.entry_time,
+                mark_price=mark,
+                current_time=ts,
+                state_4h=state,
+                cusum_trigger=trig,
+                cusum_peak_since_entry=meta.cusum_peak,
+                batches_triggered=meta.batches,
             )
+            dec = self._suppress_cusum_reversal(dec, pause_cusum_reversal)
             applied = self._apply_exit(acct, pos.id, dec, mark, ts, is_s1=False)
             if applied == "batch":
                 meta.batches += 1
-                if meta.batches >= 3 and acct.close_position(pos.id, mark, ts, "batch_exit_final"):
+                if meta.batches >= 3 and acct.close_position(
+                    pos.id, mark, ts, "batch_exit_final"
+                ):
                     # third 1/3 batch — close the residual so the position terminates cleanly
                     self._forget(pos.id)
 
     # ── shared exit application ────────────────────────────────────────────────
+    @staticmethod
+    def _suppress_cusum_reversal(dec: ExitDecision, pause: bool) -> ExitDecision:
+        """GL1 T0.4: when ticks are stale, the CUSUM-reversal exit specifically is
+        paused (the underlying CUSUM signal is computed from tick flow no longer
+        arriving) — drawdown / time / Cascade / state-exit stops are untouched, since
+        they don't depend on the stale feed. Filters by priority, not by touching
+        strategies/strategy_exit.py (the judgment-logic layer stays frozen/R1)."""
+        if pause and dec.priority == _P_CUSUM_REVERSE:
+            return ExitDecision(
+                action="HOLD",
+                reason=f"{dec.reason} (suppressed: STALE_TICKS)",
+                priority=_P_HOLD,
+            )
+        return dec
+
     def _apply_exit(self, acct, pos_id, dec, mark, ts, *, is_s1: bool) -> Optional[str]:
         action = dec.action
         if action in ("HOLD", "OBSERVE"):
@@ -495,12 +856,16 @@ class PaperStrategyEngine:
                 self._forget(pos_id)
             return "full"
         if action in ("REDUCE_50",):
-            acct.reduce_position(pos_id, dec.partial_fraction or 0.5, mark, ts, dec.reason)
+            acct.reduce_position(
+                pos_id, dec.partial_fraction or 0.5, mark, ts, dec.reason
+            )
             if is_s1 and pos_id in self._s1_meta:
                 self._s1_meta[pos_id].critical_reduced = True
             return "reduce"
         if action in ("EXIT_BATCH_33",):
-            acct.reduce_position(pos_id, dec.partial_fraction or (1 / 3), mark, ts, dec.reason)
+            acct.reduce_position(
+                pos_id, dec.partial_fraction or (1 / 3), mark, ts, dec.reason
+            )
             # caller (_manage_s2_exits) closes the residual after the third batch
             return "batch"
         # unknown action -> safest is full exit
@@ -525,42 +890,75 @@ class PaperStrategyEngine:
             "reason": getattr(d, "reason", ""),
             "step_reached": getattr(d, "step_reached", 0),
             "state_4h": state,
-            "direction": getattr(d, "direction", None) or getattr(d, "cusum_direction", None),
+            "direction": getattr(d, "direction", None)
+            or getattr(d, "cusum_direction", None),
             "timestamp": _as_dt(ts).isoformat(),
         }
 
     def latest_decisions(self) -> dict:
         """Latest per-strategy decision dicts (None when a strategy didn't evaluate)."""
-        return {"strategy_1": self._decision_view(self._last_s1),
-                "strategy_2": self._decision_view(self._last_s2)}
+        return {
+            "strategy_1": self._decision_view(self._last_s1),
+            "strategy_2": self._decision_view(self._last_s2),
+        }
 
     def decision_trail(self, last_n: int = 300) -> list:
         """Per-bar decision rows (the audit trail, #2) for the most recent `last_n` bars of
         each strategy, as (timestamp, strategy, action, reason, step_reached, state_4h,
-        direction) tuples for v2_strategy_decision. Bounded so the per-tick persist stays cheap
-        — sealed bars don't change, so the recent window plus the new bar is enough."""
+        direction, decision_trail) tuples for v2_strategy_decision. decision_trail (GL1
+        T0.3/D1) is the full numeric input snapshot the decision consumed. Bounded so the
+        per-tick persist stays cheap — sealed bars don't change, so the recent window plus
+        the new bar is enough."""
         rows = []
-        for strat, trail in (("strategy_1", self._s1_trail), ("strategy_2", self._s2_trail)):
-            for ts, state, d in trail[-last_n:]:
-                rows.append((
-                    _as_dt(ts), strat, getattr(d, "action", None) or "OBSERVE",
-                    getattr(d, "reason", ""), getattr(d, "step_reached", 0), state,
-                    getattr(d, "direction", None) or getattr(d, "cusum_direction", None),
-                ))
+        for strat, trail in (
+            ("strategy_1", self._s1_trail),
+            ("strategy_2", self._s2_trail),
+        ):
+            for ts, state, d, snapshot in trail[-last_n:]:
+                rows.append(
+                    (
+                        _as_dt(ts),
+                        strat,
+                        getattr(d, "action", None) or "OBSERVE",
+                        getattr(d, "reason", ""),
+                        getattr(d, "step_reached", 0),
+                        state,
+                        getattr(d, "direction", None)
+                        or getattr(d, "cusum_direction", None),
+                        snapshot,
+                    )
+                )
         return rows
+
+    def cusum_events(self) -> list:
+        """CUSUM threshold-cross events collected this replay, as
+        (timestamp, cusum_type, direction, peak_value, threshold_h, z_returns_window) tuples
+        for v2_cusum_events. Both accumulators: 'short' (S2, engine-owned) and 'mid' (S1,
+        from the entry filter's reported C±). Unbounded — triggers are sparse (~9% of bars)
+        and the persist upserts on (timestamp, cusum_type), so the full-history replay
+        backfills once and no-ops thereafter (fixes the orphan-table diagnosis: the events
+        fired all along but were never persisted)."""
+        return self._cusum_events
 
     def _summary(self, df, states) -> dict:
         from collections import Counter
+
         mark = float(df["close"].iloc[-1])
         a1, a2 = self.accounts.subaccount_1, self.accounts.subaccount_2
         dec = self.latest_decisions()
         return {
             "bars": len(df),
             "state_counts": dict(Counter(states)),
-            "s1": {"nav": round(a1.nav, 2), "open": len(a1.open_positions),
-                   "closed": len(a1.closed_positions)},
-            "s2": {"nav": round(a2.nav, 2), "open": len(a2.open_positions),
-                   "closed": len(a2.closed_positions)},
+            "s1": {
+                "nav": round(a1.nav, 2),
+                "open": len(a1.open_positions),
+                "closed": len(a1.closed_positions),
+            },
+            "s2": {
+                "nav": round(a2.nav, 2),
+                "open": len(a2.open_positions),
+                "closed": len(a2.closed_positions),
+            },
             "s1_decision": dec["strategy_1"],
             "s2_decision": dec["strategy_2"],
             "total_equity": round(self.accounts.total_equity(mark), 2),

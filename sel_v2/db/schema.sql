@@ -123,10 +123,12 @@ SELECT create_hypertable('v2_bars_4h', 'time',
     if_not_exists => TRUE);
 CREATE UNIQUE INDEX IF NOT EXISTS uix_v2_bars_4h ON v2_bars_4h (time, symbol);
 
--- Point-in-time microstructure / OFI feature store. Previously the OFI proxy was
--- recomputed in-memory from v2_ticks on every engine run (no stored, reproducible
--- feature). This table persists the per-4H-bar features so they are point-in-time
--- correct and re-derivable. Written by sel_v2/data/ofi_persister.py.
+-- DEPRECATED (GL1 T0.3/D1, 2026-07-08): was a write-only duplicate of the same
+-- OFI/LOB values the paper engine already recomputes inline per bar
+-- (_load_microstructure_series) — nothing read this table (STATUS.md P2-1).
+-- D1 kept the inline compute and instead audits what the engine actually used
+-- into v2_strategy_decision.decision_trail. ofi_persister.py + this table are
+-- kept (not dropped) for rollback; the compose service was removed.
 CREATE TABLE IF NOT EXISTS v2_ofi_features (
     time        TIMESTAMPTZ NOT NULL,   -- bar open time (4H grid)
     symbol      TEXT        NOT NULL DEFAULT 'BTC-USDT',
@@ -168,6 +170,11 @@ CREATE TABLE IF NOT EXISTS v2_cusum_events (
 );
 SELECT create_hypertable('v2_cusum_events', 'timestamp',
     if_not_exists => TRUE);
+-- Natural key: one row per (bar, accumulator). The paper engine replays the full
+-- history every tick, so this lets write_cusum_events_bulk upsert (ON CONFLICT) instead
+-- of re-inserting the same trigger each cycle (the PK is a random UUID, useless for dedup).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_v2_cusum_events_ts_type
+    ON v2_cusum_events (timestamp, cusum_type);
 
 -- Inverse-vocab (reverse-inference) events
 -- Includes v2.1 tool observation columns
@@ -275,8 +282,43 @@ CREATE TABLE IF NOT EXISTS v2_strategy_decision (
     step_reached  INTEGER,
     state_4h      TEXT,
     direction     TEXT,
+    decision_trail JSONB,   -- full numeric input snapshot the decision consumed (GL1 T0.3/D1)
     PRIMARY KEY (timestamp, strategy)
 );
+-- GL1 T0.3/D1: audit what the decision actually used, not a separately-recomputed value.
+-- ADD COLUMN IF NOT EXISTS so already-deployed tables pick it up on next apply_schema() run
+-- (CREATE TABLE IF NOT EXISTS above is a no-op against an existing table).
+ALTER TABLE v2_strategy_decision ADD COLUMN IF NOT EXISTS decision_trail JSONB;
+
+-- Staleness state transitions (GL1 T0.4): one row per fresh<->stale flip per source,
+-- not a per-cycle snapshot (avoids spam; "staleness 事件显式落库"). Sources: ticks /
+-- funding_oi / bar_4h / lob. Judgment logic lives in sel_v2/runtime/staleness.py.
+CREATE TABLE IF NOT EXISTS v2_staleness_events (
+    id          BIGSERIAL   PRIMARY KEY,
+    detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    source      TEXT        NOT NULL,
+    stale       BOOLEAN     NOT NULL,   -- true = became stale, false = recovered
+    reason_code TEXT,
+    last_update TIMESTAMPTZ,            -- source's last known-good timestamp (NULL = never seen)
+    age_seconds NUMERIC
+);
+CREATE INDEX IF NOT EXISTS idx_v2_staleness_events_source_ts
+    ON v2_staleness_events (source, detected_at DESC);
+
+-- Validation-clock epochs (GL1 T0.5, R1 code-freeze fingerprint). Append-only — the
+-- current epoch is the row with the latest started_at. All verification/statistics
+-- tooling (T0.6 golive_report, T1.7 DSR, T2.2 shadow reconciliation) reads only rows
+-- timestamped at/after the current epoch's started_at. A code_fingerprint mismatch
+-- against sel_v2/tools/epoch.py::compute_fingerprint() at read time means
+-- states/**/strategies/** changed since the epoch started -> DIRTY (see epoch.py).
+CREATE TABLE IF NOT EXISTS v2_paper_epochs (
+    epoch_id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    started_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    code_fingerprint TEXT        NOT NULL,
+    git_hash         TEXT,       -- 'unknown' when .git isn't present (containers exclude it)
+    reason           TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_v2_paper_epochs_started_at ON v2_paper_epochs (started_at DESC);
 
 -- Latest per-strategy entry decision (runtime status for the UI "why no entry" panel).
 -- One row PER STRATEGY, upserted each replay — NOT an append log, so it never grows.
