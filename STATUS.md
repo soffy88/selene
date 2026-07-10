@@ -43,6 +43,29 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+### Full-health audit + fixes (2026-07-03) — see `audit/2026-07-03_full_health_audit.md`
+
+Live-stack体检发现 docker `healthy` 是假象：**23 张表全空**（OKX 在本环境被全局封锁，
+采集器 13h 断供）、v4 `signal.scored`=0、healthcheck 对空表隐形。已修 + 实证：
+- **P0-a** OKX 全局不可达 / Binance 经 `helios-proxy:2080` 可达；compose proxy 默认值改为可用代理。
+- **P0-c** 新增 `sel_v2/data/binance_backfill.py`，`v2_bars_4h` 从 Binance 回填 **4380 bars（2yr，已落库）**。
+- **P0-d** healthcheck 新增空表检测（STALE 或 EMPTY 都告警）——补上让 13h 全断供隐形的盲区。
+- **P1-a** onchain→signal 桥修 2 个 import bug 并接线；`signal.raw` 不再是孤儿流（已实证消费）。
+- **P1-b** `/metrics` 误用未初始化的 `redis_client.health_check` → 改 `connections.redis_health`（6 服务）。
+- **P1-d** composite `EFFECTIVE_WEIGHTS`：social/orderbook 死权重置零 + 重归一化，score 不再被稀释。
+- **P1-e** `shared/db/connections.py` 加 asyncpg/redis 超时（治 EC-13 静默挂起 + DNS 抖动）。
+- **P2-c** `backtest/costs.py` 增 per-symbol 成本档 + `cost_params_for()`，engine 按 symbol 取值。
+
+**OKX→Binance 采集器迁移(2026-07-03,已实证)**:实证 OKX 与 Binance WS 均不可达,Binance REST 可达
+(代理抖动),故迁为 REST 轮询。新增 `sel_v2/data/binance_rest.py`;`v2_derivatives_snapshots`
+(premiumIndex+openInterest,30s)、`v2_lob_snapshots`(depth,60s)、`v2_bars_4h`(--loop 前向轮询)
+**均已实测写入** → 解锁 Coiling/Drifting-Charged(OI/funding)+ Cascade/Critical(LOB)。
+`v2_ticks`(REST 有损)未迁、`v2_liquidations`(仅 WS)不可迁 → 见 Needs-Human。
+
+⚠️ **P1-6 已回退**：`e0e1cbc` 删了自带 prometheus/grafana，改由平台中央 `prometheus-agent` 采集
+（本审计的 `/metrics` item #12 即为此适配）。STATUS 早前「P1-6 done」记录作废。
+⚠️ **部署持久性**：v4 服务源码打进镜像，本次热补丁经 `docker cp`+restart，**需 `compose build` 才持久**。
+
 ### SEL live-ops rounds (2026-06-30 → 07-01) — commits `d9297ec`…`ebb636b`
 
 Live-deployment debugging + optimization of the sel_v2 (SEL) subsystem, driven against the
@@ -201,6 +224,16 @@ Surging Up/Down direction (sub_state unused); S2 counterfactual (needs tick-driv
 
 ## 🚨 Needs Human
 
+- **数据源迁移 OKX→Binance (2026-07-03)**: OKX 在本部署环境永久不可达（每代理 403/SSL-EOF，
+  平台 `*_OKX_FLAG=0`）；Binance 仅经 `helios-proxy:2080` 可达。live WS 采集器（tick/lob/deriv/liq）
+  是 OKX-WS 专用，恢复实时微结构数据需将其移植到 Binance WS——核心大改且本地无法跑测试
+  （无 pytest/oprim/oskill wheel），不宜盲改。已用 Binance REST 救活 `v2_bars_4h` 作过渡。
+  同时决定 v4 signal 链存废：接 `v2_bars_4h`→`market.candles`（无生产者），或全押 sel_v2+LiveBridge。
+  `.env:30-31` 的 proxy（受保护文件）仍指向失效 IP，需人工改为 `helios-proxy:2080`。
+- **回测严谨性（须先于任何 live 野心，需 CI 私有 wheel 验证）**: (a) PBO 现为 Sharpe 符号代理而非
+  真 CSCV（vendored `oskill` 已有实现未用）；(b) 真 CPCV 路径 `test_cpcv_wiring.py:147` 硬 skip、
+  生产调未导出的 `oskill.cpcv_pipeline` → 静默 `cpcv=None`；(c) `I_HAVE_OOS_EVIDENCE` 仅 env 荣誉检查，
+  应绑定 committed OOS artifact。本地无 oskill/pytest，改后无法自证 → 留 CI。
 - **SEL historical OOS is blocked by data, not code** (2026-07-01): S1/S2 entry states need OI,
   and OKX only serves ~16 days of OI history (LOB/entropy: no history at all). So a faithful
   "where would S1/S2 have traded" backtest is impossible from OKX — decision needed on a

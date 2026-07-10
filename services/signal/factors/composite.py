@@ -12,6 +12,7 @@ Factor weights (must sum to 1.0):
   social           10%
   orderbook        5%
 """
+
 import json
 import math
 import logging
@@ -24,55 +25,71 @@ REDIS_CALIBRATION_KEY = "cw4:signal:calibration"
 logger = logging.getLogger(__name__)
 
 WEIGHTS = {
-    "technical_rsi":   0.15,
-    "technical_ema":   0.15,
-    "funding_zscore":  0.20,
-    "oi_momentum":     0.15,
-    "lsr_divergence":  0.10,
-    "onchain":         0.10,
-    "social":          0.10,
-    "orderbook":       0.05,
+    "technical_rsi": 0.15,
+    "technical_ema": 0.15,
+    "funding_zscore": 0.20,
+    "oi_momentum": 0.15,
+    "lsr_divergence": 0.10,
+    "onchain": 0.10,
+    "social": 0.10,
+    "orderbook": 0.05,
 }
 assert abs(sum(WEIGHTS.values()) - 1.0) < 1e-9, "Weights must sum to 1.0"
+
+# Factors with no data source in the current v4 deployment (no social feed, no live
+# L2 book) — they are hardcoded 0.0 at every scoring call. Leaving their weight in the
+# composite silently caps |raw| at 0.85 and drags every score toward neutral, making the
+# per-regime min-win-prob gate systematically harder to clear. We keep WEIGHTS as the
+# declared intent but SCORE with EFFECTIVE_WEIGHTS: unimplemented factors zeroed and the
+# rest renormalized to sum to 1.0, so raw spans the full [-1, +1]. Move a factor out of
+# _UNIMPLEMENTED the moment it has a real source. (2026-07-03 audit, item P1-d)
+_UNIMPLEMENTED = {"social", "orderbook"}
+_eff = {k: (0.0 if k in _UNIMPLEMENTED else w) for k, w in WEIGHTS.items()}
+_eff_sum = sum(_eff.values())
+EFFECTIVE_WEIGHTS = {k: (w / _eff_sum if _eff_sum else 0.0) for k, w in _eff.items()}
 
 
 @dataclass
 class FactorScores:
     """Raw factor scores (-1 to +1 each). Positive = bullish signal."""
-    technical_rsi:  float = 0.0   # RSI normalized: oversold → +1, overbought → -1
-    technical_ema:  float = 0.0   # EMA alignment: full bull → +1, full bear → -1
-    funding_zscore: float = 0.0   # funding Z-score: very negative → +1 (long), very positive → -1
-    oi_momentum:    float = 0.0   # OI change: rising OI in uptrend → +1
-    lsr_divergence: float = 0.0   # crowd vs smart money divergence
-    onchain:        float = 0.0   # net exchange inflow/outflow
-    social:         float = 0.0   # social acceleration (not absolute)
-    orderbook:      float = 0.0   # bid/ask imbalance
+
+    technical_rsi: float = 0.0  # RSI normalized: oversold → +1, overbought → -1
+    technical_ema: float = 0.0  # EMA alignment: full bull → +1, full bear → -1
+    funding_zscore: float = (
+        0.0  # funding Z-score: very negative → +1 (long), very positive → -1
+    )
+    oi_momentum: float = 0.0  # OI change: rising OI in uptrend → +1
+    lsr_divergence: float = 0.0  # crowd vs smart money divergence
+    onchain: float = 0.0  # net exchange inflow/outflow
+    social: float = 0.0  # social acceleration (not absolute)
+    orderbook: float = 0.0  # bid/ask imbalance
 
     def to_dict(self) -> dict:
         return {
-            "technical_rsi":  round(self.technical_rsi, 4),
-            "technical_ema":  round(self.technical_ema, 4),
+            "technical_rsi": round(self.technical_rsi, 4),
+            "technical_ema": round(self.technical_ema, 4),
             "funding_zscore": round(self.funding_zscore, 4),
-            "oi_momentum":    round(self.oi_momentum, 4),
+            "oi_momentum": round(self.oi_momentum, 4),
             "lsr_divergence": round(self.lsr_divergence, 4),
-            "onchain":        round(self.onchain, 4),
-            "social":         round(self.social, 4),
-            "orderbook":      round(self.orderbook, 4),
+            "onchain": round(self.onchain, 4),
+            "social": round(self.social, 4),
+            "orderbook": round(self.orderbook, 4),
         }
 
 
 @dataclass
 class CompositeScore:
-    raw:             float              # -1 to +1
-    direction_score: float              # 0 to +1 (magnitude in signal direction)
-    win_probability: float              # calibrated 0-1 probability
-    confidence_lo:   float              # 95% CI lower bound
-    confidence_hi:   float              # 95% CI upper bound
-    factor_scores:   dict = field(default_factory=dict)
-    dominant_factor: str  = ""          # which factor contributed most
+    raw: float  # -1 to +1
+    direction_score: float  # 0 to +1 (magnitude in signal direction)
+    win_probability: float  # calibrated 0-1 probability
+    confidence_lo: float  # 95% CI lower bound
+    confidence_hi: float  # 95% CI upper bound
+    factor_scores: dict = field(default_factory=dict)
+    dominant_factor: str = ""  # which factor contributed most
 
 
 # ── Individual factor calculators ────────────────────────────────────────────
+
 
 def score_rsi(rsi: Optional[float]) -> float:
     """RSI → [-1, +1]. Oversold = bullish (+1), Overbought = bearish (-1)."""
@@ -82,8 +99,12 @@ def score_rsi(rsi: Optional[float]) -> float:
     return round(-(rsi - 50) / 30, 4)
 
 
-def score_ema_alignment(ema20: Optional[float], ema50: Optional[float],
-                         ema200: Optional[float], price: float) -> float:
+def score_ema_alignment(
+    ema20: Optional[float],
+    ema50: Optional[float],
+    ema200: Optional[float],
+    price: float,
+) -> float:
     """EMA alignment score: full bull stack → +1, full bear → -1."""
     if not ema20 or not ema50:
         return 0.0
@@ -107,6 +128,7 @@ def score_funding_zscore(current_rate: float, rate_history: list[float]) -> floa
     if not rate_history or len(rate_history) < 5:
         return 0.0
     import numpy as np
+
     arr = np.array(rate_history, dtype=float)
     mean = float(arr.mean())
     std = float(arr.std(ddof=0))
@@ -116,7 +138,9 @@ def score_funding_zscore(current_rate: float, rate_history: list[float]) -> floa
     return round(-max(-1.0, min(1.0, z / 3.0)), 4)
 
 
-def score_oi_momentum(oi_change_pct: Optional[float], price_change_pct: Optional[float]) -> float:
+def score_oi_momentum(
+    oi_change_pct: Optional[float], price_change_pct: Optional[float]
+) -> float:
     """
     OI momentum: rising OI with rising price = confirmed uptrend = bullish.
     Rising OI with falling price = confirmed downtrend = bearish.
@@ -125,7 +149,7 @@ def score_oi_momentum(oi_change_pct: Optional[float], price_change_pct: Optional
         return 0.0
     # If OI and price move together → strong signal in that direction
     # Normalize: 10% OI change = 0.5 score unit
-    oi_norm    = max(-1.0, min(1.0, oi_change_pct / 10.0))
+    oi_norm = max(-1.0, min(1.0, oi_change_pct / 10.0))
     price_norm = max(-1.0, min(1.0, price_change_pct / 5.0))
     return round(oi_norm * abs(price_norm) * (1 if price_norm >= 0 else -1), 4)
 
@@ -143,6 +167,7 @@ def score_lsr_divergence(long_ratio: Optional[float]) -> float:
 
 # ── Composite scorer ──────────────────────────────────────────────────────────
 
+
 class MultiFactorScorer:
     """
     Combines 8 factors into a composite direction score,
@@ -156,7 +181,7 @@ class MultiFactorScorer:
     def __init__(self, calibration_center: float = 0.0, calibration_scale: float = 2.5):
         # Platt calibration parameters (fit these on historical data)
         self._cal_center = calibration_center
-        self._cal_scale  = calibration_scale
+        self._cal_scale = calibration_scale
         # 真实样本数（由 SignalService 通过 set_sample_size 注入，初值 = 冷启动 CI）
         self._n_samples: int = 10
 
@@ -166,9 +191,11 @@ class MultiFactorScorer:
 
     def score(
         self,
-        direction: str,             # "LONG" or "SHORT"
-        factors:   FactorScores,
-        n_samples: Optional[int] = None,  # override sample count; default uses _n_samples
+        direction: str,  # "LONG" or "SHORT"
+        factors: FactorScores,
+        n_samples: Optional[
+            int
+        ] = None,  # override sample count; default uses _n_samples
     ) -> CompositeScore:
         """
         Compute composite score for a given direction.
@@ -179,14 +206,14 @@ class MultiFactorScorer:
 
         # Weighted sum
         raw = (
-            WEIGHTS["technical_rsi"]   * factors.technical_rsi  +
-            WEIGHTS["technical_ema"]   * factors.technical_ema  +
-            WEIGHTS["funding_zscore"]  * factors.funding_zscore +
-            WEIGHTS["oi_momentum"]     * factors.oi_momentum    +
-            WEIGHTS["lsr_divergence"]  * factors.lsr_divergence +
-            WEIGHTS["onchain"]         * factors.onchain         +
-            WEIGHTS["social"]          * factors.social          +
-            WEIGHTS["orderbook"]       * factors.orderbook
+            EFFECTIVE_WEIGHTS["technical_rsi"] * factors.technical_rsi
+            + EFFECTIVE_WEIGHTS["technical_ema"] * factors.technical_ema
+            + EFFECTIVE_WEIGHTS["funding_zscore"] * factors.funding_zscore
+            + EFFECTIVE_WEIGHTS["oi_momentum"] * factors.oi_momentum
+            + EFFECTIVE_WEIGHTS["lsr_divergence"] * factors.lsr_divergence
+            + EFFECTIVE_WEIGHTS["onchain"] * factors.onchain
+            + EFFECTIVE_WEIGHTS["social"] * factors.social
+            + EFFECTIVE_WEIGHTS["orderbook"] * factors.orderbook
         )
 
         # For SHORT signals, invert the score
@@ -201,7 +228,7 @@ class MultiFactorScorer:
 
         # Dominant factor
         contributions = {
-            k: abs(WEIGHTS.get(k, 0) * getattr(factors, k, 0))
+            k: abs(EFFECTIVE_WEIGHTS.get(k, 0) * getattr(factors, k, 0))
             for k in scores_dict
         }
         dominant = max(contributions, key=contributions.get)
@@ -225,16 +252,17 @@ class MultiFactorScorer:
         if n < 10:
             return 0.15
         import numpy as np
+
         z = 1.96
         denominator = 1 + z**2 / n
-        center = (p + z**2 / (2*n)) / denominator
-        half = z * np.sqrt(p*(1-p)/n + z**2/(4*n**2)) / denominator
+        center = (p + z**2 / (2 * n)) / denominator
+        half = z * np.sqrt(p * (1 - p) / n + z**2 / (4 * n**2)) / denominator
         return round(float(half), 4)
 
     def update_calibration(self, center: float, scale: float) -> None:
         """Update Platt calibration parameters after fitting on historical data."""
         self._cal_center = center
-        self._cal_scale  = scale
+        self._cal_scale = scale
         logger.info(f"Calibration updated: center={center}, scale={scale}")
 
 
@@ -256,8 +284,8 @@ async def save_calibration(
 ) -> None:
     """由 backtest 或 WFO 模块写入学习后的 calibration。"""
     payload = {
-        "center":    float(center),
-        "scale":     float(scale),
+        "center": float(center),
+        "scale": float(scale),
         "n_samples": int(n_samples),
     }
     await redis_client.set(REDIS_CALIBRATION_KEY, json.dumps(payload))
@@ -279,9 +307,9 @@ def _platt_nll(scores: list[float], outcomes: list[int], c: float, s: float) -> 
 def _platt_grid_fit(scores: list[float], outcomes: list[int]) -> tuple[float, float]:
     """Coarse grid search (center∈[-0.5,0.5], scale∈[0.5,6.0]) minimising NLL."""
     best = (*DEFAULT_CALIBRATION, 1e18)
-    for c_int in range(-20, 21):                      # -0.5 ~ 0.5 step 0.025
+    for c_int in range(-20, 21):  # -0.5 ~ 0.5 step 0.025
         c = c_int * 0.025
-        for s_int in range(2, 25):                    # 0.5 ~ 6.0 step 0.25
+        for s_int in range(2, 25):  # 0.5 ~ 6.0 step 0.25
             s = s_int * 0.25
             nll = _platt_nll(scores, outcomes, c, s)
             if nll < best[2]:
@@ -316,8 +344,11 @@ def platt_fit(scores: list[float], outcomes: list[int]) -> tuple[float, float]:
     default_test_nll = _platt_nll(te_s, te_o, *DEFAULT_CALIBRATION) / len(te_s)
     if fitted_test_nll <= default_test_nll:
         return c, s
-    logger.info("platt_fit: fitted calibration failed holdout (%.4f > %.4f); keeping default",
-                fitted_test_nll, default_test_nll)
+    logger.info(
+        "platt_fit: fitted calibration failed holdout (%.4f > %.4f); keeping default",
+        fitted_test_nll,
+        default_test_nll,
+    )
     return DEFAULT_CALIBRATION
 
 
@@ -336,6 +367,7 @@ async def get_onchain_factor(symbol: str) -> float:
     """
     try:
         from shared.db.connections import get_redis
+
         r = await get_redis()
         raw = await r.get(f"onchain:state:{symbol}")
         if not raw:
@@ -354,6 +386,7 @@ async def get_onchain_composite(symbol: str) -> dict:
     """
     try:
         from shared.db.connections import get_redis
+
         r = await get_redis()
         raw = await r.get(f"onchain:state:{symbol}")
         return _json.loads(raw) if raw else {}

@@ -24,26 +24,45 @@ from fastapi import FastAPI
 
 from shared.db.connections import get_redis, redis_health
 from shared.events.streams import (
-    STREAM_MARKET_CANDLES, STREAM_MARKET_RAW, STREAM_SIGNAL_SCORED,
-    STREAM_ORDER_LIFECYCLE, CG_SIGNAL, encode, decode,
+    STREAM_MARKET_CANDLES,
+    STREAM_MARKET_RAW,
+    STREAM_SIGNAL_SCORED,
+    STREAM_ORDER_LIFECYCLE,
+    CG_SIGNAL,
+    encode,
+    decode,
 )
 from shared.models.signal import (
-    ScoredSignal, SignalType, Direction, Regime,
+    ScoredSignal,
+    SignalType,
+    Direction,
+    Regime,
 )
 from services.signal.regime.detector import RegimeDetector, REGIME_PARAMS
 from services.signal.factors.composite import (
-    MultiFactorScorer, FactorScores,
-    score_rsi, score_ema_alignment, score_funding_zscore,
-    score_oi_momentum, score_lsr_divergence,
+    MultiFactorScorer,
+    FactorScores,
+    score_rsi,
+    score_ema_alignment,
+    score_funding_zscore,
+    score_oi_momentum,
+    score_lsr_divergence,
     get_onchain_factor,
-    load_calibration, save_calibration, platt_fit,
+    load_calibration,
+    save_calibration,
+    platt_fit,
 )
+
 # ── 新增：HMM Regime + EWMA权重学习 ──────────────────────
 from services.signal.regime.hmm_detector import (
-    HMMRegimeDetector, get_hmm_regime, fuse_regimes,
+    HMMRegimeDetector,
+    get_hmm_regime,
+    fuse_regimes,
 )
 from services.signal.weight_learner import (
-    WeightLearner, read_dynamic_weights, get_learner_status,
+    WeightLearner,
+    read_dynamic_weights,
+    get_learner_status,
 )
 from services.signal.ic_health import ic_health_scalar
 
@@ -54,9 +73,9 @@ logging.basicConfig(
 )
 
 CG = CG_SIGNAL
-MIN_WIN_PROB    = float(os.getenv("MIN_WIN_PROBABILITY", "0.55"))
-MIN_DATA_QUAL   = float(os.getenv("MIN_DATA_QUALITY",    "0.75"))
-COOLDOWN_SECS   = int(os.getenv("SIGNAL_COOLDOWN_SECS",  "3600"))
+MIN_WIN_PROB = float(os.getenv("MIN_WIN_PROBABILITY", "0.55"))
+MIN_DATA_QUAL = float(os.getenv("MIN_DATA_QUALITY", "0.75"))
+COOLDOWN_SECS = int(os.getenv("SIGNAL_COOLDOWN_SECS", "3600"))
 
 # ── Regime → 策略开关（核心修复：Regime 驱动策略切换）──────────────────────────
 #
@@ -68,61 +87,81 @@ COOLDOWN_SECS   = int(os.getenv("SIGNAL_COOLDOWN_SECS",  "3600"))
 #
 REGIME_STRATEGY = {
     Regime.TRENDING_UP: {
-        "allowed":        {SignalType.TREND_CONFIRM, SignalType.LONG_SETUP},
-        "blocked":        {SignalType.SHORT_SETUP, SignalType.BEAR_SQUEEZE},
-        "weight_adj":     {"technical_ema": 1.5, "oi_momentum": 1.3},   # 趋势因子加权
-        "min_win_prob":   0.54,
+        "allowed": {SignalType.TREND_CONFIRM, SignalType.LONG_SETUP},
+        "blocked": {SignalType.SHORT_SETUP, SignalType.BEAR_SQUEEZE},
+        "weight_adj": {"technical_ema": 1.5, "oi_momentum": 1.3},  # 趋势因子加权
+        "min_win_prob": 0.54,
         "kelly_fraction": 0.6,
-        "max_hold_h":     48,
+        "max_hold_h": 48,
     },
     Regime.TRENDING_DOWN: {
-        "allowed":        {SignalType.SHORT_SETUP, SignalType.BEAR_SQUEEZE},
-        "blocked":        {SignalType.LONG_SETUP, SignalType.TREND_CONFIRM},
-        "weight_adj":     {"technical_ema": 1.5, "funding_zscore": 1.2},
-        "min_win_prob":   0.54,
+        "allowed": {SignalType.SHORT_SETUP, SignalType.BEAR_SQUEEZE},
+        "blocked": {SignalType.LONG_SETUP, SignalType.TREND_CONFIRM},
+        "weight_adj": {"technical_ema": 1.5, "funding_zscore": 1.2},
+        "min_win_prob": 0.54,
         "kelly_fraction": 0.6,
-        "max_hold_h":     48,
+        "max_hold_h": 48,
     },
     Regime.RANGING: {
-        "allowed":        {SignalType.LONG_SETUP, SignalType.SHORT_SETUP,
-                          SignalType.FR_ARB, SignalType.CROWD_LONG, SignalType.CROWD_SHORT},
-        "blocked":        {SignalType.TREND_CONFIRM},
-        "weight_adj":     {"funding_zscore": 1.4, "lsr_divergence": 1.3},   # 均值回归因子加权
-        "min_win_prob":   0.55,
+        "allowed": {
+            SignalType.LONG_SETUP,
+            SignalType.SHORT_SETUP,
+            SignalType.FR_ARB,
+            SignalType.CROWD_LONG,
+            SignalType.CROWD_SHORT,
+        },
+        "blocked": {SignalType.TREND_CONFIRM},
+        "weight_adj": {
+            "funding_zscore": 1.4,
+            "lsr_divergence": 1.3,
+        },  # 均值回归因子加权
+        "min_win_prob": 0.55,
         "kelly_fraction": 0.4,
-        "max_hold_h":     24,
+        "max_hold_h": 24,
     },
     Regime.HIGH_VOLATILITY: {
-        "allowed":        {SignalType.FR_ARB},   # 高波动只做资金费套利
-        "blocked":        {SignalType.LONG_SETUP, SignalType.SHORT_SETUP,
-                          SignalType.TREND_CONFIRM, SignalType.BEAR_SQUEEZE},
-        "weight_adj":     {},
-        "min_win_prob":   0.55,
+        "allowed": {SignalType.FR_ARB},  # 高波动只做资金费套利
+        "blocked": {
+            SignalType.LONG_SETUP,
+            SignalType.SHORT_SETUP,
+            SignalType.TREND_CONFIRM,
+            SignalType.BEAR_SQUEEZE,
+        },
+        "weight_adj": {},
+        "min_win_prob": 0.55,
         "kelly_fraction": 0.3,
-        "max_hold_h":     8,
+        "max_hold_h": 8,
     },
     Regime.ACCUMULATION: {
-        "allowed":        {SignalType.LONG_SETUP, SignalType.TREND_CONFIRM,
-                          SignalType.CROWD_SHORT},   # 逆势看多
-        "blocked":        {SignalType.SHORT_SETUP},
-        "weight_adj":     {"onchain": 1.6, "oi_momentum": 1.2},   # 链上数据更重要
-        "min_win_prob":   0.55,
+        "allowed": {
+            SignalType.LONG_SETUP,
+            SignalType.TREND_CONFIRM,
+            SignalType.CROWD_SHORT,
+        },  # 逆势看多
+        "blocked": {SignalType.SHORT_SETUP},
+        "weight_adj": {"onchain": 1.6, "oi_momentum": 1.2},  # 链上数据更重要
+        "min_win_prob": 0.55,
         "kelly_fraction": 0.5,
-        "max_hold_h":     72,
+        "max_hold_h": 72,
     },
     Regime.UNKNOWN: {
-        "allowed":        {SignalType.LONG_SETUP, SignalType.SHORT_SETUP, SignalType.FR_ARB},
-        "blocked":        {SignalType.TREND_CONFIRM, SignalType.BEAR_SQUEEZE,
-                          SignalType.CROWD_LONG, SignalType.CROWD_SHORT},
-        "weight_adj":     {},
-        "min_win_prob":   0.55,
+        "allowed": {SignalType.LONG_SETUP, SignalType.SHORT_SETUP, SignalType.FR_ARB},
+        "blocked": {
+            SignalType.TREND_CONFIRM,
+            SignalType.BEAR_SQUEEZE,
+            SignalType.CROWD_LONG,
+            SignalType.CROWD_SHORT,
+        },
+        "weight_adj": {},
+        "min_win_prob": 0.55,
         "kelly_fraction": 0.3,
-        "max_hold_h":     12,
+        "max_hold_h": 12,
     },
 }
 
 
 # ── 在线 IC/IR 计算（alpha 验证）──────────────────────────────────────────────
+
 
 class ICTracker:
     """
@@ -134,15 +173,13 @@ class ICTracker:
     """
 
     def __init__(self, symbol: str, window: int = 100):
-        self.symbol  = symbol
+        self.symbol = symbol
         self._window = window
         self._records: deque = deque(maxlen=window)  # (score, actual_ret, ts)
-        self._pending: dict  = {}   # signal_id → (score, price_at_signal, ts)
+        self._pending: dict = {}  # signal_id → (score, price_at_signal, ts)
 
     def record_signal(self, signal_id: str, score: float, price: float):
-        self._pending[signal_id] = {
-            "score": score, "price": price, "ts": time.time()
-        }
+        self._pending[signal_id] = {"score": score, "price": price, "ts": time.time()}
 
     def record_outcome(self, signal_id: str, exit_price: float):
         pending = self._pending.pop(signal_id, None)
@@ -155,42 +192,44 @@ class ICTracker:
         if len(self._records) < 10:
             return {"ic": None, "ir": None, "n": len(self._records)}
 
-        scores  = [r[0] for r in self._records]
+        scores = [r[0] for r in self._records]
         returns = [r[1] for r in self._records]
 
         # Spearman rank correlation (tie-correct — see _spearman)
-        n   = len(scores)
-        ic  = _spearman(scores, returns)
+        n = len(scores)
+        ic = _spearman(scores, returns)
 
         # IR = IC / IC_std (rolling)
         recent = [self._calc_single_ic(i) for i in range(min(20, n))]
         ir = None
         if len(recent) >= 5:
             mean_ic = sum(recent) / len(recent)
-            std_ic  = math.sqrt(sum((x-mean_ic)**2 for x in recent) / len(recent))
-            ir      = mean_ic / std_ic if std_ic > 0 else 0.0
+            std_ic = math.sqrt(sum((x - mean_ic) ** 2 for x in recent) / len(recent))
+            ir = mean_ic / std_ic if std_ic > 0 else 0.0
 
         return {
             "symbol": self.symbol,
-            "ic":     round(ic, 4),
-            "ir":     round(ir, 4) if ir is not None else None,
-            "n":      n,
-            "mean_return": round(sum(returns)/n, 6),
+            "ic": round(ic, 4),
+            "ir": round(ir, 4) if ir is not None else None,
+            "n": n,
+            "mean_return": round(sum(returns) / n, 6),
         }
 
     def _calc_single_ic(self, idx: int) -> float:
         """计算最近 idx 条记录的 IC"""
-        sample = list(self._records)[max(0, -10-idx):-idx if idx else None]
+        sample = list(self._records)[max(0, -10 - idx) : -idx if idx else None]
         if len(sample) < 5:
             return 0.0
-        sc = [r[0] for r in sample]; re = [r[1] for r in sample]
+        sc = [r[0] for r in sample]
+        re = [r[1] for r in sample]
         return _spearman(sc, re)
 
 
 def _rank(values: list) -> list:
     # Average ranks (ties share the mean rank) — required for a correct Spearman under ties.
     from scipy.stats import rankdata
-    return rankdata(values, method='average').tolist()
+
+    return rankdata(values, method="average").tolist()
 
 
 def _spearman(a: list, b: list) -> float:
@@ -220,8 +259,8 @@ def _to_float(v):
 
 # ── Signal Service 核心 ────────────────────────────────────────────────────────
 
-class SignalService:
 
+class SignalService:
     def __init__(self):
         # 每个 symbol 一个 RegimeDetector（ADX+ATR 快信号）
         self._detectors: dict[str, RegimeDetector] = {}
@@ -273,40 +312,40 @@ class SignalService:
         if not symbol:
             return
 
-        high  = float(data.get("high",  0))
-        low   = float(data.get("low",   0))
+        high = float(data.get("high", 0))
+        low = float(data.get("low", 0))
         close = float(data.get("close", 0))
 
         if not (high and low and close):
             return
 
         # ADX+ATR 快信号 Regime
-        detector      = self._get_detector(symbol)
+        detector = self._get_detector(symbol)
         adxatr_regime = detector.update(high, low, close)
 
         # HMM 慢信号 Regime（从缓存读，异步刷新）
-        hmm_data  = self._hmm_cache.get(symbol, {"state": "range", "confidence": 0.0})
+        hmm_data = self._hmm_cache.get(symbol, {"state": "range", "confidence": 0.0})
         hmm_state = hmm_data.get("state", "range")
-        hmm_conf  = float(hmm_data.get("confidence", 0.0))
+        hmm_conf = float(hmm_data.get("confidence", 0.0))
 
         # 融合两个 Regime → 最终 Regime + Kelly 系数
         fused_regime, kelly_scalar = fuse_regimes(
-            hmm_state    = hmm_state,
-            hmm_conf     = hmm_conf,
-            adxatr_regime = adxatr_regime,
-            adxatr_bars  = detector._regime_bars,
+            hmm_state=hmm_state,
+            hmm_conf=hmm_conf,
+            adxatr_regime=adxatr_regime,
+            adxatr_bars=detector._regime_bars,
         )
 
         # 更新市场数据缓存
         mkt = self._market.setdefault(symbol, {})
-        mkt["price"]        = close
-        mkt["high"]         = high
-        mkt["low"]          = low
-        mkt["regime"]       = adxatr_regime   # 原始 Regime 保留
+        mkt["price"] = close
+        mkt["high"] = high
+        mkt["low"] = low
+        mkt["regime"] = adxatr_regime  # 原始 Regime 保留
         mkt["fused_regime"] = fused_regime
         mkt["kelly_scalar"] = kelly_scalar
-        mkt["hmm_state"]    = hmm_state
-        mkt["indicators"]   = data.get("indicators", {})
+        mkt["hmm_state"] = hmm_state
+        mkt["indicators"] = data.get("indicators", {})
 
         # 异步刷新 HMM 缓存
         asyncio.create_task(self._refresh_hmm(symbol))
@@ -320,13 +359,15 @@ class SignalService:
         if not symbol:
             return
         mkt = self._market.setdefault(symbol, {})
-        mkt.update({
-            "funding_rate":     float(data.get("funding_rate",   0)),
-            "oi_change_pct":    float(data.get("oi_change_pct",  0)),
-            "price_change_pct": float(data.get("price_change_pct", 0)),
-            "long_ratio":       float(data.get("long_ratio",     50)),
-            "funding_history":  data.get("funding_history", []) or [],
-        })
+        mkt.update(
+            {
+                "funding_rate": float(data.get("funding_rate", 0)),
+                "oi_change_pct": float(data.get("oi_change_pct", 0)),
+                "price_change_pct": float(data.get("price_change_pct", 0)),
+                "long_ratio": float(data.get("long_ratio", 50)),
+                "funding_history": data.get("funding_history", []) or [],
+            }
+        )
         # Raw snapshot often arrives after seeded candles on startup.
         # Re-score once real-time funding/OI/LSR data is available so we
         # don't wait until the next hourly candle to produce actionable signals.
@@ -340,7 +381,13 @@ class SignalService:
             )
 
     # ── 核心评分 ──────────────────────────────────────
-    async def _score_and_emit(self, symbol: str, regime: Regime, fused_regime: str = "", kelly_scalar: float = 1.0):
+    async def _score_and_emit(
+        self,
+        symbol: str,
+        regime: Regime,
+        fused_regime: str = "",
+        kelly_scalar: float = 1.0,
+    ):
         mkt = self._market.get(symbol, {})
         price = mkt.get("price", 0)
         if not price:
@@ -352,14 +399,14 @@ class SignalService:
 
         # 策略开关：根据 ADX+ATR regime 确定可用信号类型
         strategy = REGIME_STRATEGY.get(regime, REGIME_STRATEGY[Regime.UNKNOWN])
-        allowed  = strategy["allowed"]
+        allowed = strategy["allowed"]
         min_prob = strategy["min_win_prob"]
         max_hold = strategy["max_hold_h"]
 
         # Kelly 系数 = 策略基础值 × HMM融合系数
         # crisis → kelly_scalar=0.1，trend_confirmed → kelly_scalar=1.3
         base_kelly = strategy["kelly_fraction"]
-        kelly_f    = round(base_kelly * kelly_scalar, 4)
+        kelly_f = round(base_kelly * kelly_scalar, 4)
 
         # HMM crisis 状态：缩减 kelly，但仍允许方向性交易
         if fused_regime == "crisis":
@@ -376,22 +423,25 @@ class SignalService:
         # 组装 FactorScores
         indicators = mkt.get("indicators", {})
         factors = FactorScores(
-            technical_rsi  = score_rsi(indicators.get("rsi")),
-            technical_ema  = score_ema_alignment(
-                indicators.get("ema20"), indicators.get("ema50"),
-                indicators.get("ema200"), price,
+            technical_rsi=score_rsi(indicators.get("rsi")),
+            technical_ema=score_ema_alignment(
+                indicators.get("ema20"),
+                indicators.get("ema50"),
+                indicators.get("ema200"),
+                price,
             ),
-            funding_zscore = score_funding_zscore(
+            funding_zscore=score_funding_zscore(
                 mkt.get("funding_rate", 0),
                 indicators.get("funding_history") or mkt.get("funding_history", []),
             ),
-            oi_momentum    = score_oi_momentum(
-                mkt.get("oi_change_pct"), mkt.get("price_change_pct"),
+            oi_momentum=score_oi_momentum(
+                mkt.get("oi_change_pct"),
+                mkt.get("price_change_pct"),
             ),
-            lsr_divergence = score_lsr_divergence(mkt.get("long_ratio", 50)),
-            onchain        = onchain,
-            social         = 0.0,
-            orderbook      = 0.0,
+            lsr_divergence=score_lsr_divergence(mkt.get("long_ratio", 50)),
+            onchain=onchain,
+            social=0.0,
+            orderbook=0.0,
         )
 
         # 应用 regime 权重调整（ADX+ATR 层）
@@ -414,22 +464,24 @@ class SignalService:
         ic_scalar = ic_health_scalar(_ic_stats.get("ic"), _ic_stats.get("n", 0))
         if ic_scalar < 1.0:
             kelly_f = round(kelly_f * ic_scalar, 4)
-            logger.info(f"IC-decay throttle {symbol}: ic={_ic_stats.get('ic')} "
-                        f"n={_ic_stats.get('n')} kelly×{ic_scalar}")
+            logger.info(
+                f"IC-decay throttle {symbol}: ic={_ic_stats.get('ic')} "
+                f"n={_ic_stats.get('n')} kelly×{ic_scalar}"
+            )
 
         # 判断方向（基于综合得分）
-        long_score  = self._scorer.score("LONG",  factors)
+        long_score = self._scorer.score("LONG", factors)
         short_score = self._scorer.score("SHORT", factors)
 
         # 选最优方向
         if long_score.win_probability >= short_score.win_probability:
             best_score = long_score
-            direction  = Direction.LONG
-            sig_type   = SignalType.LONG_SETUP
+            direction = Direction.LONG
+            sig_type = SignalType.LONG_SETUP
         else:
             best_score = short_score
-            direction  = Direction.SHORT
-            sig_type   = SignalType.SHORT_SETUP
+            direction = Direction.SHORT
+            sig_type = SignalType.SHORT_SETUP
 
         # 策略过滤（regime 不允许该信号类型，直接跳过）
         if sig_type in strategy.get("blocked", set()):
@@ -447,28 +499,32 @@ class SignalService:
             return
 
         # 构建 ScoredSignal
-        detector  = self._get_detector(symbol)
-        atr       = detector.params.get("atr_mult", 2.0) * (mkt.get("high", price) - mkt.get("low", price))
+        detector = self._get_detector(symbol)
+        atr = detector.params.get("atr_mult", 2.0) * (
+            mkt.get("high", price) - mkt.get("low", price)
+        )
         stop_loss = price - atr if direction == Direction.LONG else price + atr
-        take_profit = price + atr * 1.5 if direction == Direction.LONG else price - atr * 1.5
+        take_profit = (
+            price + atr * 1.5 if direction == Direction.LONG else price - atr * 1.5
+        )
 
         signal = ScoredSignal(
-            symbol         = symbol,
-            signal_type    = sig_type,
-            direction      = direction,
-            regime         = regime,
-            win_probability  = best_score.win_probability,
-            confidence_lo  = best_score.confidence_lo,
-            confidence_hi  = best_score.confidence_hi,
-            expected_return = best_score.direction_score * 0.05,
-            factor_scores  = best_score.factor_scores,
-            regime_adjusted = bool(weight_adj),
-            entry_price    = price,
-            stop_loss      = stop_loss,
-            take_profit    = take_profit,
-            max_hold_hours = max_hold,
-            data_quality   = data_quality,
-            indicators     = indicators,
+            symbol=symbol,
+            signal_type=sig_type,
+            direction=direction,
+            regime=regime,
+            win_probability=best_score.win_probability,
+            confidence_lo=best_score.confidence_lo,
+            confidence_hi=best_score.confidence_hi,
+            expected_return=best_score.direction_score * 0.05,
+            factor_scores=best_score.factor_scores,
+            regime_adjusted=bool(weight_adj),
+            entry_price=price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            max_hold_hours=max_hold,
+            data_quality=data_quality,
+            indicators=indicators,
         )
 
         # IC 记录（复用前面取过的 tracker）
@@ -479,11 +535,12 @@ class SignalService:
         r = await get_redis()
         signal_dict = signal.to_dict()
         signal_dict["kelly_fraction"] = kelly_f
-        signal_dict["ic_scalar"] = ic_scalar   # IC-decay throttle applied to sizing
+        signal_dict["ic_scalar"] = ic_scalar  # IC-decay throttle applied to sizing
         # 保留 raw 评分用于后续 calibration refit
         signal_dict["raw"] = best_score.raw
-        await r.xadd(STREAM_SIGNAL_SCORED, encode(signal_dict),
-                     maxlen=10000, approximate=True)
+        await r.xadd(
+            STREAM_SIGNAL_SCORED, encode(signal_dict), maxlen=10000, approximate=True
+        )
 
         # 缓存到 Redis（供 gateway 展示）
         await r.hset("cw4:signals:recent", signal.id, json.dumps(signal_dict))
@@ -494,9 +551,11 @@ class SignalService:
         try:
             from shared.db.connections import get_pg
             import uuid as _uuid
+
             pg = await get_pg()
             async with pg.acquire() as conn:
-                await conn.execute("""
+                await conn.execute(
+                    """
                     INSERT INTO signals
                         (id, symbol, regime, signal_type, direction,
                          win_probability, confidence_lo, confidence_hi,
@@ -506,23 +565,23 @@ class SignalService:
                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'pending')
                     ON CONFLICT (id) DO NOTHING
                 """,
-                _uuid.UUID(signal.id),
-                signal.symbol,
-                signal.regime.value,
-                signal.signal_type.value,
-                signal.direction.value,
-                signal.win_probability,
-                signal.confidence_lo,
-                signal.confidence_hi,
-                signal.expected_return,
-                json.dumps(signal.factor_scores) if signal.factor_scores else None,
-                signal.regime_adjusted,
-                signal.entry_price,
-                signal.stop_loss,
-                signal.take_profit,
-                signal.max_hold_hours,
-                signal.data_quality,
-            )
+                    _uuid.UUID(signal.id),
+                    signal.symbol,
+                    signal.regime.value,
+                    signal.signal_type.value,
+                    signal.direction.value,
+                    signal.win_probability,
+                    signal.confidence_lo,
+                    signal.confidence_hi,
+                    signal.expected_return,
+                    json.dumps(signal.factor_scores) if signal.factor_scores else None,
+                    signal.regime_adjusted,
+                    signal.entry_price,
+                    signal.stop_loss,
+                    signal.take_profit,
+                    signal.max_hold_hours,
+                    signal.data_quality,
+                )
         except Exception as _e:
             logger.warning(f"signal DB persist failed: {_e}")
 
@@ -559,8 +618,13 @@ class SignalService:
 
         # 2) 因子非零比例（排除未实现的因子）
         import dataclasses
+
         _UNIMPLEMENTED = {"social", "orderbook"}
-        d = {k: v for k, v in dataclasses.asdict(factors).items() if k not in _UNIMPLEMENTED}
+        d = {
+            k: v
+            for k, v in dataclasses.asdict(factors).items()
+            if k not in _UNIMPLEMENTED
+        }
         nonzero = sum(1 for v in d.values() if abs(float(v)) > 1e-6)
         factor_score = nonzero / len(d) if d else 0.0
 
@@ -576,6 +640,7 @@ class SignalService:
     def _apply_weight_adj(self, factors: FactorScores, adj: dict) -> FactorScores:
         """按 regime 调整因子权重（通过缩放对应因子值实现）"""
         import dataclasses
+
         d = dataclasses.asdict(factors)
         for factor, multiplier in adj.items():
             if factor in d:
@@ -618,6 +683,7 @@ class SignalService:
         """
         import dataclasses
         from services.signal.weight_learner import BASE_WEIGHTS
+
         d = dataclasses.asdict(factors)
         for factor, dyn_w in weights.items():
             if factor not in d:
@@ -625,7 +691,7 @@ class SignalService:
             base_w = BASE_WEIGHTS.get(factor, 0.1)
             if base_w <= 0:
                 continue
-            ratio = dyn_w / base_w   # 0.5~1.5 之间
+            ratio = dyn_w / base_w  # 0.5~1.5 之间
             d[factor] = max(-1.0, min(1.0, d[factor] * ratio))
         return FactorScores(**d)
 
@@ -643,14 +709,15 @@ async def calibration_refit_loop():
     from shared.db.connections import get_pg
     from datetime import datetime, timezone, timedelta
 
-    r  = await get_redis()
+    r = await get_redis()
     pg = await get_pg()
 
     while True:
         try:
             since = datetime.now(timezone.utc) - timedelta(days=30)
             async with pg.acquire() as conn:
-                rows = await conn.fetch("""
+                rows = await conn.fetch(
+                    """
                     SELECT
                         (a.payload->>'raw')::float     AS raw,
                         o.realized_pnl
@@ -660,9 +727,15 @@ async def calibration_refit_loop():
                       AND a.time >= $1
                       AND o.realized_pnl IS NOT NULL
                       AND a.payload ? 'raw'
-                """, since)
-            scores  = [float(row["raw"]) for row in rows if row["raw"] is not None]
-            outcomes = [1 if float(row["realized_pnl"] or 0) > 0 else 0 for row in rows if row["raw"] is not None]
+                """,
+                    since,
+                )
+            scores = [float(row["raw"]) for row in rows if row["raw"] is not None]
+            outcomes = [
+                1 if float(row["realized_pnl"] or 0) > 0 else 0
+                for row in rows
+                if row["raw"] is not None
+            ]
             if len(scores) >= 30:
                 c, s = platt_fit(scores, outcomes)
                 _svc._scorer.update_calibration(c, s)
@@ -690,10 +763,13 @@ async def consume_loop():
 
     while True:
         candle_results = await r.xreadgroup(
-            CG, "signal-candles", {STREAM_MARKET_CANDLES: ">"},
-            count=20, block=500,
+            CG,
+            "signal-candles",
+            {STREAM_MARKET_CANDLES: ">"},
+            count=20,
+            block=500,
         )
-        for _, messages in (candle_results or []):
+        for _, messages in candle_results or []:
             for msg_id, fields in messages:
                 try:
                     await _svc.handle_candle(decode(fields))
@@ -702,10 +778,13 @@ async def consume_loop():
                     logger.error(f"candle: {e}", exc_info=True)
 
         raw_results = await r.xreadgroup(
-            CG, "signal-raw", {STREAM_MARKET_RAW: ">"},
-            count=20, block=500,
+            CG,
+            "signal-raw",
+            {STREAM_MARKET_RAW: ">"},
+            count=20,
+            block=500,
         )
-        for _, messages in (raw_results or []):
+        for _, messages in raw_results or []:
             for msg_id, fields in messages:
                 try:
                     await _svc.handle_market_raw(decode(fields))
@@ -716,16 +795,20 @@ async def consume_loop():
         # Order lifecycle → close the IC loop (item #4): on a CLOSED position,
         # backfill the realized exit price into the originating signal's IC tracker.
         lifecycle_results = await r.xreadgroup(
-            CG, "signal-lifecycle", {STREAM_ORDER_LIFECYCLE: ">"},
-            count=50, block=500,
+            CG,
+            "signal-lifecycle",
+            {STREAM_ORDER_LIFECYCLE: ">"},
+            count=50,
+            block=500,
         )
-        for _, messages in (lifecycle_results or []):
+        for _, messages in lifecycle_results or []:
             for msg_id, fields in messages:
                 try:
                     ev = decode(fields)
                     if ev.get("event") == "closed" or ev.get("state") == "CLOSED":
                         _svc.record_signal_outcome(
-                            ev.get("signal_id", ""), _to_float(ev.get("exit_price")))
+                            ev.get("signal_id", ""), _to_float(ev.get("exit_price"))
+                        )
                     await r.xack(STREAM_ORDER_LIFECYCLE, CG, msg_id)
                 except Exception as e:
                     logger.error(f"lifecycle: {e}", exc_info=True)
@@ -735,7 +818,7 @@ async def consume_loop():
 async def lifespan(app: FastAPI):
     from shared.db.connections import get_pg
 
-    r  = await get_redis()
+    r = await get_redis()
     pg = await get_pg()
 
     # 把 redis 注入到 SignalService 实例
@@ -757,6 +840,18 @@ async def lifespan(app: FastAPI):
     weight_learner = WeightLearner(r, pg)
     wl_task = asyncio.create_task(weight_learner.run())
 
+    # onchain→signal 桥：消费 signal.raw 里 onchain-sentinel 的鲸鱼流更新，收到即刷新
+    # 该 symbol 的链上因子缓存。否则 signal.raw 是只产不消的孤儿流。(audit P1-a)
+    from services.signal.onchain.bridge import consume_onchain_factor_updates
+    from services.signal.factors.composite import get_onchain_factor
+
+    async def _onchain_rescore(symbol: str):
+        _svc._onchain_cache[symbol] = await get_onchain_factor(symbol)
+
+    onchain_bridge_task = asyncio.create_task(
+        consume_onchain_factor_updates(_onchain_rescore)
+    )
+
     # 主消费循环
     consume_task = asyncio.create_task(consume_loop())
 
@@ -764,11 +859,11 @@ async def lifespan(app: FastAPI):
     cal_task = asyncio.create_task(calibration_refit_loop())
 
     logger.info(
-        f"Signal service ready | HMM symbols={symbols} | WeightLearner ON | CalibrationRefit ON"
+        f"Signal service ready | HMM symbols={symbols} | WeightLearner ON | CalibrationRefit ON | OnchainBridge ON"
     )
     yield
 
-    for t in [consume_task, hmm_task, wl_task, cal_task]:
+    for t in [consume_task, hmm_task, wl_task, cal_task, onchain_bridge_task]:
         t.cancel()
     hmm_detector.stop()
     weight_learner.stop()
@@ -777,14 +872,46 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="CryptoWatch v4 Signal Service", lifespan=lifespan)
 
 
+# ── Prometheus metrics (item #12) ───────────────────────────────────────────────
+@app.get("/metrics")
+async def metrics():
+    """Prometheus exposition: service liveness + redis reachability.
+    Scraped by the central observability stack (Prometheus/Grafana)."""
+    from fastapi.responses import PlainTextResponse
+    from shared.metrics import render_prometheus
+
+    out = [
+        {
+            "name": "selene_up",
+            "value": 1,
+            "labels": {"service": "signal"},
+            "help": "service process is up",
+        }
+    ]
+    try:
+        from shared.db.connections import redis_health
+
+        out.append(
+            {
+                "name": "selene_redis_up",
+                "value": await redis_health(),
+                "labels": {"service": "signal"},
+                "help": "redis reachable",
+            }
+        )
+    except Exception:
+        pass
+    return PlainTextResponse(render_prometheus(out))
+
+
 @app.get("/health")
 async def health():
     return {
-        "status":  "ok",
+        "status": "ok",
         "service": "signal",
-        "redis":   await redis_health(),
+        "redis": await redis_health(),
         "symbols_tracked": len(_svc._detectors),
-        "ts":      datetime.utcnow().isoformat(),
+        "ts": datetime.utcnow().isoformat(),
     }
 
 
@@ -818,10 +945,10 @@ async def fused_regime(symbol: str):
     sym = symbol.upper()
     mkt = _svc._market.get(sym, {})
     return {
-        "symbol":        sym,
-        "fused_regime":  mkt.get("fused_regime", "unknown"),
-        "kelly_scalar":  mkt.get("kelly_scalar", 1.0),
-        "hmm_state":     mkt.get("hmm_state", "range"),
+        "symbol": sym,
+        "fused_regime": mkt.get("fused_regime", "unknown"),
+        "kelly_scalar": mkt.get("kelly_scalar", 1.0),
+        "hmm_state": mkt.get("hmm_state", "range"),
         "adxatr_regime": str(mkt.get("regime", "UNKNOWN")),
     }
 
@@ -836,4 +963,5 @@ async def dynamic_weights():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("SERVICE_PORT", 8002)))

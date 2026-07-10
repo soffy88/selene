@@ -399,6 +399,24 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="CryptoWatch v4 Portfolio Service", lifespan=lifespan)
 
+# ── Prometheus metrics (item #12) ───────────────────────────────────────────────
+@app.get("/metrics")
+async def metrics():
+    """Prometheus exposition: service liveness + redis reachability.
+    Scraped by the central observability stack (Prometheus/Grafana)."""
+    from fastapi.responses import PlainTextResponse
+    from shared.metrics import render_prometheus
+    out = [{"name": "selene_up", "value": 1, "labels": {"service": "portfolio"},
+            "help": "service process is up"}]
+    try:
+        from shared.db.connections import redis_health
+        out.append({"name": "selene_redis_up", "value": await redis_health(),
+                    "labels": {"service": "portfolio"}, "help": "redis reachable"})
+    except Exception:
+        pass
+    return PlainTextResponse(render_prometheus(out))
+
+
 
 @app.get("/health")
 async def health():

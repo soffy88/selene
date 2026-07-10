@@ -297,8 +297,8 @@ services:
     build: ./services/healthcheck
     env_file: .env
     environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
-      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://helios-proxy:2080}
+      - HTTP_PROXY=${HTTP_PROXY:-http://helios-proxy:2080}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway,api.telegram.org
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
@@ -314,13 +314,15 @@ services:
     build:
       context: .
       dockerfile: sel_v2/Dockerfile
-    command: python -m sel_v2.data.v2_tick_collector
+    # 采集层合并 P4:逐笔成交改读中立 iris/md(marketdata.md.trades,venue=okx——实测
+    # Binance WS 经 helios-proxy 不通,只有 OKX 经 10808 隧道可行)。不再自连 OKX WS。
+    # 回滚:command 切回 `python -m sel_v2.data.v2_tick_collector`(旧文件保留)。
+    command: python -m sel_v2.data.v2_ticks_md_adapter --loop 5
     env_file: .env
     environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
-      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - MD_DSN=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/marketdata
       - SYMBOLS=BTC-USDT
     networks:
       - helios-net
@@ -330,13 +332,15 @@ services:
     build:
       context: .
       dockerfile: sel_v2/Dockerfile
-    command: python -m sel_v2.data.v2_lob_collector
+    # 采集层合并 P3:Binance LOB 微观特征改读中立 iris/md(marketdata.md.orderbook_features),
+    # 不再自打 /fapi/v1/depth。回滚:command 切回 `python -m sel_v2.data.v2_lob_collector`
+    # (旧文件保留)。DB→DB,无 egress/代理。
+    command: python -m sel_v2.data.v2_lob_md_adapter --loop 20
     env_file: .env
     environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
-      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - MD_DSN=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/marketdata
     networks:
       - helios-net
     restart: unless-stopped
@@ -345,13 +349,15 @@ services:
     build:
       context: .
       dockerfile: sel_v2/Dockerfile
-    command: python -m sel_v2.data.v2_liquidation_collector
+    # 采集层合并 P5:清算事件改读中立 iris/md(marketdata.md.liquidations,venue=okx,
+    # 与 P4 trades 共用 iris 侧同一条 WS 连接)。不再自连 OKX WS。回滚:command 切回
+    # `python -m sel_v2.data.v2_liquidation_collector`(旧文件保留)。
+    command: python -m sel_v2.data.v2_liquidations_md_adapter --loop 15
     env_file: .env
     environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
-      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - MD_DSN=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/marketdata
     networks:
       - helios-net
     restart: unless-stopped
@@ -360,13 +366,37 @@ services:
     build:
       context: .
       dockerfile: sel_v2/Dockerfile
-    command: python -m sel_v2.data.v2_derivatives_collector
+    # 采集层合并(方案 B):funding/OI 改由统一生产者 iris 采集,本服务转为 adapter 读 md:* 回填原表。
+    # 回滚:command 切回 `python -m sel_v2.data.v2_derivatives_collector` 即恢复自采(旧文件保留)。
+    command: python -m sel_v2.data.v2_derivatives_adapter
     env_file: .env
     environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
-      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://helios-proxy:2080}
+      - HTTP_PROXY=${HTTP_PROXY:-http://helios-proxy:2080}
+      - BINANCE_PROXY=${BINANCE_PROXY:-http://helios-proxy:2080}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - MD_REDIS_URL=redis://helios-redis:6379/1
+    networks:
+      - helios-net
+    restart: unless-stopped
+
+  # Forward 4H-bar poller (2026-07-03 OKX→Binance migration). The tick-fed bar-aggregator
+  # is dead while OKX WS is unreachable, so this keeps v2_bars_4h fresh from Binance REST.
+  # Idempotent (ON CONFLICT DO NOTHING); coexists with v2-bar-aggregator harmlessly.
+  v2-bar-poller:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    # 采集层合并 P2b:Binance 4H bar 改读中立 iris/md(marketdata.md.ohlcv),不再自打 fapi/klines。
+    # 回滚:command 切回 `python -m sel_v2.data.binance_backfill --loop 600 --years 0.05`
+    # (旧文件保留;深史一次性回填也用它)。DB→DB, 无 egress/代理。
+    command: python -m sel_v2.data.v2_bars_md_adapter --loop 600
+    env_file: .env
+    environment:
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - MD_DSN=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/marketdata
     networks:
       - helios-net
     restart: unless-stopped
@@ -384,8 +414,8 @@ services:
     command: python -m sel_v2.data.v2_bar_aggregator
     env_file: .env
     environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
-      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://helios-proxy:2080}
+      - HTTP_PROXY=${HTTP_PROXY:-http://helios-proxy:2080}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
       - SYMBOLS=BTC-USDT
@@ -400,8 +430,8 @@ services:
     command: python -m sel_v2.data.ofi_persister
     env_file: .env
     environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
-      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://helios-proxy:2080}
+      - HTTP_PROXY=${HTTP_PROXY:-http://helios-proxy:2080}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
       - SYMBOLS=BTC-USDT
@@ -418,8 +448,8 @@ services:
     command: python -m sel_v2.paper.paper_engine
     env_file: .env
     environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://172.23.224.1:30810}
-      - HTTP_PROXY=${HTTP_PROXY:-http://172.23.224.1:30810}
+      - HTTPS_PROXY=${HTTPS_PROXY:-http://helios-proxy:2080}
+      - HTTP_PROXY=${HTTP_PROXY:-http://helios-proxy:2080}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
       - REDIS_URL=redis://helios-redis:6379/3

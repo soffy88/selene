@@ -23,7 +23,16 @@ async def get_redis() -> aioredis.Redis:
     global _redis_pool
     if _redis_pool is None:
         url = os.environ.get("REDIS_URL", "redis://:changeme@redis:6379/0")
-        _redis_pool = aioredis.from_url(url, decode_responses=False)
+        # Timeouts + periodic health-check so a transient DNS blip or a dropped
+        # connection surfaces as a fast error instead of a silent hang (audit EC-13).
+        _redis_pool = aioredis.from_url(
+            url,
+            decode_responses=False,
+            socket_timeout=10,
+            socket_connect_timeout=5,
+            health_check_interval=60,
+            retry_on_timeout=True,
+        )
     return _redis_pool
 
 
@@ -47,7 +56,16 @@ async def get_pg() -> asyncpg.Pool:
             "TIMESCALE_URL",
             "postgresql://cw4:changeme@timescaledb:5432/cw4",
         ).replace("postgresql+asyncpg://", "postgresql://")
-        _pg_pool = await asyncpg.create_pool(dsn, min_size=2, max_size=10)
+        # command_timeout / acquire timeout / inactive-connection recycling so a
+        # long-idle pool doesn't hang forever on a stale connection (audit EC-13).
+        _pg_pool = await asyncpg.create_pool(
+            dsn,
+            min_size=2,
+            max_size=10,
+            command_timeout=30,
+            timeout=10,
+            max_inactive_connection_lifetime=300,
+        )
         logger.info("TimescaleDB pool created")
     return _pg_pool
 
