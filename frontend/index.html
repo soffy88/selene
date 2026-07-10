@@ -254,7 +254,7 @@ td.neu{color:var(--text1)}
 <!-- ── MARKET ─────────────────────────────────────────────────────────── -->
 <div class="page active" id="page-market">
   <div class="stats">
-    <div class="stat"><div class="stat-label">追踪币种</div><div class="stat-val b" id="m-syms">51</div><div class="stat-sub">USDT永续合约</div></div>
+    <div class="stat"><div class="stat-label">追踪币种</div><div class="stat-val b" id="m-syms">--</div><div class="stat-sub">USDT永续合约</div></div>
     <div class="stat"><div class="stat-label">信号总数</div><div class="stat-val g" id="m-sigs">0</div><div class="stat-sub">本次会话</div></div>
     <div class="stat"><div class="stat-label">最高资金费率</div><div class="stat-val a" id="m-fr">--</div><div class="stat-sub" id="m-fr-sym">--</div></div>
     <div class="stat"><div class="stat-label">系统状态</div><div class="stat-val g" id="m-status">OK</div><div class="stat-sub" id="m-mode">--</div></div>
@@ -270,6 +270,13 @@ td.neu{color:var(--text1)}
     <div class="card">
       <div class="ch">最新信号</div>
       <div class="cb"><div class="sfeed" id="m-sigfeed"></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="ch"><span>🚀 Moonshots — 发现追踪的小币</span><span class="stat-sub" id="ms-meta">--</span></div>
+    <div style="overflow-y:auto;max-height:360px">
+      <table><thead><tr><th>币种</th><th>现价</th><th>24h涨幅</th><th>成交额</th><th>量能激增</th><th>评分</th><th>发现时间</th></tr></thead>
+      <tbody id="msbody"></tbody></table>
     </div>
   </div>
 </div>
@@ -529,7 +536,7 @@ td.neu{color:var(--text1)}
 
 <script src="/lightweight-charts.standalone.production.js"></script>
 <script>
-const API='/api/v4'; const st={signals:[],prices:{},fr:{},regimes:{},portfolio:null,pending:[],arbOpps:[],btRunId:null,sigFilter:'ALL',orders:[]};
+const API='/api/v4'; const st={signals:[],prices:{},fr:{},regimes:{},portfolio:null,pending:[],arbOpps:[],btRunId:null,sigFilter:'ALL',orders:[],moonshots:[]};
 
 // Clock
 setInterval(()=>{document.getElementById('clock').textContent=new Date().toLocaleTimeString('zh-CN',{hour12:false})},1000);
@@ -577,10 +584,34 @@ async function loadMarket(){
   const d=await api('/market');
   if(!d)return;
   st.prices=d.prices||{}; st.fr=d.funding_rates||{};
-  document.getElementById('m-syms').textContent=Object.keys(st.prices).length||51;
+  document.getElementById('m-syms').textContent=Object.keys(st.prices).length||'--';
   const rates=st.fr; const mx=Object.keys(rates).sort((a,b)=>Math.abs(rates[b])-Math.abs(rates[a]))[0];
   if(mx){document.getElementById('m-fr').textContent=(rates[mx]>0?'+':'')+rates[mx].toFixed(4)+'%';document.getElementById('m-fr-sym').textContent=mx}
   renderMktTable(); renderMktSigs();
+}
+
+async function loadMoonshots(){
+  const d=await api('/moonshots');
+  if(!d)return;
+  st.moonshots=d.moonshots||[];
+  renderMoonshots();
+}
+
+function renderMoonshots(){
+  const ms=st.moonshots;
+  const meta=document.getElementById('ms-meta');
+  const tb=document.getElementById('msbody');
+  if(!ms.length){meta.textContent='0';tb.innerHTML='<tr><td colspan="7" class="neu" style="text-align:center;padding:24px">暂无发现(等待扫描)</td></tr>';return}
+  const at=ms[0].discovered_at?new Date(ms[0].discovered_at).toLocaleTimeString('zh-CN',{hour12:false}):'--';
+  meta.textContent=`${ms.length} 个 · ${at}`;
+  tb.innerHTML=ms.map(m=>{
+    const t=m.discovered_at?new Date(m.discovered_at).toLocaleTimeString('zh-CN',{hour12:false}):'--';
+    const chg=m.change_pct!=null?(m.change_pct>0?'+':'')+m.change_pct.toFixed(1)+'%':'--';
+    return`<tr><td class="sym">${m.symbol.replace('USDT','')}</td><td class="sym">$${fp(m.last_price)}</td>`
+      +`<td class="pos">${chg}</td><td class="neu">$${fn(m.quote_volume)}</td>`
+      +`<td class="neu">${(m.volume_surge||1).toFixed(2)}×</td><td class="sym">${(m.score||0).toFixed(1)}</td>`
+      +`<td class="neu" style="font-size:11px">${t}</td></tr>`;
+  }).join('');
 }
 
 function renderMktTable(){
@@ -1127,8 +1158,9 @@ async function loadSel(){
 // Init
 (async()=>{
   connectWS();
-  await Promise.all([loadMarket(), loadOverview()]);
+  await Promise.all([loadMarket(), loadOverview(), loadMoonshots()]);
   setInterval(loadMarket,15000);
+  setInterval(loadMoonshots,60000);
   setInterval(loadOverview,60000);
   setInterval(async()=>{
     if(document.getElementById('page-signals').classList.contains('active'))loadSignals();
