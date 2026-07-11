@@ -52,6 +52,28 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+### Wave V22-D:Live 捕获率周监控 + V22 收尾裁决 (2026-07-11)
+
+V22-A/C 收尾:历史捕获率(29-39%)被特征降级污染不可外推,建立前瞻性周监控。
+
+- `sel_v2/offline/capture_monitor.py`:复用 leg_census.py 三档阈值(未改动),对近
+  90天 v2_bars_4h 比对 v2_state_history(比对域=2026-06-15起显式截止,因
+  v2_state_history 已被 07-01 SEL live-ops 回填全history,行存在与否不再能区分
+  "真live"vs"回填",故用显式日期而非行存在判定域)。写 `v2_capture_rate_weekly`
+  表 + 追加 `sel_v2/reports/capture_rate_weekly.md`。
+- **部署**:新增独立轻量服务 `v2-capture-monitor`(docker-compose.yml + 复用
+  sel_v2/Dockerfile,零接触任何 live 策略/状态容器),每周一 00:30 UTC 自动跑,
+  失败 ERROR 日志不崩溃(同 healthcheck 惯例)。已 build+部署+手动触发首轮,
+  下次调度经容器日志确认:**2026-07-13 00:30 UTC**。
+- 首轮(样本仅~4周,预期之内):3×ATR 15腿/1规格/0入域;5×ATR 5腿/3规格/1入域/
+  1捕获/100%;8pct 5腿/3规格/1入域/1捕获/100%。
+- `v2_decision_trail` 写入 `decision_type='v22_verdict'` 收尾三条裁决:①Wiki周期
+  模型对一半(规格腿~9条/年真实存在,但总腿量2-3倍模型且更短更杂);②父状态机历史
+  漏检为真但归因被污染,live捕获率待本监控满12周(约09-15前)判定;③分支B(V22-A
+  pyramid)**封存**(非废弃)——重开需≥12周live数据 +(若确认漏检)states/**修复
+  (超出范围,需另行授权)+ 离线门重跑;S1 定位低频补充,S2/CUSUM-Short 为现行主力
+  引擎。
+
 ### Wave V22-C:趋势腿普查 (2026-07-11)
 
 V22-A 门失败归因:2年 BTC-USDT OHLC 里,符合 Wiki 规格(时长10-35天、push 3-6)的
