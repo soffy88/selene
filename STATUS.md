@@ -484,6 +484,18 @@ Surging Up/Down direction (sub_state unused); S2 counterfactual (needs tick-driv
 
 ## 🚨 Needs Human
 
+- **Coiling 四条件 AND 过严 + Drifting_Charged 粘性回退 (2026-07-11,校准/设计问题,未改代码)**:
+  用户质疑"两年 Coiling/Cascade 从未出现"。分解:(a) 历史 2 年 81.6% bars 特征降级,
+  Coiling/Cascade 依赖的熵/OI/funding/清算全 None → 三态纪律下不可判,结构性缺失非 bug;
+  (b) **但特征齐全的现在,Coiling 仍触发不了**:实测最近各 bar 分别被四个 AND 条件
+  (σ<30pct ∧ 熵<30pct ∧ OI增>0 ∧ |funding|<80pct)中的某一个单独否决(如 07-11 00:00
+  三项全过、仅 funding=100pct 否)。四条件同时满足在实际数据上近乎不可能——需人工裁决
+  是否放宽(如 3-of-4 或去掉 funding 项);(c) **Charged 粘性**:当前 σ=0.10 已低于
+  Charged 自己的定义带 [0.30,0.80),但 priority.py 仲裁在"无任何状态 met=True"时保持
+  原状态 → Charged×30+ 实为"无法判定,维持原判",语义上更接近 Calm。佐证:缠论镜头
+  H-CHAN3b(analysis/lens_verdict_v1.md)显示高中枢重叠 bar 在 sel 趋势态里前向波动
+  显著更低——几何盘整真实存在但 sel 判不出 Coiling。改任何一条都动 `states/**`
+  (epoch 红线),故仅上报。
 - **Epoch af6f7d3d 现为 DIRTY (2026-07-11)**:v2_state_history 写入时刻仪表化任务
   改了 `sel_v2/strategies/db_writer.py`(仅 SQL 列清单,未碰判定逻辑)——该文件在
   epoch 指纹范围内(`sel_v2/states/**` + `sel_v2/strategies/**`),按红线要求
