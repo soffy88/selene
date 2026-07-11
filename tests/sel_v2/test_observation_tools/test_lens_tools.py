@@ -112,7 +112,8 @@ def test_vocab_and_source_maps_cover_lens_tools():
     assert _VOCAB_MAP["ICT2"] == "swing_structure"
     assert _TOOL_SOURCE_MAP["CHAN2"] == "chan"
     assert _TOOL_SOURCE_MAP["ICT2"] == "ict"
-    assert _LENS_TOOL_IDS == {"CHAN2", "CHAN3", "ICT2"}
+    assert _LENS_TOOL_IDS == {"CHAN2", "CHAN3", "ICT2", "ICT3"}
+    assert _VOCAB_MAP["ICT3"] == "killzone_anomaly"
     assert "chan_retest" not in _VOCAB_MAP.values()  # CHAN-1 rejected offline
 
 
@@ -133,7 +134,7 @@ def test_run_recent_observations_fired_sink_collects_only_lens_tools():
     fired: list = []
     results = run_recent_observations(df, state_by_ts=state_by_ts, fired_sink=fired)
     assert results  # latest readings returned as before
-    assert {r.tool_id for r in results} >= {"CHAN2", "CHAN3", "ICT2"}
+    assert {r.tool_id for r in results} >= {"CHAN2", "CHAN3", "ICT2", "ICT3"}
     assert all(f.tool_id in _LENS_TOOL_IDS for f in fired)
     assert all(f.signal for f in fired)
     # lens results carry the sel state for associated_state persistence
@@ -159,3 +160,30 @@ def test_run_recent_observations_without_new_kwargs_still_works():
     )
     results = run_recent_observations(df)
     assert isinstance(results, list)
+
+
+def test_killzone_anomaly_session_adjusted():
+    from sel_v2.observation_tools.killzone import MIN_SLOT_SAMPLES, KillzoneAnomaly
+
+    tool = KillzoneAnomaly()
+    # warm 35 days of 6 slots with tiny quiet bars (|ret| ~0.001, volume 1.0)
+    rng = np.random.default_rng(9)
+    i = 0
+    for _d in range(MIN_SLOT_SAMPLES + 5):
+        for _s in range(6):
+            b = _bar(i, 100.0)
+            b.log_return = float(rng.normal(0, 0.001))
+            b.volume = 1.0 + float(rng.uniform(0, 0.1))
+            r = tool.update(b)
+            i += 1
+    assert tool.is_ready()
+    assert r.signal is False  # quiet bar in a quiet slot
+
+    # a bar hugely abnormal FOR ITS SLOT fires
+    b = _bar(i, 100.0)
+    b.log_return = 0.05
+    b.volume = 50.0
+    r = tool.update(b)
+    assert r.signal is True and r.label.endswith("_ANOMALY")
+    assert r.metadata["ret_slot_pctile"] > 0.9
+    assert 0 <= r.metadata["slot_utc"] <= 20

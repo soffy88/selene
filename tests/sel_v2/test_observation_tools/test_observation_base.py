@@ -145,17 +145,17 @@ def test_observation_tools_not_imported_in_strategy_modules():
 # ── ObservationRunner ─────────────────────────────────────────────────────────
 
 
-def test_runner_has_10_tools():
-    # 7 legacy + 3 v2.2 lens tools (CHAN2/CHAN3/ICT2; CHAN1 rejected offline)
+def test_runner_has_11_tools():
+    # 7 legacy + 4 v2.2 lens tools (CHAN2/CHAN3/ICT2/ICT3; CHAN1 rejected offline)
     runner = ObservationRunner()
-    assert len(runner._tools) == 10
+    assert len(runner._tools) == 11
 
 
-def test_runner_process_bar_sync_returns_10_results():
+def test_runner_process_bar_sync_returns_11_results():
     runner = ObservationRunner()
     bar = make_bar()
     results = runner.process_bar_sync(bar)
-    assert len(results) == 10
+    assert len(results) == 11
 
 
 def test_runner_process_bar_sync_all_observation_results():
@@ -200,8 +200,8 @@ def test_runner_tool_exception_does_not_propagate():
     runner._tools.append(_BrokenTool())
     bar = make_bar()
     results = runner.process_bar_sync(bar)
-    # Should return results for the 10 real tools only (broken one is skipped)
-    assert len(results) == 10
+    # Should return results for the 11 real tools only (broken one is skipped)
+    assert len(results) == 11
 
 
 def test_runner_no_db_does_not_write(monkeypatch):
@@ -209,4 +209,4 @@ def test_runner_no_db_does_not_write(monkeypatch):
     runner = ObservationRunner(db_writer=None)
     bar = make_bar()
     results = runner.process_bar_sync(bar)
-    assert len(results) == 10
+    assert len(results) == 11

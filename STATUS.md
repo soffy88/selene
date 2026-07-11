@@ -74,6 +74,18 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+### ICT"最新技术"扫描 + 实证:四中取一,Killzones 通过并接入 (2026-07-11)
+
+用户指令实证 ICT 最新技术。扫描(SMC 生态零同行评审;清算级联学术有据但自有数据仅数日)
+→ 四候选预注册实证(`analysis/ict_advanced_v1.md`):
+- **ICT-3 Killzones PASS**(KW p=5.8e-26/6e-145,对半稳健,峰值 12:00 UTC)→ 实施为
+  时段调整异动工具 `killzone_anomaly`(ObservationRunner 第 11 工具,同时段滚动 p90
+  联合越限);案例库案例 9 关闭为 VALIDATED;图表加 🟦"时段异动"标记
+- **ICT-4 Sweep / ICT-5 FVG / ICT-6 OB 全部废弃**:sweep-up 实为延续(+0.27%,p=0.81);
+  FVG 回补率 73% 与零售宣称一致但无 null、首触支撑不显著;OB bull 回访反向(-0.16%)
+- **清算-sweep 关联 PENDING**:与 VPIN 同期 ≈2026-08-05 补跑(v2_liquidations 07-06 起)
+- 出池记录入候选池文档;tests 636 passed(唯 5 既有环境失败)
+
 ### 缠论"最新技术"扫描 + 实证:双 NO-GO,无新增入池 (2026-07-11)
 
 用户指令实证缠论最新技术。扫描(czsc/chan.py/社区,2024-2026 学术零同行评审)后

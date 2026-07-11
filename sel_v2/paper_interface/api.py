@@ -209,6 +209,7 @@ async def sel_observations():
         "CHAN3": "缠论 中枢重叠",
         "ICT2": "ICT Swing 结构",
         "ICT1": "ICT VPIN 毒性流",
+        "ICT3": "ICT Killzone 时段异动",
     }
     p = await get_pool()
     async with p.acquire() as conn:
@@ -241,7 +242,7 @@ async def sel_lens_events(bars: int = 300):
             rows = await conn.fetch(
                 "SELECT timestamp, vocab, intensity, associated_state, tool_metadata "
                 "FROM v2_inverse_vocab_events "
-                "WHERE vocab IN ('chan_pivot','chan_divergence','swing_structure','vpin') "
+                "WHERE vocab IN ('chan_pivot','chan_divergence','swing_structure','vpin','killzone_anomaly') "
                 "AND timestamp >= NOW() - make_interval(hours => $1) "
                 "ORDER BY timestamp",
                 hours,

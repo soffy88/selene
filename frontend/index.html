@@ -1057,6 +1057,8 @@ async function loadSelChart(){
         mk.push({time:e.time,position:'inBar',color:choch?'#ab47bc':'#42a5f5',shape:up?'arrowUp':'arrowDown',text:choch?'CHoCH':'BOS'});
       }else if(e.vocab==='vpin'){
         mk.push({time:e.time,position:'belowBar',color:'#ff7043',shape:'circle',text:'VPIN'});
+      }else if(e.vocab==='killzone_anomaly'){
+        mk.push({time:e.time,position:'aboveBar',color:'#26c6da',shape:'square',text:'时段异动'});
       }
     }
     mk.sort((a,b)=>a.time-b.time);
@@ -1067,7 +1069,7 @@ async function loadSelChart(){
     }).join('')
     +'<br><span style="color:#e6b800">■ 缠论中枢重叠(&gt;p70)</span> <span style="color:#ef5350">▲ 缠论背驰</span> '
     +'<span style="color:#42a5f5">▲▼ ICT BOS(顺势破位)</span> <span style="color:#ab47bc">▲▼ ICT CHoCH(性格转变)</span> '
-    +'<span style="color:#ff7043">● VPIN&gt;p95(毒性流)</span>';
+    +'<span style="color:#ff7043">● VPIN&gt;p95(毒性流)</span> <span style="color:#26c6da">■ Killzone 时段异动(同时段 p90)</span>';
   }
   _selChart.timeScale().fitContent();
 }

@@ -49,6 +49,7 @@ _OBSERVATION_TOOL_IDS = [
     "CHAN3",
     "ICT2",
     "ICT1",
+    "ICT3",
 ]
 
 _VOCAB_TO_TOOL = {
@@ -63,6 +64,7 @@ _VOCAB_TO_TOOL = {
     "chan_pivot": "CHAN3",
     "swing_structure": "ICT2",
     "vpin": "ICT1",
+    "killzone_anomaly": "ICT3",
 }
 
 _TOOL_NAMES = {
@@ -77,6 +79,7 @@ _TOOL_NAMES = {
     "CHAN3": "缠论 中枢重叠",
     "ICT2": "ICT Swing结构 BOS/CHoCH",
     "ICT1": "ICT VPIN 毒性流",
+    "ICT3": "ICT Killzone 时段异动",
 }
 
 

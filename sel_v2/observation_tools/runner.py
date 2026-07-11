@@ -35,6 +35,7 @@ from sel_v2.observation_tools.transfer_entropy_rolling import TransferEntropyRol
 from sel_v2.observation_tools.wavelet_multifractal import WaveletMultifractal
 from sel_v2.observation_tools.hawkes_cascade_warning import HawkesCascadeWarning
 from sel_v2.observation_tools.chan_tools import ChanDivergence, ChanPivot
+from sel_v2.observation_tools.killzone import KillzoneAnomaly
 from sel_v2.observation_tools.swing_structure import SwingStructureTool
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ _VOCAB_MAP: dict[str, str] = {
     "CHAN2": "chan_divergence",
     "CHAN3": "chan_pivot",
     "ICT2": "swing_structure",
+    "ICT3": "killzone_anomaly",
 }
 
 _TOOL_SOURCE_MAP: dict[str, str] = {
@@ -64,13 +66,14 @@ _TOOL_SOURCE_MAP: dict[str, str] = {
     "CHAN2": "chan",
     "CHAN3": "chan",
     "ICT2": "ict",
+    "ICT3": "ict",
 }
 
 # Lens tools write per-bar events to v2_inverse_vocab_events via fired_sink /
 # persist_lens_vocab_events below. The 7 legacy tools stay out of that path —
 # they never wrote vocab events from the recent-window replay, and their
 # Month-3 baselines must not change.
-_LENS_TOOL_IDS = frozenset({"CHAN2", "CHAN3", "ICT2"})
+_LENS_TOOL_IDS = frozenset({"CHAN2", "CHAN3", "ICT2", "ICT3"})
 
 
 class ObservationRunner:
@@ -101,6 +104,7 @@ class ObservationRunner:
             ChanDivergence(),
             ChanPivot(),
             SwingStructureTool(),
+            KillzoneAnomaly(),
         ]
         self._db = db_writer
         self._bars_processed: int = 0
