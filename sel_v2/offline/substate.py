@@ -261,8 +261,16 @@ def compute_substates(
     out = [BarSubState() for _ in range(n)]
 
     for start, end in _segments(parent_state):
-        lookback = max(0, start - 3)
-        direction = 1 if close[start] >= close[lookback] else -1
+        # Direction = the segment's own realized net move (close[end-1] vs close[start]),
+        # not a short pre-segment lookback. Verified against the real 2yr BTC-USDT history:
+        # a 3-bar (and even 24/48-bar) pre-segment lookback called EVERY one of the 13
+        # Surging segments "up", including several that fell >15% over their life — Surging
+        # appears to always trigger right after a short-term upward tick regardless of the
+        # segment's actual trend, so any pre-segment window is unreliable. Using the
+        # segment's own history is legitimate for this offline gate (unlike the live state
+        # machine, this replay already has the full segment in hand) and is what the D1-D5
+        # Wiki ruling's "做空镜像" actually needs to be reachable in the data.
+        direction = 1 if close[end - 1] >= close[start] else -1
         st = _Structure(direction, close[start], start)
         for i in range(start, end):
             retracement, events = st.step(i, close[i], atr[i])

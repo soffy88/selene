@@ -75,8 +75,10 @@ def test_re_push_counts_and_stop_ratchets_to_a_higher_low():
 
 
 def test_structure_break_fires_on_close_below_stop_and_resets_the_leg():
-    # Same cycle-1 setup (RE_PUSH #1, stop=1005), then a crash to 990 (< stop).
-    seg = _leg_path(1010, [1037, 1005, 1040]) + _leg_path(1040, [990])[1:]
+    # Same cycle-1 setup (RE_PUSH #1, stop=1005), then a crash to 990 (< stop), then a
+    # recovery to 1050 so the segment nets positive (direction is the segment's own
+    # realized net move — see substate.py) and stays long throughout, as intended.
+    seg = _leg_path(1010, [1037, 1005, 1040]) + _leg_path(1040, [990, 1050])[1:]
     out, pre_n = _run([1010] * 5, seg)
 
     break_bar = next(b for b in out[pre_n:] if Event.STRUCTURE_BREAK in b.events)
