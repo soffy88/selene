@@ -112,6 +112,30 @@ async def check_rules(pool, r):
                     )
                 )
 
+        # Rule 4b: state-dwell anomaly (Wave S2C). A trend/coiling state stuck too long is
+        # the "Surging pinned 54 bars, nobody noticed" failure from the diagnosis. Only the
+        # ACTIVE states (Surging / Coiling) alert — long Drifting_* dwell is normal and quiet.
+        dwell_rows = await conn.fetch(
+            "SELECT state FROM v2_state_history ORDER BY timestamp DESC LIMIT 200"
+        )
+        if dwell_rows:
+            cur_state = dwell_rows[0]["state"]
+            dwell = 0
+            for row in dwell_rows:
+                if row["state"] == cur_state:
+                    dwell += 1
+                else:
+                    break
+            if cur_state in ("Surging", "Coiling") and dwell > 42:  # 7 days x 6 bars
+                alerts.append(
+                    (
+                        "WARNING",
+                        "state_dwell_anomaly",
+                        f"state '{cur_state}' has held {dwell} 4H bars (>42 / 7d) — "
+                        "check the state machine isn't stuck (Drifting_* long dwell is normal)",
+                    )
+                )
+
     # Rule 5: paper_engine container logs (not implemented via log scanning here, relying on last_bar_ts instead for simplicity)
     # A stuck paper_engine won't update last_bar_ts.
     last_paper_ts_raw = await r.get("v2:paper:last_bar_ts")

@@ -1126,7 +1126,14 @@ async function loadSel(){
     document.getElementById('sel-prog-pct').textContent=pct+'%';
     const sc=hd.state_counts||{};
     const topState=Object.entries(sc).sort((a,b)=>b[1]-a[1])[0];
-    document.getElementById('sel-state').textContent=topState?topState[0]:'冷启动';
+    // Prefer the actual latest state (hd.current_state) for the "当前状态" card; fall back to
+    // the 24h-most-frequent, then cold-start. Show the dwell (Wave S2C) as the subtitle.
+    const curState=hd.current_state||(topState?topState[0]:null);
+    document.getElementById('sel-state').textContent=curState||'冷启动';
+    const dwell=hd.current_state_dwell_bars;
+    document.getElementById('sel-sym').textContent=(dwell!=null&&curState)
+      ? `已持续 ${dwell} 个 4H`
+      : 'BTCUSDT';
   }
   if(hst&&hst.length){
     document.getElementById('sel-hist-table').innerHTML=hst.map(r=>{
