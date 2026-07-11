@@ -204,6 +204,11 @@ async def sel_observations():
         "T2": "转移熵(资金费→价)",
         "W2": "小波多重分形",
         "H3": "Hawkes 级联预警",
+        # v2.2 lens batch (observation-only; offline gate: lens_verdict_v1)
+        "CHAN2": "缠论 背驰",
+        "CHAN3": "缠论 中枢重叠",
+        "ICT2": "ICT Swing 结构",
+        "ICT1": "ICT VPIN 毒性流",
     }
     p = await get_pool()
     async with p.acquire() as conn:

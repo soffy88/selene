@@ -146,6 +146,46 @@ async def _persist_signal(pool, calc, bucket, history_start) -> None:
     )
 
 
+async def _persist_latest(pool, calc, as_of) -> None:
+    """Upsert the current VPIN reading into v2_observation_latest (tool_id ICT1)
+    so the SEL observation panel shows the lens alongside the bar-driven tools.
+    Same one-row-per-tool idiom as runner.persist_latest_observations."""
+    vpin = calc.vpin
+    p95 = calc.percentile(SIGNAL_PCTILE)
+    warmed = calc.completed_buckets >= calc.warmup_buckets
+    if vpin is None:
+        signal, label, value, threshold, conf = False, "WARMING", 0.0, 0.0, 0.0
+    elif not warmed or p95 is None:
+        signal, label, value, threshold, conf = False, "WARMING", vpin, 0.0, 0.0
+    else:
+        signal = vpin > p95
+        label = "VPIN_HIGH" if signal else "NORMAL"
+        value, threshold = vpin, p95
+        conf = min((vpin - p95) / max(p95, 1e-8), 1.0) if signal else 0.0
+    try:
+        await pool.execute(
+            """
+            INSERT INTO v2_observation_latest
+                (tool_id, source, signal, value, threshold, label, confidence,
+                 timestamp, updated_at)
+            VALUES ('ICT1', 'ict', $1, $2, $3, $4, $5, $6, NOW())
+            ON CONFLICT (tool_id) DO UPDATE SET
+                source = EXCLUDED.source, signal = EXCLUDED.signal,
+                value = EXCLUDED.value, threshold = EXCLUDED.threshold,
+                label = EXCLUDED.label, confidence = EXCLUDED.confidence,
+                timestamp = EXCLUDED.timestamp, updated_at = NOW()
+            """,
+            signal,
+            float(value),
+            float(threshold),
+            label,
+            float(conf),
+            as_of,
+        )
+    except Exception as exc:  # noqa: BLE001 — panel row is cosmetic, never fatal
+        logger.warning("persist latest failed: %s", exc)
+
+
 async def run_loop(serve: bool) -> None:
     pool = await asyncpg.create_pool(_dsn(), min_size=1, max_size=2)
     try:
@@ -179,12 +219,14 @@ async def run_loop(serve: bool) -> None:
             f"{calc.vpin:.4f}" if calc.vpin is not None else "n/a",
             f"{calc.percentile(95):.4f}" if calc.percentile(95) is not None else "n/a",
         )
+        await _persist_latest(pool, calc, cursor[0])
         if not serve:
             return
         while True:
             await asyncio.sleep(POLL_SECONDS)
             try:
                 cursor = await _stream_ticks(pool, calc, *cursor, on_bucket)
+                await _persist_latest(pool, calc, cursor[0])
             except Exception as exc:  # noqa: BLE001
                 logger.error("poll failed: %s", exc)
     finally:
