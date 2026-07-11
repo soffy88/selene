@@ -28,6 +28,13 @@ import pandas as pd
 from sel_v2.runtime.staleness import StalenessEnforcement
 from sel_v2.scheduler.bar_runner import BarRunner
 from sel_v2.strategies.cusum_short import CUSUMShort, CUSUMTrigger
+from sel_v2.strategies.inverse_vocab import (
+    AbsorptionSignal,
+    SweepSignal,
+    adaptive_percentile,
+    detect_absorption,
+    detect_sweep,
+)
 from sel_v2.strategies.strategy1_entry import Strategy1EntryFilter
 from sel_v2.strategies.strategy2_entry import Strategy2EntryFilter
 from sel_v2.strategies.strategy_exit import (
@@ -51,6 +58,16 @@ _SWEEP_MOVE = 0.005  # |bar return| ≥ 0.5% with flow → aggressive Sweep
 _ABSORB_MOVE = 0.0015  # high volume but |return| ≤ 0.15% → flow Absorbed
 _OFI_PERSIST_BARS = 2  # net taker flow same direction for this many bars
 _TYPE_A_SEQ_BARS = 6  # an Absorption within this many bars before a Sweep → Type A
+
+# Wave S2C — direction-aware §14.2 detection (inverse_vocab.py) at 4H-bar granularity.
+_ATR_WINDOW = 14  # bars for the ATR normaliser in Absorption's price_response
+_SWEEP_LOOKBACK_BARS = 12  # 48h / 4h — the "past 48h high/low" a Sweep must touch
+_VOCAB_HIST_WINDOW = (
+    180  # trailing window feeding the adaptive tf_net / price_response / vol pctiles
+)
+_LIQ_PULSE_FLOOR_BTC = (
+    50.0  # Step-4 absolute liquidation-pulse floor while the pctile is cold
+)
 
 # Cache for the expensive price-only per-bar series (σ / Hawkes BR / TDA L¹), keyed on a
 # closes signature. The full-history replay runs on every tick; these series only change when a
@@ -168,6 +185,7 @@ class PaperStrategyEngine:
         self._s1_trail = []
         self._s2_trail = []
         self._cusum_events = []  # (ts, cusum_type, direction, peak, threshold, z_window)
+        self._vocab_events = []  # (ts, vocab, direction, state, details) → v2_inverse_vocab_events
 
     # ── feature pipeline (mirrors replay.run_replay) ───────────────────────────
     def _precompute_price_features(self, closes):
@@ -371,6 +389,121 @@ class PaperStrategyEngine:
                 vocab[i].add("Absorption")
         return vocab, flow_dir
 
+    def _inverse_vocab_signals(self, df: pd.DataFrame, micro: Optional[dict]):
+        """Per-bar direction-aware Absorption/Sweep signals (§14.2, Wave S2C) for Strategy 2.
+
+        Returns (absorptions, sweeps): lists of AbsorptionSignal / SweepSignal, one per bar,
+        computed at 4H-bar granularity from data already loaded — bar OHLCV plus the taker
+        flow in `micro`. No sub-bar tick queries: in the paper replay a CUSUM trigger lands on
+        a bar boundary, so the bar *is* the trigger window. Percentile thresholds are adaptive
+        (inverse_vocab.adaptive_percentile) over a trailing window, so a feed with only a few
+        days of history abstains (absent) instead of asserting a signal — Absorption warms up
+        once ~30 tick-bars accrue; Sweep uses bar volume (full history) and can fire sooner."""
+        n = len(df)
+        empty_abs = [AbsorptionSignal(present=False) for _ in range(n)]
+        empty_swp = [SweepSignal(present=False) for _ in range(n)]
+        if n == 0:
+            return empty_abs, empty_swp
+
+        high = df["high"].values.astype(float)
+        low = df["low"].values.astype(float)
+        close = df["close"].values.astype(float)
+        open_ = df["open"].values.astype(float)
+        volume = df["volume"].values.astype(float)
+
+        # ATR (true range, rolling mean) — the price_response normaliser.
+        prev_close = np.concatenate([[close[0]], close[:-1]])
+        tr = np.maximum.reduce(
+            [high - low, np.abs(high - prev_close), np.abs(low - prev_close)]
+        )
+        atr = pd.Series(tr).rolling(_ATR_WINDOW, min_periods=1).mean().values
+
+        taker_net = micro.get("taker_net") if micro else None
+        taker_vol = micro.get("taker_vol") if micro else None
+
+        # Pre-compute the per-bar scalars so the adaptive histories are simple trailing slices.
+        tf_net = np.full(n, np.nan)
+        price_resp = np.full(n, np.nan)
+        for i in range(n):
+            if (
+                taker_net is not None
+                and taker_vol is not None
+                and np.isfinite(taker_vol[i])
+                and taker_vol[i] > 0
+            ):
+                tf_net[i] = abs(taker_net[i]) / taker_vol[i]
+            if atr[i] > 0:
+                price_resp[i] = abs(close[i] - open_[i]) / atr[i]
+
+        absorptions, sweeps = list(empty_abs), list(empty_swp)
+        for i in range(n):
+            lo_h = max(0, i - _VOCAB_HIST_WINDOW)
+            if taker_vol is not None and np.isfinite(taker_vol[i]):
+                absorptions[i] = detect_absorption(
+                    taker_net=float(taker_net[i]) if taker_net is not None else 0.0,
+                    taker_vol=float(taker_vol[i]),
+                    price_delta_abs=abs(close[i] - open_[i]),
+                    atr=float(atr[i]),
+                    tf_net_history=tf_net[lo_h:i],
+                    price_response_history=price_resp[lo_h:i],
+                )
+            # Sweep: touch of the *prior* 48h extreme (exclude the current bar).
+            lo_s = max(0, i - _SWEEP_LOOKBACK_BARS)
+            if i > 0:
+                high_48h = float(np.max(high[lo_s:i]))
+                low_48h = float(np.min(low[lo_s:i]))
+                reverted_high = high[i] >= high_48h and close[i] < high_48h
+                reverted_low = low[i] <= low_48h and close[i] > low_48h
+                sweeps[i] = detect_sweep(
+                    high_48h=high_48h,
+                    low_48h=low_48h,
+                    touch_high=float(high[i]),
+                    touch_low=float(low[i]),
+                    touch_volume=float(volume[i]),
+                    reverted_from_high=bool(reverted_high),
+                    reverted_from_low=bool(reverted_low),
+                    volume_history=volume[lo_h:i],
+                )
+        return absorptions, sweeps
+
+    def _cascade_pulses(self, df: pd.DataFrame, micro: Optional[dict], oi_series):
+        """Per-bar Step-4 cascade guards (§14.2, Wave S2C): (liq_pulse, oi_drop) bool arrays.
+
+        liq_pulse — bar liquidation volume above its adaptive 30d 95th pct, OR (while the pct
+                    history is still cold) above an absolute 50 BTC floor (the spec's empty-
+                    window fallback). Needs `micro['liq_vol']`; all-False if the feed is absent.
+        oi_drop   — bar-over-bar OI fall *rate* above its adaptive 95th pct.
+        Both fire only on real evidence → False when data is cold; the Cascade *state* veto in
+        Step 2 remains the hard gate, this is the finer intra-window guard."""
+        n = len(df)
+        liq = np.zeros(n, dtype=bool)
+        oi_drop = np.zeros(n, dtype=bool)
+
+        liq_vol = micro.get("liq_vol") if micro else None
+        if liq_vol is not None:
+            for i in range(n):
+                if not np.isfinite(liq_vol[i]):
+                    continue
+                lo = max(0, i - _VOCAB_HIST_WINDOW)
+                verdict = adaptive_percentile(liq_vol[lo:i], float(liq_vol[i]), 0.95)
+                if verdict is True or (
+                    verdict is None and liq_vol[i] >= _LIQ_PULSE_FLOOR_BTC
+                ):
+                    liq[i] = True
+
+        if oi_series is not None:
+            oi = np.asarray(oi_series, dtype=float)
+            rate = np.full(n, np.nan)
+            for i in range(1, min(n, len(oi))):
+                if np.isfinite(oi[i]) and np.isfinite(oi[i - 1]) and oi[i - 1] > 0:
+                    rate[i] = (oi[i - 1] - oi[i]) / oi[i - 1]  # >0 = OI fell
+            for i in range(n):
+                if np.isfinite(rate[i]) and rate[i] > 0:
+                    lo = max(0, i - _VOCAB_HIST_WINDOW)
+                    if adaptive_percentile(rate[lo:i], float(rate[i]), 0.95) is True:
+                        oi_drop[i] = True
+        return liq, oi_drop
+
     # ── per-bar processing ─────────────────────────────────────────────────────
     def process_frame(
         self,
@@ -425,6 +558,7 @@ class PaperStrategyEngine:
         self._s1_trail = []  # per-bar (ts, state, decision, snapshot) — the full decision trail (#2, GL1 T0.3)
         self._s2_trail = []
         self._cusum_events = []  # CUSUM threshold-cross events this replay → v2_cusum_events
+        self._vocab_events = []  # inverse-vocab signatures this replay → v2_inverse_vocab_events
 
         # Tick stream for the H1 Hawkes feed (point-in-time: only ticks ≤ bar time).
         tick_times = None if tick_times is None else list(tick_times)
@@ -433,6 +567,9 @@ class PaperStrategyEngine:
 
         # Per-bar Strategy-2 inverse-vocab + flow direction from real microstructure.
         vocab_series, flow_dir = self._micro_vocab_series(df, micro)
+        # Wave S2C: direction-aware §14.2 Absorption/Sweep + Step-4 cascade pulses.
+        absorptions, sweeps = self._inverse_vocab_signals(df, micro)
+        liq_pulse_series, oi_drop_series = self._cascade_pulses(df, micro, oi_series)
 
         for i in range(n):
             # Staleness (GL1 T0.4) is a live-cadence concept (data age vs wall-clock
@@ -557,6 +694,10 @@ class PaperStrategyEngine:
                     ts,
                     vocab=vocab_series[i],
                     flow_dir=flow_dir[i],
+                    absorption=absorptions[i],
+                    sweep=sweeps[i],
+                    liq_pulse=bool(liq_pulse_series[i]),
+                    oi_drop_pulse=bool(oi_drop_series[i]),
                     snapshot=snapshot,
                     blocked=is_current_bar and block_s2_entry,
                 )
@@ -722,6 +863,10 @@ class PaperStrategyEngine:
         ts,
         vocab=None,
         flow_dir=0.0,
+        absorption=None,
+        sweep=None,
+        liq_pulse: bool = False,
+        oi_drop_pulse: bool = False,
         snapshot=None,
         blocked: bool = False,
     ) -> None:
@@ -738,8 +883,26 @@ class PaperStrategyEngine:
             state_4h=state,
             inverse_vocab=list(vocab) if vocab else None,
             ofi_persistent_same_direction=ofi_persist,
+            liq_pulse=liq_pulse,
+            oi_drop_pulse=oi_drop_pulse,
+            absorption=absorption,
+            sweep=sweep,
             subaccount_nav_usdt=self.accounts.subaccount_2.nav,
         )
+        # Persist a direction-aware vocab event whenever a signature is present (§14.2, Wave
+        # S2C) — telemetry for what Step 3 actually saw, into v2_inverse_vocab_events.
+        if trig.triggered:
+            for sig, name in ((absorption, "Absorption"), (sweep, "Sweep")):
+                if sig is not None and getattr(sig, "present", False):
+                    self._vocab_events.append(
+                        (
+                            _as_dt(ts),
+                            name,
+                            getattr(sig, "direction", None),
+                            state,
+                            dict(getattr(sig, "details", {}) or {}),
+                        )
+                    )
         self._last_s2 = (ts, state, dec)  # latest S2 decision (for the UI "why" panel)
         self._s2_trail.append(
             (
@@ -939,6 +1102,12 @@ class PaperStrategyEngine:
         backfills once and no-ops thereafter (fixes the orphan-table diagnosis: the events
         fired all along but were never persisted)."""
         return self._cusum_events
+
+    def vocab_events(self) -> list:
+        """Inverse-vocab signatures seen at S2 trigger bars this replay, as
+        (timestamp, vocab, direction, state, details) tuples for v2_inverse_vocab_events
+        (Wave S2C Step 3 telemetry — what the direction-aware classifier actually observed)."""
+        return self._vocab_events
 
     def _summary(self, df, states) -> dict:
         from collections import Counter

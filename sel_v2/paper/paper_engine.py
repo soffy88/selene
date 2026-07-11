@@ -198,7 +198,14 @@ class PaperEngine:
         n = len(df)
         out = {
             k: np.full(n, np.nan)
-            for k in ("taker_net", "taker_vol", "lob_imb", "lob_depth", "entropy")
+            for k in (
+                "taker_net",
+                "taker_vol",
+                "lob_imb",
+                "lob_depth",
+                "entropy",
+                "liq_vol",
+            )
         }
         cutoff = df["time"].iloc[-1] - timedelta(days=lookback_days)
         # bar open time -> row index
@@ -222,6 +229,16 @@ class PaperEngine:
                 self._symbol,
                 cutoff,
             )
+            # Per-bar liquidation volume (Wave S2C Step-4 cascade guard). Sums both sides;
+            # NaN where no liquidations covered the bar (feed is sparse), so the pctile stays
+            # cold and the 50 BTC absolute floor governs.
+            liq = await conn.fetch(
+                "SELECT time_bucket('4 hours', timestamp) AS b, "
+                "  COALESCE(SUM(size),0) AS liqvol "
+                "FROM v2_liquidations WHERE symbol=$1 AND timestamp >= $2 GROUP BY b",
+                self._symbol,
+                cutoff,
+            )
         for r in flow:
             i = idx.get(r["b"])
             if i is not None:
@@ -236,6 +253,10 @@ class PaperEngine:
                     out["lob_depth"][i] = float(r["depth"])
                 if r["entropy"] is not None:
                     out["entropy"][i] = float(r["entropy"])
+        for r in liq:
+            i = idx.get(r["b"])
+            if i is not None and r["liqvol"] is not None:
+                out["liq_vol"][i] = float(r["liqvol"])
         return out
 
     @staticmethod
@@ -469,6 +490,12 @@ class PaperEngine:
             # rounds of diagnosis. Upsert is idempotent on (timestamp, cusum_type).
             if hasattr(engine, "cusum_events"):
                 await self._writer.write_cusum_events_bulk(engine.cusum_events())
+
+            # Inverse-vocab signatures (Wave S2C Step 3 telemetry).
+            if hasattr(engine, "vocab_events"):
+                await self._writer.write_inverse_vocab_events_bulk(
+                    engine.vocab_events()
+                )
 
             # Latest per-strategy decision (the "why no entry this bar" the UI shows).
             from datetime import datetime as _dt

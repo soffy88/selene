@@ -10,9 +10,9 @@ Update this file whenever a STUB is added or removed.
 | STUB 项 | 当前替代实现 | 真实实现需要 | Wave 几接入 |
 |---|---|---|---|
 | **OFI 持续性** (`ofi_persistent_same_direction`) | `evaluate()` 参数，默认 `None`。`None` 或 `False` → Type B 不触发 → ABORT | LOB collector 实时 OFI 方向 60s 窗口 | Wave 5 (LOB 30 天后) |
-| **Sweep / Absorption / Crowding 识别** (`inverse_vocab`) | 外部字符串列表参数，无自动识别 | 反推词汇引擎（Wave 5） | Wave 5 |
-| **liq_pulse** (`strategy2_entry`) | 布尔参数，默认 `False` | `v2_liquidations` 表 + 5min 滚动强度 | 无数据源，暂无时间表 |
-| **cross_spread_pct** (`strategy2_entry`) | 浮点参数，默认 `None` | 多交易所 ticker | 无数据源，暂无时间表 |
+| ~~**Sweep / Absorption 识别** (`inverse_vocab`)~~ | ✅ **Wave S2C (2026-07-11)** — `sel_v2/strategies/inverse_vocab.py` 方向感知检测（§6/§14.2），engine 从真实 tick/bar 微结构算好后传入 | — | 已接入 |
+| ~~**liq_pulse** (`strategy2_entry`)~~ | ✅ **Wave S2C** — engine 从 `v2_liquidations` 每 bar 聚合，自适应 p95 + 50 BTC 兜底；新增 OI-drop 条件 | — | 已接入 |
+| **cross_spread_pct** (`strategy2_entry`) | Step 5 逻辑已在（浮点参数），数据源待接 | Binance ticker 轮询器（Wave S2C Part 3） | Wave S2C Part 3 |
 | **H1 Hawkes 参数** | Wave 1 H2 MLE 值作为 cold-start | 7 天 tick 数据后 fit_gmm() | Wave 6/7 (paper Month 3+) |
 
 ---

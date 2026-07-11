@@ -192,6 +192,10 @@ CREATE TABLE IF NOT EXISTS v2_inverse_vocab_events (
 );
 SELECT create_hypertable('v2_inverse_vocab_events', 'timestamp',
     if_not_exists => TRUE);
+-- Natural key (Wave S2C): one row per (bar, vocab) so the per-tick full-history replay
+-- upserts instead of duplicating the same signature each cycle (PK is a random UUID).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_v2_inverse_vocab_ts_vocab
+    ON v2_inverse_vocab_events (timestamp, vocab);
 
 -- ============================================================
 -- TRADING RECORDS (hypertable on entry_time)

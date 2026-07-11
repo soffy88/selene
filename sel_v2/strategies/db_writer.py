@@ -172,6 +172,47 @@ class DBWriter:
             logger.warning("DBWriter.write_cusum_events_bulk failed: %s", exc)
             return 0
 
+    async def write_inverse_vocab_events_bulk(self, rows) -> int:
+        """Upsert direction-aware inverse-vocab signatures into v2_inverse_vocab_events
+        (Wave S2C Step-3 telemetry). Rows are (timestamp, vocab, direction, state, details).
+        Idempotent on (timestamp, vocab) so the full-history replay backfills once. Direction
+        + detector internals go into tool_metadata; observation_only=TRUE (this records what
+        Step 3 *saw*; the entry decision itself lives in v2_strategy_decision)."""
+        if self._conn is None or not rows:
+            return 0
+        try:
+            encoded = []
+            for ts, vocab, direction, state, details in rows:
+                meta = {"direction": direction, **(details or {})}
+                encoded.append(
+                    (
+                        ts,
+                        vocab,
+                        state,
+                        "inverse_vocab",
+                        True,
+                        json.dumps(meta, default=str),
+                    )
+                )
+            await self._conn.executemany(
+                """
+                INSERT INTO v2_inverse_vocab_events
+                    (timestamp, vocab, associated_state, tool_source,
+                     observation_only, tool_metadata)
+                VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+                ON CONFLICT (timestamp, vocab) DO UPDATE SET
+                    associated_state = EXCLUDED.associated_state,
+                    tool_metadata = EXCLUDED.tool_metadata
+                WHERE v2_inverse_vocab_events.tool_metadata
+                      IS DISTINCT FROM EXCLUDED.tool_metadata
+                """,
+                encoded,
+            )
+            return len(rows)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("DBWriter.write_inverse_vocab_events_bulk failed: %s", exc)
+            return 0
+
     # ── v2_decision_trail ──────────────────────────────────────────────────────
 
     async def write_strategy2_decision(
