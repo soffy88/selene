@@ -197,29 +197,67 @@ def test_observations_graceful_when_table_absent(monkeypatch):
     assert asyncio.run(api.sel_observations()) == []
 
 
-def test_run_recent_observations_returns_seven_tools():
+def test_run_recent_observations_returns_all_tools():
     import numpy as np
     import pandas as pd
     from sel_v2.observation_tools.runner import run_recent_observations
+
     rng = np.random.default_rng(3)
     n = 600
     close = 30000 * np.exp(np.cumsum(rng.normal(0, 0.01, n)))
-    df = pd.DataFrame({"time": [pd.Timestamp("2024-01-01") + pd.Timedelta(hours=4 * i) for i in range(n)],
-                       "close": close, "volume": 1000.0})
+    df = pd.DataFrame(
+        {
+            "time": [
+                pd.Timestamp("2024-01-01") + pd.Timedelta(hours=4 * i) for i in range(n)
+            ],
+            "close": close,
+            "volume": 1000.0,
+        }
+    )
     res = run_recent_observations(df, window=540)
-    assert len(res) == 7
-    assert {r.tool_id for r in res} == {"B1", "B2", "TDA2", "I1", "T2", "W2", "H3"}
+    # 7 legacy + 3 v2.2 lens tools (CHAN2/CHAN3/ICT2; CHAN1 rejected offline)
+    assert len(res) == 10
+    assert {r.tool_id for r in res} == {
+        "B1",
+        "B2",
+        "TDA2",
+        "I1",
+        "T2",
+        "W2",
+        "H3",
+        "CHAN2",
+        "CHAN3",
+        "ICT2",
+    }
     assert all(hasattr(r, "signal") and hasattr(r, "value") for r in res)
 
 
 def test_counterfactual_summarises_trades(monkeypatch):
-    e1 = datetime(2024, 7, 15, tzinfo=timezone.utc); x1 = datetime(2024, 7, 22, tzinfo=timezone.utc)
-    e2 = datetime(2024, 9, 6, tzinfo=timezone.utc); x2 = datetime(2024, 9, 9, tzinfo=timezone.utc)
+    e1 = datetime(2024, 7, 15, tzinfo=timezone.utc)
+    x1 = datetime(2024, 7, 22, tzinfo=timezone.utc)
+    e2 = datetime(2024, 9, 6, tzinfo=timezone.utc)
+    x2 = datetime(2024, 9, 9, tzinfo=timezone.utc)
     rows = [
-        {"strategy": "strategy_1", "direction": "SHORT", "entry_time": e1, "entry_price": 67000.0,
-         "exit_time": x1, "exit_price": 53000.0, "pnl_usdt": 7665.0, "exit_reason": "Time stop"},
-        {"strategy": "strategy_1", "direction": "SHORT", "entry_time": e2, "entry_price": 54000.0,
-         "exit_time": x2, "exit_price": 57000.0, "pnl_usdt": -2214.0, "exit_reason": "Drawdown stop"},
+        {
+            "strategy": "strategy_1",
+            "direction": "SHORT",
+            "entry_time": e1,
+            "entry_price": 67000.0,
+            "exit_time": x1,
+            "exit_price": 53000.0,
+            "pnl_usdt": 7665.0,
+            "exit_reason": "Time stop",
+        },
+        {
+            "strategy": "strategy_1",
+            "direction": "SHORT",
+            "entry_time": e2,
+            "entry_price": 54000.0,
+            "exit_time": x2,
+            "exit_price": 57000.0,
+            "pnl_usdt": -2214.0,
+            "exit_reason": "Drawdown stop",
+        },
     ]
     _patch_pool(monkeypatch, _Conn(rows=rows))
     out = asyncio.run(api.sel_counterfactual())

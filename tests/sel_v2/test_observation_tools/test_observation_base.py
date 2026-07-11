@@ -3,6 +3,7 @@ Tests for ObservationTool base class and isolation discipline (v2.1 §2.2).
 
 Critical check: observation tool outputs NEVER flow into Strategy 1/2 code.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -46,9 +47,12 @@ def make_bar(ret: float = 0.001, vol: float = 100.0) -> BarFeatures:
 
 # ── Base class contract ───────────────────────────────────────────────────────
 
+
 def test_all_tools_are_subclasses_of_observation_tool():
     for cls in ALL_TOOL_CLASSES:
-        assert issubclass(cls, ObservationTool), f"{cls.__name__} not subclass of ObservationTool"
+        assert issubclass(cls, ObservationTool), (
+            f"{cls.__name__} not subclass of ObservationTool"
+        )
 
 
 def test_all_tools_have_tool_id():
@@ -106,6 +110,7 @@ def test_warming_label_when_not_ready():
 
 # ── Isolation discipline (v2.1 §2.2) ─────────────────────────────────────────
 
+
 def test_observation_tools_not_imported_in_strategy_modules():
     """
     Strategy 1 / Strategy 2 / state machine code must NOT import from
@@ -139,16 +144,18 @@ def test_observation_tools_not_imported_in_strategy_modules():
 
 # ── ObservationRunner ─────────────────────────────────────────────────────────
 
-def test_runner_has_7_tools():
+
+def test_runner_has_10_tools():
+    # 7 legacy + 3 v2.2 lens tools (CHAN2/CHAN3/ICT2; CHAN1 rejected offline)
     runner = ObservationRunner()
-    assert len(runner._tools) == 7
+    assert len(runner._tools) == 10
 
 
-def test_runner_process_bar_sync_returns_7_results():
+def test_runner_process_bar_sync_returns_10_results():
     runner = ObservationRunner()
     bar = make_bar()
     results = runner.process_bar_sync(bar)
-    assert len(results) == 7
+    assert len(results) == 10
 
 
 def test_runner_process_bar_sync_all_observation_results():
@@ -193,8 +200,8 @@ def test_runner_tool_exception_does_not_propagate():
     runner._tools.append(_BrokenTool())
     bar = make_bar()
     results = runner.process_bar_sync(bar)
-    # Should return results for the 7 real tools only (broken one is skipped)
-    assert len(results) == 7
+    # Should return results for the 10 real tools only (broken one is skipped)
+    assert len(results) == 10
 
 
 def test_runner_no_db_does_not_write(monkeypatch):
@@ -202,4 +209,4 @@ def test_runner_no_db_does_not_write(monkeypatch):
     runner = ObservationRunner(db_writer=None)
     bar = make_bar()
     results = runner.process_bar_sync(bar)
-    assert len(results) == 7
+    assert len(results) == 10

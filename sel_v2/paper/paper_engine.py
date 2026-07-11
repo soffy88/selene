@@ -414,10 +414,15 @@ class PaperEngine:
         )
 
     async def _refresh_observations(self, df, oi_series, funding_series):
-        """Run the 7 observation-only tools over the recent window and persist their latest
+        """Run the observation-only tools over the recent window and persist their latest
         readings for the SEL observation panel (#3). Throttled to a NEW BAR only — the tools
         are windowed and expensive (HMM refit etc.), and don't change intra-bar, so running
-        them on every tick would be wasteful. Non-blocking: failures never stop the engine."""
+        them on every tick would be wasteful. Non-blocking: failures never stop the engine.
+
+        v2.2 lens batch: the CHAN/ICT lens tools additionally emit per-bar vocab
+        events (chan_divergence / chan_pivot / swing_structure) collected via
+        fired_sink and upserted idempotently on (timestamp, vocab) — the window
+        replay re-generates identical events each refresh, so this self-heals."""
         try:
             latest_ts = df["time"].iloc[-1]
             if getattr(self, "_last_obs_bar_ts", None) == latest_ts:
@@ -425,14 +430,35 @@ class PaperEngine:
             from sel_v2.observation_tools.runner import (
                 run_recent_observations,
                 persist_latest_observations,
+                persist_lens_vocab_events,
             )
 
+            # same records that feed write_states_bulk → associated_state matches
+            # v2_state_history exactly. Record timestamps come from df["time"].values
+            # (bar_runner.py) — tz-NAIVE numpy datetime64 in UTC — while the runner
+            # keys bars by tz-aware python datetimes; normalize or every lookup misses.
+            import pandas as pd
+
+            def _utc_dt(ts):
+                t = pd.Timestamp(ts)
+                t = t.tz_localize("UTC") if t.tz is None else t.tz_convert("UTC")
+                return t.to_pydatetime()
+
+            records = getattr(self._engine, "records", None) or []
+            state_by_ts = {_utc_dt(r.timestamp): r.state.value for r in records}
+            fired: list = []
             results = run_recent_observations(
-                df, oi_series=oi_series, funding_series=funding_series
+                df,
+                oi_series=oi_series,
+                funding_series=funding_series,
+                state_by_ts=state_by_ts,
+                fired_sink=fired,
             )
             if results:
                 async with self._pool.acquire() as conn:
                     await persist_latest_observations(conn, results)
+                    if fired:
+                        await persist_lens_vocab_events(conn, fired)
                 self._last_obs_bar_ts = latest_ts
         except Exception as e:  # noqa: BLE001
             logger.warning("observation refresh failed: %s", e)

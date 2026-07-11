@@ -34,7 +34,22 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-_OBSERVATION_TOOL_IDS = ["B1", "B2", "TDA2", "I1", "T2", "W2", "H3"]
+_OBSERVATION_TOOL_IDS = [
+    "B1",
+    "B2",
+    "TDA2",
+    "I1",
+    "T2",
+    "W2",
+    "H3",
+    # v2.2 lens batch (CHAN-1 rejected offline — analysis/lens_verdict_v1.md;
+    # ICT1/vpin events carry history_days in metadata: the Month-3 evaluation
+    # must exclude the <30d pilot era)
+    "CHAN2",
+    "CHAN3",
+    "ICT2",
+    "ICT1",
+]
 
 _VOCAB_TO_TOOL = {
     "hmm_disagreement": "B1",
@@ -44,6 +59,10 @@ _VOCAB_TO_TOOL = {
     "te_funding_to_price": "T2",
     "multifractal_spectrum_wide": "W2",
     "hawkes_cascade_early_warning": "H3",
+    "chan_divergence": "CHAN2",
+    "chan_pivot": "CHAN3",
+    "swing_structure": "ICT2",
+    "vpin": "ICT1",
 }
 
 _TOOL_NAMES = {
@@ -54,6 +73,10 @@ _TOOL_NAMES = {
     "T2": "TE 滚動監控",
     "W2": "Wavelet 多分形谱宽",
     "H3": "Hawkes Cascade 早期予警",
+    "CHAN2": "缠论 背驰",
+    "CHAN3": "缠论 中枢重叠",
+    "ICT2": "ICT Swing结构 BOS/CHoCH",
+    "ICT1": "ICT VPIN 毒性流",
 }
 
 

@@ -449,6 +449,23 @@ services:
 
   # Weekly live capture-rate monitor (Wave V22-D, offline follow-up to V22-C). Pure
   # read+append diagnostic — no strategy/state coupling, no live trading impact.
+  # ICT-1 VPIN live monitor (v2.2 lens batch, observation-only). Polls v2_ticks
+  # every 5 min, upserts high-VPIN events into v2_inverse_vocab_events
+  # (vocab='vpin'). Stateless restart recovery (trailing-30d tick replay).
+  v2-vpin-monitor:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    command: python -m sel_v2.observation_tools.vpin_monitor --serve
+    env_file: .env
+    environment:
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - SYMBOLS=BTC-USDT
+    networks:
+      - helios-net
+    restart: unless-stopped
+
   # Sleeps until the next Monday 00:30 UTC, runs sel_v2/offline/capture_monitor.py,
   # writes v2_capture_rate_weekly + appends sel_v2/reports/capture_rate_weekly.md.
   v2-capture-monitor:

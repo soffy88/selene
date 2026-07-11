@@ -36,6 +36,16 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
+- **v2.2 lens batch (2026-07-11) — 实施完成,进入 Month-3 采集期**:三视角同数据实证
+  (sel/缠论/ICT,`analysis/lens_{sel,chan,ict,verdict}_v1.md`)→ CHAN-1 触发失败标准
+  **废弃**(A/C 前向收益无差异,p=0.44/0.79);CHAN-2/CHAN-3/ICT-2 接入 paper engine
+  obs refresh(vocab `chan_divergence`/`chan_pivot`/`swing_structure`),ICT-1 VPIN 独立
+  服务 `v2-vpin-monitor`(vocab `vpin`)。全部 observation-only,零 `states/**`/
+  `strategies/**` 改动,epoch 指纹逐字未变(仍为 af6f7d3d DIRTY 待人工,见 Needs Human)。
+  **待办**:H-ICT1a/b 数据不足,~2026-08-05 tick 满 30 天后重跑
+  `python -m sel_v2.offline.lens_study`;Month-3 评估 vpin 须按 metadata.history_days
+  剔除 <30d(tool_evaluator 已含 5 个新映射)。出池记录见候选池文档
+  `analysis/v2_2_candidate_pool_v1.md`。
 - P2 cleanups (P2-4 tie-aware Spearman, P2-5 vwap, P2-3 router split). P2-1 done (see below).
 - SEL2-SPEC-GL1 Phase 0 (T0.1–T0.6) **done and deployed** (see below). Validation epoch:
   first epoch (e678e8fb, started 2026-07-08 23:17) was **reset on 2026-07-09** per R1 —
