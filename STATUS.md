@@ -8,11 +8,14 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔒 Never
 
-- **Never enable live mainnet trading.** The system MUST stay `EXEC_MODE=NOTIFY_ONLY`.
-  No deployed strategy has out-of-sample alpha evidence yet. Do NOT set
-  `AUTO_EXEC` / `CONFIRM_THEN_EXEC` with `ENVIRONMENT=production`, and do NOT
-  remove the `_assert_safe_exec_mode` boot guard or the `I_UNDERSTAND_LIVE_AUTO_EXEC`
-  ack requirement.
+- **Never enable live mainnet trading.** `EXEC_MODE` MUST stay in a non-live mode
+  (`NOTIFY_ONLY` or `PAPER` — PAPER is pure simulation: no exchange adapter calls,
+  fills priced off `cw4:prices`). No deployed strategy has out-of-sample alpha
+  evidence yet. Do NOT set `AUTO_EXEC` / `CONFIRM_THEN_EXEC` with
+  `ENVIRONMENT=production`, and do NOT remove the `_assert_safe_exec_mode` boot
+  guard or the `I_UNDERSTAND_LIVE_AUTO_EXEC` ack requirement.
+  *(2026-07-10: wording amended by explicit user decision — original said "MUST stay
+  NOTIFY_ONLY"; user instructed enabling paper order placement for the v4 chain.)*
 - Never weaken a risk gate to make a test pass. Gates fail closed.
 - Never treat a missing/None feature as a confirmed signal (three-state discipline).
 - Never silently smooth a *signal* in the sel_v2 path (state-machine dwell is OK).
@@ -21,7 +24,14 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
-- P2 cleanups (P2-4 tie-aware Spearman, P2-1 OFI orphan, P2-5 vwap, P2-3 router split).
+- P2 cleanups (P2-4 tie-aware Spearman, P2-5 vwap, P2-3 router split). P2-1 done (see below).
+- SEL2-SPEC-GL1 Phase 0 (T0.1–T0.6) **done and deployed** (see below). Validation epoch:
+  first epoch (e678e8fb, started 2026-07-08 23:17) was **reset on 2026-07-09** per R1 —
+  the CUSUM threshold-deadlock fix (below) changes `strategies/cusum_short.py`, which
+  invalidates the running epoch by design; human approval = explicit user instruction
+  ("调整使其能开仓", 2026-07-09). New epoch **fe4782f9 started 2026-07-09 23:52 UTC**
+  (status CLEAN) — 30-day clock restarted; no further `states/**`/`strategies/**` change
+  without another explicit reset.
 
 ---
 
@@ -33,7 +43,6 @@ rounds (see memory `opt-pr-3`).
 
 ## 📋 Backlog — P2 (cleanup / UX)
 
-- [ ] **P2-1** `v2_ofi_features` orphan store — deferred (documented in Needs-Human).
 - [ ] **P2-2** Misleading observation-tool names — deferred (docstrings already self-disclaim;
       rename is high-import-churn for low value).
 - [ ] **P2-3** smart_router cross-venue split not executed — deferred (single-venue +
@@ -42,6 +51,165 @@ rounds (see memory `opt-pr-3`).
 ---
 
 ## ✅ Done
+
+### Wave V22-A:v2.2 离线验证门 (2026-07-11)
+
+D1-D5(v2.2 设计草案拍板)的离线 gate,三门裁决,**不进 V22-B**(按本 Wave 明示条款,
+无论过没过都停):
+
+- **Part 1** `sel_v2/offline/substate.py`:Surging 子状态机(Impulse/Pullback/
+  Consolidation + RE_PUSH/STRUCTURE_BREAK/TERMINAL_FLAG),纯函数,offline-only,
+  7 单测(容器内手动跑绿,本地无 pytest)。
+- **Part 2** `sel_v2/offline/branch_b_sim.py`:分支 B 金字塔仿真器(D1/D2 30/45/25%
+  分批、D3 移动止损、D4 terminal 减半、D5 30天时间止损,taker+滑点成本),10 单测绿。
+- **Part 3** `sel_v2/offline/v22_gate_report.py` + `sel_v2/reports/v22_offline_gate_v1.md`:
+  对 2 年 4429 根 BTC-USDT 4H 真实数据跑出裁决 —— **H-V22-1(触发次数≥20)= 9,FAIL**
+  (2年仅13段Surging,与 Wave S2C 基线一致的结构性稀缺);**H-V22-2(每腿净期望>0)=
+  -0.708%,FAIL**;**H-V22-3(止损假阳率<40%)= 0%(0/4),PASS(小样本)**。
+  `v2_decision_trail` 已写入 `decision_type='v22_design_ruling'` 一行(D1-D5 原文 +
+  裁决数字)。
+- **过程中发现并修的真 bug**(非调参):跑真实数据时发现原方向推断(3根bar回看)把全部
+  13段都判成"多头",含数段实际跌超15-20%的段——换更长回看窗口(6/12/24/48)依然如此,
+  说明 Surging 进入条件本身可能在触发瞬间总是伴随短线上跳,与该段真实趋势无关。改为用
+  segment 自身实际净变动定方向(离线全量回放语境下合法),修后 9 腿里 8 空 1 多。已作为
+  Wiki 层面的发现记入报告(暗示 live 状态机本身可能缺 Down 触发路径,而非仅子状态机的
+  bug)——不在本 Wave 范围内动 states/**。
+- 红线全程遵守:未碰 live 代码路径 / epoch / v2_state_history / v2_trades;仅动
+  `sel_v2/offline/**`。
+
+### V4 信号链复活:market-scanner 小币趋势发现 (2026-07-10)
+
+v4 链(signal→portfolio→risk→execution)架构完整但两年"无头"——`market.candles`/
+`market.raw` 全仓库零生产者,signal.scored 恒 0;且不存在任何选币/扫描组件。本轮补齐:
+
+- **新服务 `services/scanner/`(market-scanner)**:①发现循环——一次 REST 拉全市场
+  24h ticker(Binance USD-M,与 execution adapter 同 venue,经 helios-proxy),按
+  流动性下限($20M)×24h 涨幅(≥5%)×量能激增(vs 上轮快照,截断 [0.5,3])排序取
+  top-5,写 `cw4:moonshots`(gateway `/api/v4/moonshots` 由死端点复活);②喂送循环——
+  watchlist(核心 BTC/ETH/SOL + 发现币)新符号回填 249 根 1h K 线热身 regime 检测器,
+  之后每根新收盘 K 线发 `market.candles`(RSI/EMA20/50/200 由扫描器算好),每 3min 发
+  `market.raw`(funding/OI 变化/多空比)。REST 客户端 3 次重试(实测 helios-proxy 上游
+  socks5 阵发抖动,iris 同款重试稳定多日)。15 个纯函数/契约单测全绿。
+- **signal 服务 `backfill=true` 契约**:回填 K 线只热身 detector/缓存不评分(否则对
+  历史价格发信号 + 占用 1h 冷却窗)。
+- **修复两个数据一来就炸的潜伏依赖**:signal(`regime/detector.py` 的 `oprim.atr`、
+  HMM 的 `pearson_spearman_corr`)与 risk(`var_engine` 的 `value_at_risk`)镜像缺
+  vendored `oprim`——此前 `market.candles` 永远无消息,这些懒加载路径从未执行过。
+  两个 Dockerfile 照 sel_v2 模式补 `COPY vendor/oprim` + eager deps。
+- **实测端到端(2026-07-10)**:扫描器发现 TAC(+100%)/US(+56%)/TAG(+31%)等 5 个真实
+  趋势小币 → 种子回放 regime 迁移正常(检测出 TRENDING_UP/DOWN)→ **signal.scored 首次
+  非零**(TACUSDT SHORT_SETUP win_p=0.67 actionable、SOLUSDT SHORT win_p=0.61)→
+  portfolio 完成 Kelly 定仓(SIZED ... kelly=0.229 notional=$1000)→ execution 按
+  NOTIFY_ONLY 设计停在门口(🔒 Never:EXEC_MODE 不得离开 NOTIFY_ONLY,已遵守)。
+  注:首批信号方向是 SHORT(对 +100% 抛物线币,composite 的 RSI/funding 反挤压逻辑
+  判定超买回落)——这是评分器的既有设计,趋势跟随型(LONG_SETUP/TREND_CONFIRM)在
+  TRENDING_UP regime 下会被加权放行,未为"演示好看"而改因子方向。
+- 已知降级(非阻塞):HMM 对新表冷启动 range、动态权重回退基础权重、risk 动态相关性门
+  在 candles 数据积累前走静态 CORR_GROUPS(小币不在组内=放行,相关性聚集暂无守卫);
+  onchain 因子仅覆盖 BTC/ETH/SOL,小币恒 0。
+
+**PAPER 开单落地(2026-07-10,用户拍板"一定要让能开单,小币种衰竭开空也可以")**:
+- `EXEC_MODE=PAPER` 在 compose 写死(🔒 Never 同步修订为"禁 live 模式";`.env:34`
+  成死配置待人工清理,见 Needs Human)。PAPER = 纯模拟撮合,零 exchange adapter 调用。
+- 落地过程中排掉的四个连环障碍:①v4 全套 PG 表(orders/signals/candles/audit_log 等)
+  从未建过——`infra/timescaledb/schema.sql` 首次应用到 selene 库 + selene_app 授权
+  (表+sequence);②`cw4:prices` 无人写(PAPER 成交定价 + monitoring_loop 的 SL/TP
+  监控全靠它)——market-scanner 每 60s 写入 watchlist 实时价;③`cw4:execution:halt`
+  熔断键是 2026-07-03 的陈年遗留(deadman_heartbeat_stale,链还是死的年代 healthcheck
+  设的,永不过期),经操作员端点 `/execution/halt/clear` 清除;④risk 的 VaR/相关性门
+  确认对缺表优雅降级(不 fail-closed),放行安全。
+- **首笔 PAPER 成交实证(2026-07-10 10:07 UTC)**:VELVETUSDT(发现的趋势小币)
+  SHORT_SETUP win_p 达标 → Kelly 定仓 $1000 → risk.check→risk.approved 全程过门 →
+  FSM 走完 SLIPPAGE_ESTIMATE→ROUTING→SUBMITTING→PENDING_ACK→OPEN→FILLED→**MONITORING**,
+  `[PAPER] filled VELVETUSDT SELL qty=2103.05 price=0.4903`,orders 表落库,
+  order.lifecycle 事件发布,SL/TP 监控读实时价运行中。SOL/TAC 空单信号随后跟进。
+
+### 策略开仓能力修复 (2026-07-09) — S1/S2 为何两年零开仓,及处置
+
+Evidence-first diagnosis (decision-trail audit + full-history simulation over 4,422 bars):
+
+- **S2 从未启用**:`v2_strategy_params` 空表 → `HawkesParams.from_h2_reference()` 抛错 →
+  S2 整体禁用。**处置**:跑了设计好的 Wave 1 校准 `calibrate_all --from-db`(η=0.556 次临界,
+  h2_mu/alpha/beta_ref + branching_ratio_threshold + tda1_l1_p90/95/97 全部落库),S2 现已启用
+  ("Loaded 7 strategy parameters",disabled 警告消失)。零代码改动。
+- **CUSUM 自适应阈值死锁(真 bug,已修)**:`cusum_short.py` 只在**触发时**记录峰值,但阈值
+  要 ≥20 个峰值样本才从冷启动 2.0 切到"滚动 p95 峰值"——没触发就没样本,没样本阈值就永远
+  卡 2.0,而 4H bar 上 C 在状态门开着的 bar 里最高只到 1.26 → 鸡生蛋死锁,自适应机制从未
+  激活。**修复**:excursion 自然衰减归零时记录峰值(每段 excursion 恰好采样一次,触发分支
+  不再重复记录)。4 个新测试(无触发也能热身/对自适应阈值触发/不重复采样/无时间戳保持旧行为),
+  原 15 个测试全过。
+- **S1 结构性稀缺(设计属性,未改)**:全历史联合仿真显示 CUSUM 触发(9.2% bars)全部落在
+  Surging(S1 禁入态)——趋势推高 CUSUM 的同时把状态机推进 Surging,两个条件天然互斥;
+  Coiling 两年出现 0 次,Drifting_Charged 36 次且全在 2026-07(OI/funding/entropy 数据可用
+  之后)。修复自适应阈值后 S1 联合条件仍为 0 次(阈值在趋势市自适应地更高)。**不为强行
+  开仓魔改 S1**——它的开仓能力取决于数据完备时代积累出的蓄能状态,7 月起 near-miss
+  (C=1.26 vs h=1.69)已在出现。S2(仅 Cascade 禁入,趋势里可交易)才是实际交易主力。
+- **paper 引擎校准阈值接线**(`paper/paper_engine.py`,壳层):`_reprocess_inner` 现从
+  v2_strategy_params 读 `h2_branching_ratio_threshold`/`tda1_l1_threshold_p95` 传给引擎
+  (replay.py 早有同款,paper 路径一直漏接,校准后仍跑硬编码默认值)。
+- 顺手修复:`_s1/_s2_trail` 在 `__post_init__` 初始化(修好存量失败
+  `test_s2_opens_when_all_conditions_align`——恰是"S2 全条件对齐会开仓"的端到端证明);
+  `test_nav_is_consistent_with_realized_pnl` 的"结束时必无持仓"是冻结阈值年代的场景假设,
+  改为对开仓情形也成立的 NAV 守恒式。510 passed,存量失败 6→5。
+- **R1**:cusum_short.py 属 `strategies/**` 冻结层,依用户明示指令修改并重置 epoch(见上)。
+
+### GL1 T0.1–T0.4 (2026-07-08) — `docs/SEL2-SPEC-GL1.md`
+
+- **T0.1** LOB entropy variance de-STUB'd: `sel_v2/features/lob_entropy.py` computes rolling
+  variance of `entropy_4h` (6-bar/24h window) + 3-bar monotone rise, wired through `BarRunner`
+  into `states/critical_logic.py` A2 (was permanently `None`). Verified against real production
+  data: 31/34 bars non-None, 7 bars `entropy_variance_rising=True`; Critical Path 1 (A_full)
+  confirmed reachable end-to-end (`tests/sel_v2/test_lob_depth_pctile_wiring.py`).
+- **T0.2** Sampling-density analysis (`docs/reports/GL1-T0.2-lob-sampling.md`) — **resolved,
+  no longer NEEDS-HUMAN**: initial stride-thinning test showed degradation (Pearson 1.0→0.89
+  at 120s), inconclusive on its own. Self-verified with two follow-ups on the full 28,167-
+  snapshot series: (1) ACF of the raw entropy series drops to 0.094 at lag=1 (60s) — already
+  near-memoryless at 60s, so there's no slow structure a coarser regular sample could miss;
+  (2) 200-trial random-subsample control at matched sample counts reproduces the same
+  degradation as regular-stride thinning (120s: stride Pearson=0.904 vs random 0.915±0.025;
+  300s: stride=0.791 vs random 0.745±0.080) — stride and random subsampling are statistically
+  indistinguishable, which is what you'd see if the degradation is pure estimator noise from
+  fewer samples, not systematic aliasing of real fast dynamics. **Conclusion: current ~60s
+  cadence is adequate for entropy_variance; no WS depth-diff follow-up spec needed.**
+- **T0.3** P2-1 (D1) landed: `v2_strategy_decision.decision_trail` JSONB column (schema.sql)
+  now carries the full numeric snapshot (OFI/CUSUM/funding/OI/entropy/hawkes/tda + thresholds)
+  each bar's decision actually used, written by `StrategyEngine._bar_snapshot` /
+  `DBWriter.write_decision_trail_bulk`. `ofi_persister` removed from compose;
+  `v2_ofi_features` marked DEPRECATED (kept, not dropped) — was a write-only duplicate of the
+  same data the engine already computes inline (see prior Needs-Human entry, now resolved).
+- **T0.4** Staleness matrix landed: `sel_v2/runtime/staleness.py` is the single point that
+  decides ticks(90s)/funding_oi(300s)/bar_4h(missing boundary)/lob(300s) freshness →
+  enforcement, per the GL1 T0.4 matrix (17 unit tests, one per matrix cell). Wired as
+  shell-layer guards in `StrategyEngine` (blocks S1/S2 new entries, suppresses only the
+  CUSUM-reversal exit via its existing `priority` field — drawdown/time/Cascade exits
+  untouched, `strategies/**` itself unmodified per R1) and only applied to the *current* bar
+  of each replay (staleness is a live/now concept; historical bars in the same replay aren't
+  retroactively flagged). `PaperEngine._compute_staleness` queries real freshness each cycle
+  and logs transitions to `v2_staleness_events`; verified live against the running stack (all
+  4 sources currently fresh, ages 4.7s–3.8h, events table populated).
+- **T0.5** `sel_v2/tools/epoch.py`: fingerprint = sha256 over every `.py` file under
+  `sel_v2/states/`+`sel_v2/strategies/` (sorted, content-hashed) + git HEAD (degrades to
+  `"unknown"` when `.git` isn't present — containers exclude it via `.dockerignore`, not
+  faked). `v2_paper_epochs` table (append-only, current = latest `started_at`); CLI
+  `python -m sel_v2.tools.epoch {start --reason "..."|status}` reports CLEAN/DIRTY/NO_EPOCH.
+  11 unit tests incl. DIRTY-on-edit for both roots and non-.py/`__pycache__` exclusion;
+  live-smoked against the real repo + DB (start/status round-trip verified, smoke-test row
+  removed afterward — no epoch has actually started yet, that's a G0-gated human action).
+- **T0.6** `python -m sel_v2.tools.golive_report --gate G0`: epoch status, None-prone field
+  fill rates (entropy_variance_rising/oi_change_rate/funding_persistent, read straight from
+  T0.3's `decision_trail` — no second recompute), 6-state distribution, Cascade/Critical
+  counts, P2-1 liveness, staleness (current + 30d transitions), RED/GREEN per check + overall.
+  **T0.1–T0.5 redeployed** to make the numbers real (not a code exercise): rebuilt
+  `selene-v2-paper-engine`, restarted (old `v2-ofi-persister` container stopped/removed per
+  T0.3), full historical replay (4414 bars, TDA+Hawkes+entropy_variance+decision_trail+
+  staleness all live) completed cleanly, zero errors. `golive_report` verified twice —
+  pre-redeploy (`P2-1=0/180`, fill rates 0%, proving RED-with-detail works) and post-redeploy
+  with real numbers: `P2-1=179/179` (decision_trail genuinely live), fill rates 16–18%
+  (entropy_variance_rising/oi_change_rate/funding_persistent — real, evidence-based gaps: these
+  windows need 4–6 consecutive bars to fill, only ~5.5 days of history exist since the P3/P1
+  migrations), `epoch=NO_EPOCH` (correct — no epoch started yet, that's the G0-gated human
+  step). **OVERALL: RED**, as it correctly must be — G0 will stay RED until a real 30-day
+  epoch accrues (D3, GL1's own framing, not a bug) and someone runs `epoch.py start`.
 
 ### Full-health audit + fixes (2026-07-03) — see `audit/2026-07-03_full_health_audit.md`
 
@@ -224,6 +392,9 @@ Surging Up/Down direction (sub_state unused); S2 counterfactual (needs tick-driv
 
 ## 🚨 Needs Human
 
+- **`.env:34` 的 `EXEC_MODE=NOTIFY_ONLY` 已过时 (2026-07-10)**:EXEC_MODE=PAPER 已按用户
+  决定在 compose 写死(不再 ${} 插值),.env 该行现为死配置——受保护文件,请人工删除或
+  改为 PAPER 以免误导。(同一文件 30-31 行的失效 proxy IP 也还挂着,见下方 07-03 条目。)
 - **数据源迁移 OKX→Binance (2026-07-03)**: OKX 在本部署环境永久不可达（每代理 403/SSL-EOF，
   平台 `*_OKX_FLAG=0`）；Binance 仅经 `helios-proxy:2080` 可达。live WS 采集器（tick/lob/deriv/liq）
   是 OKX-WS 专用，恢复实时微结构数据需将其移植到 Binance WS——核心大改且本地无法跑测试
@@ -257,11 +428,6 @@ Surging Up/Down direction (sub_state unused); S2 counterfactual (needs tick-driv
   and cond-3 (`cross_exchange_spread`) is structurally N/A while single-venue (OKX only) —
   a second venue feed (P2: 2nd exchange) is required. Validate cond-1 firing with real LOB
   data on deploy.
-- **P2-1 OFI orphan store**: `v2_ofi_features` (ofi_persister) computes the same per-bar OFI
-  the paper engine already recomputes inline (`_load_microstructure_series`), so it's a
-  write-only duplicate. Decision needed: either point the paper engine at the persisted store
-  (removes the duplicate compute, but changes the data path — validate equivalence on real
-  data first) or drop the persister + its compose service. Left intact pending that call.
 - **P1-6 observability bring-up**: prometheus+grafana are declared in compose but need a real
   Docker host to verify containers start and scraping works; add Grafana dashboards/datasource
   provisioning once running. Other FastAPI services still need to adopt `shared/metrics.py` to
