@@ -74,6 +74,18 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+### 缠论"最新技术"扫描 + 实证:双 NO-GO,无新增入池 (2026-07-11)
+
+用户指令实证缠论最新技术。扫描(czsc/chan.py/社区,2024-2026 学术零同行评审)后
+可机械化真空白仅二,均与既有实现做**受控对照**(`analysis/chan_orthodox_v1.md`):
+- **CHAN-4 正统分型/笔分割:废弃**——腿方向一致率 5/13 劣于 zigzag 基线 7/13;
+  笔中枢前向波动分离 p=0.96 fail 劣于 zigzag p≈0(pass)
+- **CHAN-5 MACD 面积背驰:废弃**——p=0.23/FP 94% 劣于 CHAN-2 动量比 p=0.067/FP 90%
+- ML 买卖点管线(样本差 2-3 量级)/区间套(违 4H 单锚点)/一二类买卖点等维持排除
+- **净结论:既有 CHAN-2/CHAN-3 不劣于甚至优于缠论正统实现,维持现状**;
+  出池记录入 `analysis/v2_2_candidate_pool_v1.md`;`sel_v2/offline/chan_orthodox*.py`
+  留作后续对照工具(offline-only)
+
 ### Coiling 判据放宽(2-of-3)+ epoch 重置 a335521f (2026-07-11,用户授权)
 
 用户质疑"两年 Coiling/Cascade 未出现"→ 调查确认双层原因(历史=结构性特征缺失,
