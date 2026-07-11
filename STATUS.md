@@ -474,6 +474,11 @@ Surging Up/Down direction (sub_state unused); S2 counterfactual (needs tick-driv
 
 ## 🚨 Needs Human
 
+- **Epoch af6f7d3d 现为 DIRTY (2026-07-11)**:v2_state_history 写入时刻仪表化任务
+  改了 `sel_v2/strategies/db_writer.py`(仅 SQL 列清单,未碰判定逻辑)——该文件在
+  epoch 指纹范围内(`sel_v2/states/**` + `sel_v2/strategies/**`),按红线要求
+  **未 reset**,原样留给人工判断:是否要因这个纯持久化层改动重开 epoch(30天时钟
+  重置),或接受本次 DIRTY 是良性的(无判定逻辑变化)后另行处理。
 - **`.env:34` 的 `EXEC_MODE=NOTIFY_ONLY` 已过时 (2026-07-10)**:EXEC_MODE=PAPER 已按用户
   决定在 compose 写死(不再 ${} 插值),.env 该行现为死配置——受保护文件,请人工删除或
   改为 PAPER 以免误导。(同一文件 30-31 行的失效 proxy IP 也还挂着,见下方 07-03 条目。)
