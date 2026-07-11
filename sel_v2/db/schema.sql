@@ -413,3 +413,23 @@ CREATE TABLE IF NOT EXISTS v2_strategy_phase_history (
     decision_id                 UUID    REFERENCES v2_decision_trail(id),
     created_at                  TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Weekly live capture-rate monitor (Wave V22-D, offline follow-up to V22-C). One row
+-- per threshold per run — append-only, never updated. sel_v2/offline/capture_monitor.py
+-- is the sole writer; read-only diagnostic, no strategy/state coupling.
+CREATE TABLE IF NOT EXISTS v2_capture_rate_weekly (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_at          TIMESTAMPTZ NOT NULL,
+    threshold       TEXT        NOT NULL,   -- '3xATR' / '5xATR' / '8pct'
+    window_start    TIMESTAMPTZ NOT NULL,
+    window_end      TIMESTAMPTZ NOT NULL,
+    legs_total      INTEGER     NOT NULL,
+    legs_spec       INTEGER     NOT NULL,   -- legs matching the Wiki 10-35d/3-6-push spec
+    legs_in_domain  INTEGER     NOT NULL,   -- of legs_spec, how many fall in the live-monitored domain
+    captured        INTEGER     NOT NULL,   -- of legs_in_domain, how many are >=50% Surging-labeled
+    capture_rate    NUMERIC,                -- captured / legs_in_domain, NULL if legs_in_domain = 0
+    missed_detail   JSONB,                  -- list of {start,end,direction,duration_days,push_count,modal_state}
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_v2_capture_rate_weekly_run
+    ON v2_capture_rate_weekly (run_at DESC, threshold);
