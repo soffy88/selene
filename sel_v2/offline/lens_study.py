@@ -65,7 +65,9 @@ ANALYSIS_DIR = Path(__file__).resolve().parents[2] / "analysis"
 MIN_GROUP_N = 5  # below this a test is UNDERPOWERED, not failed
 END_SOON_BARS = 3  # H-CHAN2: leg end within 3 bars
 FP_WINDOW_BARS = 6  # H-ICT2b: signal followed by leg end within 6 bars
-CONSOLIDATION_LIKE = ("Drifting_Calm",)  # 0 Coiling bars — the adapted regime
+CONSOLIDATION_LIKE = (
+    "Drifting_Calm",
+)  # adapted regime; Coiling tested separately when present
 TRENDING_STATES = ("Surging", "Drifting_Charged", "Critical")
 TICK_BATCH = 500_000
 VPIN_RERUN_NOTE = (
@@ -295,18 +297,23 @@ def test_h_chan2(states, via, close) -> dict:
 
 
 def test_h_chan3(states, overlap, sigma_pct) -> dict:
-    """3a (adapted): overlap>p70 lift vs Drifting_Calm and vs low-σ regimes.
-    Coiling itself is UNTESTABLE (0 annotated bars)."""
+    """3a: overlap>p70 lift vs Drifting_Calm / low-σ regimes — and vs Coiling
+    itself whenever the annotation actually contains Coiling bars (0 before the
+    2026-07-11 relaxation ruling; nonzero after)."""
     finite = np.isfinite(overlap)
     p70 = float(np.nanpercentile(overlap[finite], 70)) if finite.any() else float("nan")
     hi = finite & (overlap > p70)
     lo = finite & ~(overlap > p70)
     res = {"p70": p70, "n_finite": int(finite.sum()), "n_hi": int(hi.sum())}
     arr_states = np.array(states)
-    for key, mask in (
+    res["n_coiling"] = int((arr_states == "Coiling").sum())
+    domains = [
         ("calm", np.isin(arr_states, CONSOLIDATION_LIKE)),
         ("low_sigma", np.isfinite(sigma_pct) & (sigma_pct < 0.30)),
-    ):
+    ]
+    if res["n_coiling"] > 0:
+        domains.append(("coiling", arr_states == "Coiling"))
+    for key, mask in domains:
         tbl = [
             [int((hi & mask).sum()), int((hi & ~mask).sum())],
             [int((lo & mask).sum()), int((lo & ~mask).sum())],
@@ -491,10 +498,17 @@ def _hdr(title: str, times, n: int) -> list[str]:
     ]
 
 
-def _sample_banner() -> list[str]:
+def _sample_banner(states, legs) -> list[str]:
+    from collections import Counter
+
+    dist = Counter(states)
+    via = Counter(leg.end_via or "tail" for leg in legs)
+    via_txt = " + ".join(f"{c} {k}" for k, c in via.most_common())
+    rare = ",".join(f"{s}={dist.get(s, 0)}" for s in ("Coiling", "Critical", "Cascade"))
     return [
-        "> **样本量诚实声明**:2 年标注中 Surging 腿仅 13 条(11 Exhaustion + 2 Stress 收尾),",
-        "> Critical 16 bar,**Coiling=0、Cascade=0、Release=0**。凡涉及腿级/事件级检验均为小样本,",
+        f"> **样本量诚实声明**:2 年标注中 Surging 腿仅 {len(legs)} 条({via_txt} 收尾),",
+        f"> 稀有状态 bar 数:**{rare}**(2026-07-11 Coiling 判据放宽后,Coiling 仅出现于",
+        "> 特征齐全的近期窗口;降级历史仍为 None 路径)。凡涉及腿级/事件级检验均为小样本,",
         "> 功效有限;bar 级检验存在序列相依,p 值偏乐观(均已在对应小节标注)。",
         "",
     ]
@@ -506,7 +520,7 @@ def _build_sel_report(times, close, states, via, degraded, legs) -> str:
 
     dist = Counter(states)
     lines = _hdr("sel 视角 v1 — 状态机自述(三视角对比基准)", times, n)
-    lines += _sample_banner()
+    lines += _sample_banner(states, legs)
     lines += [
         "## 状态分布(2 年标注)",
         "",
@@ -516,10 +530,12 @@ def _build_sel_report(times, close, states, via, degraded, legs) -> str:
     for s, c in dist.most_common():
         lines.append(f"| {s} | {c} | {c / n * 100:.1f}% |")
     n_deg = sum(degraded)
+    n_release = sum(1 for v in via if v == "Release")
     lines += [
         "",
         f"- degraded bars(特征缺失回退):{n_deg} / {n} = {n_deg / n * 100:.1f}%",
-        "- **Coiling = 0、Cascade = 0**(历史特征降级,条件不可满足)、Release 转移 = 0",
+        f"- 稀有状态:Coiling={dist.get('Coiling', 0)}、Cascade={dist.get('Cascade', 0)}"
+        f"(降级历史条件不可判)、Release 转移={n_release}",
         "",
         "## Surging 腿明细(13 条)",
         "",
@@ -629,13 +645,26 @@ def _build_chan_report(times, close, chan1, chan2, chan3, chan3b, overlap) -> st
         "## CHAN-3 中枢重叠度",
         "",
         f"- overlap_ratio 有值 bar:{chan3['n_finite']}/{n};**p70 = {chan3['p70']:.3f}**(全样本内,live 冻结值)",
-        "> **H-CHAN3a 原判据 UNTESTABLE**:标注中 Coiling = 0 bar。以下为改编检验(lift,",
-        "> 非裸重合率——Drifting_Calm 基率 70.1%,裸重合率无意义):",
+    ]
+    if chan3["n_coiling"] == 0:
+        lines += [
+            "> **H-CHAN3a 原判据 UNTESTABLE**:标注中 Coiling = 0 bar。以下为改编检验(lift,",
+            "> 非裸重合率——Drifting_Calm 基率高,裸重合率无意义):",
+        ]
+    else:
+        lines += [
+            f"> 标注含 **Coiling = {chan3['n_coiling']} bar**(2026-07-11 判据放宽后,仅近期"
+            "特征齐全窗口)——原判据以 lift(Fisher)形式纳入下表,样本极小,谨慎解读:",
+        ]
+    lines += [
         "",
-        "| 替代域 | 高 overlap 命中率 | 低 overlap 命中率 | Fisher p |",
+        "| 域 | 高 overlap 命中率 | 低 overlap 命中率 | Fisher p |",
         "|---|---:|---:|---:|",
     ]
-    for key, label in (("calm", "Drifting_Calm"), ("low_sigma", "σ_pctile<30")):
+    domain_labels = [("calm", "Drifting_Calm"), ("low_sigma", "σ_pctile<30")]
+    if "coiling" in chan3:
+        domain_labels.append(("coiling", f"Coiling(n={chan3['n_coiling']})"))
+    for key, label in domain_labels:
         d = chan3[key]
         lines.append(
             f"| {label} | {d['rate_hi'] * 100:.1f}% | {d['rate_lo'] * 100:.1f}% | {d['p']:.4f} |"
@@ -674,7 +703,7 @@ def _fmtpct(x: Optional[float]) -> str:
 
 
 def _build_ict_report(
-    times, close, struct_states, struct_events, ict2a, ict2b, vpin
+    times, close, states, legs, struct_states, struct_events, ict2a, ict2b, vpin
 ) -> str:
     n = len(close)
     from collections import Counter
@@ -682,7 +711,7 @@ def _build_ict_report(
     occ = Counter(struct_states)
     ev_c = Counter(e.kind for e in struct_events)
     lines = _hdr("ICT 视角 v1 — ICT-2 结构 + ICT-1 VPIN pilot", times, n)
-    lines += _sample_banner()
+    lines += _sample_banner(states, legs)
     lines += [
         "## ICT-2 swing 结构(1.5×ATR zigzag,与 CHAN-3 共享;全部事件取确认时刻,无前视)",
         "",
@@ -798,6 +827,7 @@ def _fmt3(x) -> str:
 def _build_verdict(
     times,
     n,
+    states,
     chan1,
     chan2,
     chan3,
@@ -819,6 +849,8 @@ def _build_verdict(
         family.append(("H-CHAN2", chan2["p"]))
     family.append(("H-CHAN3a[calm]", chan3["calm"]["p"]))
     family.append(("H-CHAN3a[low_sigma]", chan3["low_sigma"]["p"]))
+    if "coiling" in chan3:
+        family.append(("H-CHAN3a[coiling]", chan3["coiling"]["p"]))
     if "p_vol" in chan3b:
         family.append(("H-CHAN3b[vol]", chan3b["p_vol"]))
     if ict2b.get("wilcoxon_p") is not None:
@@ -826,7 +858,7 @@ def _build_verdict(
     qs = bh_adjust([p for _n, p in family]) if family else []
 
     lines = _hdr("三视角对比与裁决 v1(lens verdict)", times, n)
-    lines += _sample_banner()
+    lines += _sample_banner(states, legs)
     lines += [
         "## 逐假设结果(裸 p 判 pass/fail 按池原文;BH q 同列,FDR 下失守者标注)",
         "",
@@ -856,14 +888,19 @@ def _build_verdict(
         lines.append(
             f"| H-CHAN2 | 候选={chan2['n_candidates']} | — | — | {chan2['verdict']} |"
         )
-    for key, label in (
-        ("calm", "H-CHAN3a[calm]"),
-        ("low_sigma", "H-CHAN3a[low_sigma]"),
-    ):
+    chan3_rows = [("calm", "H-CHAN3a[calm]"), ("low_sigma", "H-CHAN3a[low_sigma]")]
+    if "coiling" in chan3:
+        chan3_rows.append(("coiling", "H-CHAN3a[coiling]"))
+    chan3_note = (
+        "(改编;Coiling UNTESTABLE)"
+        if chan3["n_coiling"] == 0
+        else f"(Coiling n={chan3['n_coiling']},判据放宽后首批样本)"
+    )
+    for key, label in chan3_rows:
         p = chan3[key]["p"]
         lines.append(
             f"| {label} | Fisher lift | {p:.4f} | {fam_q.get(label, float('nan')):.4f} | "
-            f"{'pass' if p < 0.10 else 'fail'}(改编;Coiling UNTESTABLE) |"
+            f"{'pass' if p < 0.10 else 'fail'}{chan3_note} |"
         )
     if "p_vol" in chan3b:
         lines.append(
@@ -1004,11 +1041,20 @@ async def run(skip_ticks: bool = False) -> dict:
                 times, close, chan1, chan2, chan3, chan3b, overlap
             ),
             "lens_ict_v1.md": _build_ict_report(
-                times, close, struct_states, struct_events, ict2a, ict2b, vpin
+                times,
+                close,
+                states,
+                legs,
+                struct_states,
+                struct_events,
+                ict2a,
+                ict2b,
+                vpin,
             ),
             "lens_verdict_v1.md": _build_verdict(
                 times,
                 n,
+                states,
                 chan1,
                 chan2,
                 chan3,

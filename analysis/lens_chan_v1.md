@@ -1,7 +1,7 @@
 # 缠论视角 v1 — CHAN-1/2/3 实证
 
 - 生成:`python -m sel_v2.offline.lens_study`(确定性:seed=42,整文件覆写)
-- 数据:`v2_bars_4h ⋈ v2_state_annotation`,BTC-USDT,2024-07-03 → 2026-07-11,4429 bars(逐 bar 精确对齐)
+- 数据:`v2_bars_4h ⋈ v2_state_annotation`,BTC-USDT,2024-07-03 → 2026-07-11,4432 bars(逐 bar 精确对齐)
 - 纪律:observation-only;不碰 `states/**`/`strategies/**`;三视角同数据可并排对比
 
 > **CHAN-1 偏差横幅**:sel 的 Release(价格突破 + OFI 跃升 + OI 加速)2 年标注与 live
@@ -51,24 +51,24 @@
 
 ## CHAN-3 中枢重叠度
 
-- overlap_ratio 有值 bar:4397/4429;**p70 = 2.328**(全样本内,live 冻结值)
-> **H-CHAN3a 原判据 UNTESTABLE**:标注中 Coiling = 0 bar。以下为改编检验(lift,
-> 非裸重合率——Drifting_Calm 基率 70.1%,裸重合率无意义):
+- overlap_ratio 有值 bar:4400/4432;**p70 = 2.327**(全样本内,live 冻结值)
+> 标注含 **Coiling = 12 bar**(2026-07-11 判据放宽后,仅近期特征齐全窗口)——原判据以 lift(Fisher)形式纳入下表,样本极小,谨慎解读:
 
-| 替代域 | 高 overlap 命中率 | 低 overlap 命中率 | Fisher p |
+| 域 | 高 overlap 命中率 | 低 overlap 命中率 | Fisher p |
 |---|---:|---:|---:|
 | Drifting_Calm | 62.8% | 72.9% | 1.0000 |
 | σ_pctile<30 | 43.9% | 37.9% | 0.0001 |
+| Coiling(n=12) | 0.0% | 0.4% | 1.0000 |
 
 - **verdict(3a,改编):adapted-pass**
 
 ### H-CHAN3b 分歧样本(高 overlap 且 sel 处趋势态)
 
-- X(n=491)前向 6-bar 波动 median=0.00681;同态对照(n=827)=0.00799;Calm 基准=0.00646
-- MW 单侧 p(波动)=0.0000;p(|收益|)=0.0134;CI90(X−对照)= [-0.00158, -0.00075]
+- X(n=491)前向 6-bar 波动 median=0.00681;同态对照(n=824)=0.00801;Calm 基准=0.00646
+- MW 单侧 p(波动)=0.0000;p(|收益|)=0.0122;CI90(X−对照)= [-0.00160, -0.00076]
 - **verdict(3b):pass**
 
 ## 现读(最新 bar)
 
-- overlap_ratio = 1.665
+- overlap_ratio = 2.167
 - 高于 p70?否/未知

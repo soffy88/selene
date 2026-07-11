@@ -18,6 +18,7 @@ until their respective collectors come online. State conditions that depend
 entirely on STUB data return met=None. Mixed (some real, some STUB) states
 return met=True/False based on the available conditions, with cold_start=True.
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -28,14 +29,19 @@ from sel_v2.states.critical_logic import evaluate_critical_entry
 
 # ── Helper ─────────────────────────────────────────────────────────────────────
 
+
 def _result(
     met: Optional[bool],
     none_conditions: list[str],
     false_conditions: list[str],
     details: dict,
 ) -> ConditionResult:
-    return ConditionResult(met=met, none_conditions=none_conditions,
-                          false_conditions=false_conditions, details=details)
+    return ConditionResult(
+        met=met,
+        none_conditions=none_conditions,
+        false_conditions=false_conditions,
+        details=details,
+    )
 
 
 def _tristate_all(conditions: list[tuple[str, Optional[bool]]]) -> ConditionResult:
@@ -63,6 +69,7 @@ def _tristate_all(conditions: list[tuple[str, Optional[bool]]]) -> ConditionResu
 
 
 # ── Cascade (§5.7) ─────────────────────────────────────────────────────────────
+
 
 def check_cascade(features: BarFeatures) -> ConditionResult:
     """
@@ -130,12 +137,15 @@ def check_cascade(features: BarFeatures) -> ConditionResult:
             "lob_depth_pctile": features.lob_depth_pctile,
             "liquidation_pulse": features.liquidation_pulse,
             "cross_exchange_spread": features.cross_exchange_spread,
-            "cond1": cond1, "cond2": cond2, "cond3": cond3,
+            "cond1": cond1,
+            "cond2": cond2,
+            "cond3": cond3,
         },
     )
 
 
 # ── Critical (§5.6 + v2.1 §2.1) ───────────────────────────────────────────────
+
 
 def check_critical(features: BarFeatures) -> ConditionResult:
     """
@@ -160,10 +170,14 @@ def check_critical(features: BarFeatures) -> ConditionResult:
         none_conditions=none_conds,
         false_conditions=false_conds,
         details={
-            "a1": cc.a1, "a2": cc.a2,
-            "a_full": cc.a_full, "a_partial": cc.a_partial,
-            "b": cc.b, "c": cc.c,
-            "path1": cc.path1_met, "path2": cc.path2_met,
+            "a1": cc.a1,
+            "a2": cc.a2,
+            "a_full": cc.a_full,
+            "a_partial": cc.a_partial,
+            "b": cc.b,
+            "c": cc.c,
+            "path1": cc.path1_met,
+            "path2": cc.path2_met,
             "hawkes_br": features.hawkes_br,
             "hawkes_threshold": features.hawkes_br_threshold,
             "tda_l1_pctile": features.tda_l1_pctile,
@@ -172,6 +186,7 @@ def check_critical(features: BarFeatures) -> ConditionResult:
 
 
 # ── Surging (§5.3) ─────────────────────────────────────────────────────────────
+
 
 def check_surging(features: BarFeatures) -> ConditionResult:
     """
@@ -191,7 +206,10 @@ def check_surging(features: BarFeatures) -> ConditionResult:
     """
     # Price breakout
     has_breakout: Optional[bool] = None
-    if features.price_breakout_up is not None and features.price_breakout_down is not None:
+    if (
+        features.price_breakout_up is not None
+        and features.price_breakout_down is not None
+    ):
         has_breakout = features.price_breakout_up or features.price_breakout_down
     elif features.price_breakout_up is not None:
         has_breakout = features.price_breakout_up
@@ -208,8 +226,11 @@ def check_surging(features: BarFeatures) -> ConditionResult:
     # abstains (None) — it must not return False, which _tristate_all treats as a
     # hard veto and would block Surging on the common (non-extreme) case.
     ofi_pctile_high: Optional[bool] = (
-        True if (features.ofi_cumulative_pctile is not None
-                 and features.ofi_cumulative_pctile >= 0.90)
+        True
+        if (
+            features.ofi_cumulative_pctile is not None
+            and features.ofi_cumulative_pctile >= 0.90
+        )
         else None
     )
 
@@ -227,9 +248,11 @@ def check_surging(features: BarFeatures) -> ConditionResult:
             met=False,
             none_conditions=[],
             false_conditions=fc,
-            details={"sigma_pctile": features.sigma_pctile,
-                     "price_breakout_up": features.price_breakout_up,
-                     "price_breakout_down": features.price_breakout_down},
+            details={
+                "sigma_pctile": features.sigma_pctile,
+                "price_breakout_up": features.price_breakout_up,
+                "price_breakout_down": features.price_breakout_down,
+            },
         )
 
     flow_signals = [ofi_pctile_high, oi_accel]
@@ -252,20 +275,27 @@ def check_surging(features: BarFeatures) -> ConditionResult:
 
 # ── Coiling (§5.2) ─────────────────────────────────────────────────────────────
 
+
 def check_coiling(features: BarFeatures) -> ConditionResult:
     """
     Coiling: narrow range, energy accumulating.
 
     Conditions:
       - σ < 30th pctile (computable, necessary)
-      - LOB entropy < 30th pctile (STUB)
-      - OI change rate > 0 (STUB)
-      - |funding| < 80th pctile (STUB)
+      - accumulation basket, at least 2 of 3 True:
+          LOB entropy < 30th pctile / OI change rate > 0 / |funding| < 80th pctile
 
-    Conservative principle (v2.1 §2.1): σ is necessary but not sufficient.
-    At least one of the three STUB accumulation signals must be non-None (and True)
-    to return met=True. If σ<30th but all three STUBs are None → met=None
-    (state unidentifiable; arbitration falls back to Drifting-Calm).
+    2026-07-11 user ruling (放宽授权, see STATUS.md): the original all-AND gate
+    proved near-unsatisfiable on live feature-complete data — every recent bar
+    passed three conditions and was vetoed by the fourth alone, so Coiling never
+    fired in 2yr+live even where the Chan-lens study showed geometric
+    consolidation (H-CHAN3b, analysis/lens_verdict_v1.md). Relaxed to a 2-of-3
+    majority on the accumulation basket: a single False no longer hard-vetoes.
+
+    Tristate honesty is kept: with fewer than 2 evaluable (non-None) basket
+    signals the 2-of-3 question is undecidable → met=None (state unidentifiable;
+    arbitration falls back). The degraded 2yr history therefore stays None-path,
+    same as before.
     """
     sigma_low: Optional[bool] = features.sigma_pctile < 0.30
     if sigma_low is False:
@@ -294,25 +324,41 @@ def check_coiling(features: BarFeatures) -> ConditionResult:
     else:
         funding_neutral = features.funding_pctile < 0.80
 
-    stub_signals = [entropy_low, oi_positive, funding_neutral]
-    if all(v is None for v in stub_signals):
-        return _result(
-            met=None,
-            none_conditions=["entropy_lt_30pct", "oi_positive", "funding_neutral"],
-            false_conditions=[],
-            details={"sigma_pctile": features.sigma_pctile, "accumulation": None},
-        )
-
-    conditions = [
-        ("sigma_lt_30pct", sigma_low),
+    basket = [
         ("entropy_lt_30pct", entropy_low),
         ("oi_positive", oi_positive),
         ("funding_neutral", funding_neutral),
     ]
-    return _tristate_all(conditions)
+    none_conds = [name for name, v in basket if v is None]
+    false_conds = [name for name, v in basket if v is False]
+    true_count = sum(1 for _name, v in basket if v is True)
+    evaluable = 3 - len(none_conds)
+    details = {
+        "sigma_pctile": features.sigma_pctile,
+        "entropy_low": entropy_low,
+        "oi_positive": oi_positive,
+        "funding_neutral": funding_neutral,
+        "basket_true": true_count,
+    }
+
+    if evaluable < 2:
+        # 2-of-3 undecidable — do not claim confirmation OR disconfirmation
+        return _result(
+            met=None,
+            none_conditions=none_conds,
+            false_conditions=false_conds,
+            details=details,
+        )
+    return _result(
+        met=true_count >= 2,
+        none_conditions=none_conds,
+        false_conditions=false_conds if true_count < 2 else [],
+        details=details,
+    )
 
 
 # ── Drifting-Charged (§5.5) ────────────────────────────────────────────────────
+
 
 def check_drifting_charged(features: BarFeatures) -> ConditionResult:
     """
@@ -372,6 +418,7 @@ def check_drifting_charged(features: BarFeatures) -> ConditionResult:
 
 
 # ── Drifting-Calm (§5.4) ───────────────────────────────────────────────────────
+
 
 def check_drifting_calm(features: BarFeatures) -> ConditionResult:
     """

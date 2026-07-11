@@ -1,11 +1,12 @@
 # ICT 视角 v1 — ICT-2 结构 + ICT-1 VPIN pilot
 
 - 生成:`python -m sel_v2.offline.lens_study`(确定性:seed=42,整文件覆写)
-- 数据:`v2_bars_4h ⋈ v2_state_annotation`,BTC-USDT,2024-07-03 → 2026-07-11,4429 bars(逐 bar 精确对齐)
+- 数据:`v2_bars_4h ⋈ v2_state_annotation`,BTC-USDT,2024-07-03 → 2026-07-11,4432 bars(逐 bar 精确对齐)
 - 纪律:observation-only;不碰 `states/**`/`strategies/**`;三视角同数据可并排对比
 
 > **样本量诚实声明**:2 年标注中 Surging 腿仅 13 条(11 Exhaustion + 2 Stress 收尾),
-> Critical 16 bar,**Coiling=0、Cascade=0、Release=0**。凡涉及腿级/事件级检验均为小样本,
+> 稀有状态 bar 数:**Coiling=12,Critical=16,Cascade=0**(2026-07-11 Coiling 判据放宽后,Coiling 仅出现于
+> 特征齐全的近期窗口;降级历史仍为 None 路径)。凡涉及腿级/事件级检验均为小样本,
 > 功效有限;bar 级检验存在序列相依,p 值偏乐观(均已在对应小节标注)。
 
 ## ICT-2 swing 结构(1.5×ATR zigzag,与 CHAN-3 共享;全部事件取确认时刻,无前视)
@@ -13,8 +14,8 @@
 | 结构态 | bars | share |
 |---|---:|---:|
 | UP | 1461 | 33.0% |
-| DOWN | 1500 | 33.9% |
-| RANGE | 1468 | 33.1% |
+| DOWN | 1500 | 33.8% |
+| RANGE | 1471 | 33.2% |
 
 - 事件普查:BOS_UP 33 / BOS_DOWN 36 / CHOCH_UP 17 / CHOCH_DOWN 19
 
@@ -64,12 +65,12 @@
 
 > v2_ticks starts 2026-07-06 (no retention drop) — first honest 30d window ≈ 2026-08-05; re-run `python -m sel_v2.offline.lens_study` then.
 
-- tick:7,021,582 笔,07-06 → 07-11;完成桶 258,VPIN 点 209
-- V_bucket 引导:30d bar 量基线 → 3,311.1(coin 口径);tick/bar 量比 = 56.456(∉[0.5,2] → tick size 与 bar volume 非同一单位,**已按比值换算到 tick 口径**)→ **V_bucket = 186,928.4**(tick 口径)
-- 分布:p50=0.128 p90=0.145 p95=0.153 p97=0.156 max=0.163
-- 桶时长(分钟):median=23.5 min=0.1 max=145.9
-- lag-1 自相关 = 0.982;side-VPIN vs BVC-VPIN 相关 = 0.157(side 为主分类,BVC 为无 side 场景的对照验证)
-- 滚动分位 warmup(100 桶):已达;p95=0.153 p97=0.156
+- tick:7,036,790 笔,07-06 → 07-11;完成桶 266,VPIN 点 217
+- V_bucket 引导:30d bar 量基线 → 3,253.1(coin 口径);tick/bar 量比 = 55.860(∉[0.5,2] → tick size 与 bar volume 非同一单位,**已按比值换算到 tick 口径**)→ **V_bucket = 181,716.4**(tick 口径)
+- 分布:p50=0.133 p90=0.150 p95=0.154 p97=0.157 max=0.166
+- 桶时长(分钟):median=23.0 min=0.0 max=135.2
+- lag-1 自相关 = 0.976;side-VPIN vs BVC-VPIN 相关 = 0.222(side 为主分类,BVC 为无 side 场景的对照验证)
+- 滚动分位 warmup(100 桶):已达;p95=0.154 p97=0.157
 
 ## 现读(最新 bar)
 

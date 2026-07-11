@@ -41,7 +41,7 @@ rounds (see memory `opt-pr-3`).
   **废弃**(A/C 前向收益无差异,p=0.44/0.79);CHAN-2/CHAN-3/ICT-2 接入 paper engine
   obs refresh(vocab `chan_divergence`/`chan_pivot`/`swing_structure`),ICT-1 VPIN 独立
   服务 `v2-vpin-monitor`(vocab `vpin`)。全部 observation-only,零 `states/**`/
-  `strategies/**` 改动,epoch 指纹逐字未变(仍为 af6f7d3d DIRTY 待人工,见 Needs Human)。
+  `strategies/**` 改动(注:同日稍后 Coiling 判据经用户授权放宽并重置 epoch → a335521f,见 Done)。
   **待办**:H-ICT1a/b 数据不足,~2026-08-05 tick 满 30 天后重跑
   `python -m sel_v2.offline.lens_study`;Month-3 评估 vpin 须按 metadata.history_days
   剔除 <30d(tool_evaluator 已含 5 个新映射)。出池记录见候选池文档
@@ -73,6 +73,24 @@ rounds (see memory `opt-pr-3`).
 ---
 
 ## ✅ Done
+
+### Coiling 判据放宽(2-of-3)+ epoch 重置 a335521f (2026-07-11,用户授权)
+
+用户质疑"两年 Coiling/Cascade 未出现"→ 调查确认双层原因(历史=结构性特征缺失,
+现在=四条件 AND 在真实数据上近乎不可满足,逐 bar 被单一条件否决)→ 用户授权放宽。
+
+- `states/conditions.py check_coiling`:σ<30pct 必要 + 蓄能篮子 2-of-3(熵/OI/funding);
+  <2 个可判信号 → met=None(三态纪律不破;降级历史 None 路径不变,Calm 3105 不动)
+- 效果:2yr 标注 Coiling 0→**12**(Charged 43→34),live 最新 bars 判 Coiling;
+  Coiling→Surging Release 通路首次可用;Charged 粘性段自然解开(未动仲裁回退——
+  该回退同时是 Surging 腿持续的机制,不可乱改)
+- **epoch 重置**:af6f7d3d(DIRTY)→ **a335521f CLEAN**,reason 含用户授权原文,
+  合并处置 db_writer 仪表化 DIRTY;30 天验证时钟重启 2026-07-11 12:55 UTC
+- 漂移仪表首次真实工作:v2_state_history 12 行改写全部带 `rewritten_at` 戳
+- 2yr 标注已重跑刷新;lens 报告重生成(报告文案改数据驱动,新增 Coiling lift 域:
+  首批 12 个 Coiling bar 与缠论高中枢重叠不重合,n 极小谨慎解读);Cascade=0 维持
+  (真实级联事件本就稀有 + 历史无清算数据,属预期,未放宽)
+- 测试:617 passed(新增 2-of-3 判定用例;唯 5 个既有环境失败不变)
 
 ### v2_state_history 回填溯源 + 消费方审计 (2026-07-11)
 
@@ -484,23 +502,19 @@ Surging Up/Down direction (sub_state unused); S2 counterfactual (needs tick-driv
 
 ## 🚨 Needs Human
 
-- **Coiling 四条件 AND 过严 + Drifting_Charged 粘性回退 (2026-07-11,校准/设计问题,未改代码)**:
-  用户质疑"两年 Coiling/Cascade 从未出现"。分解:(a) 历史 2 年 81.6% bars 特征降级,
-  Coiling/Cascade 依赖的熵/OI/funding/清算全 None → 三态纪律下不可判,结构性缺失非 bug;
-  (b) **但特征齐全的现在,Coiling 仍触发不了**:实测最近各 bar 分别被四个 AND 条件
-  (σ<30pct ∧ 熵<30pct ∧ OI增>0 ∧ |funding|<80pct)中的某一个单独否决(如 07-11 00:00
-  三项全过、仅 funding=100pct 否)。四条件同时满足在实际数据上近乎不可能——需人工裁决
-  是否放宽(如 3-of-4 或去掉 funding 项);(c) **Charged 粘性**:当前 σ=0.10 已低于
-  Charged 自己的定义带 [0.30,0.80),但 priority.py 仲裁在"无任何状态 met=True"时保持
-  原状态 → Charged×30+ 实为"无法判定,维持原判",语义上更接近 Calm。佐证:缠论镜头
-  H-CHAN3b(analysis/lens_verdict_v1.md)显示高中枢重叠 bar 在 sel 趋势态里前向波动
-  显著更低——几何盘整真实存在但 sel 判不出 Coiling。改任何一条都动 `states/**`
-  (epoch 红线),故仅上报。
-- **Epoch af6f7d3d 现为 DIRTY (2026-07-11)**:v2_state_history 写入时刻仪表化任务
-  改了 `sel_v2/strategies/db_writer.py`(仅 SQL 列清单,未碰判定逻辑)——该文件在
-  epoch 指纹范围内(`sel_v2/states/**` + `sel_v2/strategies/**`),按红线要求
-  **未 reset**,原样留给人工判断:是否要因这个纯持久化层改动重开 epoch(30天时钟
-  重置),或接受本次 DIRTY 是良性的(无判定逻辑变化)后另行处理。
+- ~~Coiling 四条件 AND 过严 + Charged 粘性回退~~ → **已裁决执行 (2026-07-11 用户授权
+  "授权放宽"):** `check_coiling` 放宽为 σ 必要 + 蓄能篮子 {熵<30pct, OI增>0,
+  |funding|<80pct} **2-of-3**(单个 False 不再一票否决;可判信号 <2 个时 met=None,
+  三态纪律保持,降级历史仍为 None 路径不变)。效果:2yr 重放 Coiling 0→12 bar(全在
+  特征齐全近期),最新 live bars 已判 Coiling,Charged 粘性段自然解开(Coiling 优先级
+  更高,无需动仲裁回退);Coiling→Surging Release 通路打开。v2_state_history 12 行
+  历史判定被改写,`rewritten_at` 漂移仪表首次真实触发并全部留痕。详见 Done 区。
+- ~~Epoch af6f7d3d DIRTY 待人工~~ → **已随上述授权一并解决 (2026-07-11):** 放宽 Coiling
+  本身即动 `states/**`,按 R1 以用户授权重置 epoch——新 epoch **a335521f**
+  (2026-07-11 12:55 UTC 起,status CLEAN,30 天时钟重启),reason 记录了授权与
+  db_writer 仪表化 DIRTY 的合并处置。注意:新指纹包含工作区内**未提交**的
+  `states/schema.py`/`strategies/cusum_short.py` 既有改动——提交或还原它们都会再次
+  DIRTY,处理前先确认。
 - **`.env:34` 的 `EXEC_MODE=NOTIFY_ONLY` 已过时 (2026-07-10)**:EXEC_MODE=PAPER 已按用户
   决定在 compose 写死(不再 ${} 插值),.env 该行现为死配置——受保护文件,请人工删除或
   改为 PAPER 以免误导。(同一文件 30-31 行的失效 proxy IP 也还挂着,见下方 07-03 条目。)

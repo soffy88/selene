@@ -7,14 +7,19 @@ Covers:
 - Cascade OR logic
 - Priority order + min-dwell integration
 """
+
 import pytest
 from datetime import datetime, timezone
 from typing import Optional
 
 from sel_v2.states.schema import BarFeatures, StateLabel, MIN_DWELL_BARS
 from sel_v2.states.conditions import (
-    check_cascade, check_critical, check_surging,
-    check_coiling, check_drifting_charged, check_drifting_calm,
+    check_cascade,
+    check_critical,
+    check_surging,
+    check_coiling,
+    check_drifting_charged,
+    check_drifting_calm,
 )
 from sel_v2.states.priority import arbitrate
 
@@ -23,10 +28,15 @@ _TS = datetime(2025, 1, 1, tzinfo=timezone.utc)
 
 def _feat(**kwargs) -> BarFeatures:
     defaults = dict(
-        timestamp=_TS, bar_index=600, close=50000.0, log_price=10.8,
-        sigma_4h=0.01, sigma_pctile=0.50,
+        timestamp=_TS,
+        bar_index=600,
+        close=50000.0,
+        log_price=10.8,
+        sigma_4h=0.01,
+        sigma_pctile=0.50,
         sigma_monotone_3bar=None,
-        price_breakout_up=None, price_breakout_down=None,
+        price_breakout_up=None,
+        price_breakout_down=None,
         cold_start=False,
     )
     defaults.update(kwargs)
@@ -34,6 +44,7 @@ def _feat(**kwargs) -> BarFeatures:
 
 
 # ── Cascade ───────────────────────────────────────────────────────────────────
+
 
 def test_cascade_all_stub_returns_none():
     f = _feat(sigma_pctile=0.98)
@@ -46,8 +57,12 @@ def test_cascade_all_stub_returns_none():
 
 
 def test_cascade_false_when_sigma_low_and_others_false():
-    f = _feat(sigma_pctile=0.50, lob_depth_pctile=0.50,
-               liquidation_pulse=False, cross_exchange_spread=0.1)
+    f = _feat(
+        sigma_pctile=0.50,
+        lob_depth_pctile=0.50,
+        liquidation_pulse=False,
+        cross_exchange_spread=0.1,
+    )
     res = check_cascade(f)
     assert res.met is False
 
@@ -65,32 +80,50 @@ def test_cascade_true_when_spread_fires():
 
 
 def test_cascade_true_when_sigma_plus_lob():
-    f = _feat(sigma_pctile=0.98, lob_depth_pctile=0.03,
-               liquidation_pulse=False, cross_exchange_spread=0.1)
+    f = _feat(
+        sigma_pctile=0.98,
+        lob_depth_pctile=0.03,
+        liquidation_pulse=False,
+        cross_exchange_spread=0.1,
+    )
     res = check_cascade(f)
     assert res.met is True
 
 
 def test_cascade_sigma_extreme_but_lob_none_is_none():
-    f = _feat(sigma_pctile=0.98, lob_depth_pctile=None,
-               liquidation_pulse=None, cross_exchange_spread=None)
+    f = _feat(
+        sigma_pctile=0.98,
+        lob_depth_pctile=None,
+        liquidation_pulse=None,
+        cross_exchange_spread=None,
+    )
     res = check_cascade(f)
     assert res.met is None
 
 
 # ── Critical ──────────────────────────────────────────────────────────────────
 
+
 def test_critical_requires_sigma_above_90():
-    f = _feat(sigma_pctile=0.85, sigma_monotone_3bar=True,
-               hawkes_br=0.90, tda_l1_pctile=0.97, tda_l1_monotone_3bar=True)
+    f = _feat(
+        sigma_pctile=0.85,
+        sigma_monotone_3bar=True,
+        hawkes_br=0.90,
+        tda_l1_pctile=0.97,
+        tda_l1_monotone_3bar=True,
+    )
     res = check_critical(f)
     assert res.met is False
 
 
 def test_critical_path2_fires():
-    f = _feat(sigma_pctile=0.95, sigma_monotone_3bar=True,
-               hawkes_br=0.90,
-               tda_l1_pctile=0.97, tda_l1_monotone_3bar=True)
+    f = _feat(
+        sigma_pctile=0.95,
+        sigma_monotone_3bar=True,
+        hawkes_br=0.90,
+        tda_l1_pctile=0.97,
+        tda_l1_monotone_3bar=True,
+    )
     res = check_critical(f)
     assert res.met is True
 
@@ -102,6 +135,7 @@ def test_critical_all_stub_after_sigma_fail_is_false():
 
 
 # ── Surging ───────────────────────────────────────────────────────────────────
+
 
 def test_surging_price_breakout_and_sigma_jump_stubs_none():
     f = _feat(price_breakout_up=True, sigma_pctile=0.75)
@@ -150,6 +184,7 @@ def test_surging_sigma_too_low():
 
 # ── Coiling ───────────────────────────────────────────────────────────────────
 
+
 def test_coiling_sigma_low_all_stubs_none():
     f = _feat(sigma_pctile=0.20)
     res = check_coiling(f)
@@ -158,11 +193,13 @@ def test_coiling_sigma_low_all_stubs_none():
     assert len(res.none_conditions) == 3
 
 
-def test_coiling_fires_when_accumulation_available():
+def test_coiling_single_evaluable_signal_is_undecidable():
     f = _feat(sigma_pctile=0.20, oi_change_rate=0.01)
     res = check_coiling(f)
-    # sigma_low=True, oi_positive=True, others STUB → met=True
-    assert res.met is True
+    # 2026-07-11 ruling: 2-of-3 basket rule — with only ONE evaluable signal the
+    # majority question is undecidable → met=None (was met=True pre-ruling)
+    assert res.met is None
+    assert len(res.none_conditions) == 2
 
 
 def test_coiling_sigma_high_false():
@@ -172,22 +209,46 @@ def test_coiling_sigma_high_false():
 
 
 def test_coiling_all_available_and_true():
-    f = _feat(sigma_pctile=0.20, entropy_pctile=0.25,
-               oi_change_rate=0.01, funding_pctile=0.50)
+    f = _feat(
+        sigma_pctile=0.20, entropy_pctile=0.25, oi_change_rate=0.01, funding_pctile=0.50
+    )
     res = check_coiling(f)
     assert res.met is True
     assert not res.none_conditions
 
 
-def test_coiling_sigma_low_but_funding_extreme():
-    f = _feat(sigma_pctile=0.20, entropy_pctile=0.25,
-               oi_change_rate=0.01, funding_pctile=0.85)
-    # funding_pctile=0.85 → funding_neutral=False → met=False
+def test_coiling_two_of_three_fires_despite_funding_extreme():
+    f = _feat(
+        sigma_pctile=0.20, entropy_pctile=0.25, oi_change_rate=0.01, funding_pctile=0.85
+    )
+    # 2026-07-11 ruling (放宽授权): entropy_low + oi_positive = 2-of-3 True →
+    # a lone funding=False no longer hard-vetoes (was met=False pre-ruling;
+    # this is exactly the live 2026-07-11 00:00 bar that motivated the change)
+    res = check_coiling(f)
+    assert res.met is True
+    assert res.false_conditions == []  # majority met — the minority False not listed
+
+
+def test_coiling_one_of_three_with_majority_evaluable_is_false():
+    f = _feat(
+        sigma_pctile=0.20, entropy_pctile=0.90, oi_change_rate=0.01, funding_pctile=0.85
+    )
+    # 3 evaluable, only oi True → accumulation majority absent → met=False
+    res = check_coiling(f)
+    assert res.met is False
+    assert "entropy_lt_30pct" in res.false_conditions
+    assert "funding_neutral" in res.false_conditions
+
+
+def test_coiling_two_evaluable_split_is_false():
+    f = _feat(sigma_pctile=0.20, entropy_pctile=0.25, funding_pctile=0.85)
+    # 2 evaluable (entropy True, funding False), OI None → 1 < 2 → met=False
     res = check_coiling(f)
     assert res.met is False
 
 
 # ── Drifting-Charged ──────────────────────────────────────────────────────────
+
 
 def test_drifting_charged_sigma_mid_stubs_none():
     f = _feat(sigma_pctile=0.55)
@@ -210,6 +271,7 @@ def test_drifting_charged_sigma_too_high():
 
 # ── Drifting-Calm ─────────────────────────────────────────────────────────────
 
+
 def test_drifting_calm_sigma_mid():
     f = _feat(sigma_pctile=0.45)
     res = check_drifting_calm(f)
@@ -230,8 +292,10 @@ def test_drifting_calm_sigma_too_low():
 
 # ── Priority arbitration ──────────────────────────────────────────────────────
 
+
 def test_priority_cascade_beats_critical():
     from sel_v2.states.schema import ConditionResult
+
     results = {
         StateLabel.CASCADE: ConditionResult(True, [], [], {}),
         StateLabel.CRITICAL: ConditionResult(True, [], [], {}),
@@ -246,6 +310,7 @@ def test_priority_cascade_beats_critical():
 
 def test_priority_critical_beats_surging():
     from sel_v2.states.schema import ConditionResult
+
     results = {
         StateLabel.CASCADE: ConditionResult(False, [], [], {}),
         StateLabel.CRITICAL: ConditionResult(True, [], [], {}),
@@ -255,13 +320,16 @@ def test_priority_critical_beats_surging():
         StateLabel.DRIFTING_CALM: ConditionResult(False, [], [], {}),
     }
     # current=Surging, 10 bars dwell (min=2 met)
-    state, _ = arbitrate(results, current_state=StateLabel.SURGING, current_duration_4h=10)
+    state, _ = arbitrate(
+        results, current_state=StateLabel.SURGING, current_duration_4h=10
+    )
     assert state == StateLabel.CRITICAL
 
 
 def test_cascade_instant_switch_ignores_min_dwell():
     """Cascade must trigger even if current state hasn't met its min dwell."""
     from sel_v2.states.schema import ConditionResult
+
     results = {
         StateLabel.CASCADE: ConditionResult(True, [], [], {}),
         StateLabel.CRITICAL: ConditionResult(False, [], [], {}),
@@ -271,7 +339,9 @@ def test_cascade_instant_switch_ignores_min_dwell():
         StateLabel.DRIFTING_CALM: ConditionResult(False, [], [], {}),
     }
     # current=Coiling with only 2 bars (min_dwell=6 not met)
-    state, changed = arbitrate(results, current_state=StateLabel.COILING, current_duration_4h=2)
+    state, changed = arbitrate(
+        results, current_state=StateLabel.COILING, current_duration_4h=2
+    )
     assert state == StateLabel.CASCADE
     assert changed is True
 
@@ -279,6 +349,7 @@ def test_cascade_instant_switch_ignores_min_dwell():
 def test_min_dwell_prevents_premature_exit():
     """Coiling needs 6 bars before switching; at 3 bars should stay."""
     from sel_v2.states.schema import ConditionResult
+
     results = {
         StateLabel.CASCADE: ConditionResult(False, [], [], {}),
         StateLabel.CRITICAL: ConditionResult(False, [], [], {}),
@@ -288,12 +359,15 @@ def test_min_dwell_prevents_premature_exit():
         StateLabel.DRIFTING_CALM: ConditionResult(True, [], [], {}),
     }
     # current=Coiling with 3 bars (min_dwell=6 not met) → can't switch to Surging
-    state, changed = arbitrate(results, current_state=StateLabel.COILING, current_duration_4h=3)
+    state, changed = arbitrate(
+        results, current_state=StateLabel.COILING, current_duration_4h=3
+    )
     assert state == StateLabel.COILING
     assert changed is False
 
 
 # ── Min dwell values ──────────────────────────────────────────────────────────
+
 
 def test_min_dwell_values():
     assert MIN_DWELL_BARS[StateLabel.COILING] == 6
