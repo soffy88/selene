@@ -1033,19 +1033,41 @@ async function loadSelChart(){
       (s?`<br>S1:<b>${s.n_trades}</b> 笔 · 胜率 <b>${((s.win_rate||0)*100).toFixed(0)}%</b> · 净 <b>${s.net_pnl_usdt>=0?'+':''}${s.net_pnl_usdt}</b> USDT`:'');
     legend.innerHTML='<span style="color:#26a69a">▲ 做多入场</span> <span style="color:#ef5350">▼ 做空入场</span> <span>○ 平仓(绿=盈/红=亏,数字为 PnL)</span>';
   }else{
-    // ── 近期视图:状态切换打点 + 6 态图例 ──
+    // ── 近期视图:sel 状态切换(上方圆点)+ 缠论/ICT 镜头叠加(下方/K线内)──
     banner.style.display='none';
-    sub.textContent='(4H · 近300根 · 状态切换处打点)';
+    sub.textContent='(4H · 近300根 · 上:sel 状态切换 · 下:缠论 · K线内:ICT 结构事件)';
     const mk=[]; let prev=null; const seen=new Set();
     for(const d of data){
       if(d.state)seen.add(d.state);
       if(d.state&&d.state!==prev){ mk.push({time:d.time,position:'aboveBar',color:SEL_STATE_COLORS[d.state]||'#bbb',shape:'circle',text:d.state}); prev=d.state; }
     }
+    // 缠论/ICT 镜头事件(observation-only,与 sel 同数据不同视角)
+    const lens=await fetch(`/api/v2/sel/lens/events?bars=${nbars}`).then(r=>r.ok?r.json():null).catch(()=>null)||[];
+    const t0=data[0].time; let prevPivotT=-1;
+    for(const e of lens){
+      if(e.time<t0)continue;
+      if(e.vocab==='chan_pivot'){
+        // 连续段只在起点标字,后续画小方块,避免刷屏
+        const runStart=(e.time-prevPivotT)>14400; prevPivotT=e.time;
+        mk.push({time:e.time,position:'belowBar',color:'#e6b800',shape:'square',text:runStart?'中枢':''});
+      }else if(e.vocab==='chan_divergence'){
+        mk.push({time:e.time,position:'belowBar',color:'#ef5350',shape:'arrowUp',text:'背驰'});
+      }else if(e.vocab==='swing_structure'){
+        const up=(e.label||'').endsWith('UP'), choch=(e.label||'').startsWith('CHOCH');
+        mk.push({time:e.time,position:'inBar',color:choch?'#ab47bc':'#42a5f5',shape:up?'arrowUp':'arrowDown',text:choch?'CHoCH':'BOS'});
+      }else if(e.vocab==='vpin'){
+        mk.push({time:e.time,position:'belowBar',color:'#ff7043',shape:'circle',text:'VPIN'});
+      }
+    }
+    mk.sort((a,b)=>a.time-b.time);
     _selSeries.setMarkers(mk);
     const S6=['Coiling','Drifting_Charged','Drifting_Calm','Surging','Critical','Cascade'];
     legend.innerHTML=S6.map(s=>{const on=seen.has(s);
       return `<span style="opacity:${on?1:.4}" title="${on?'本窗口出现':'本窗口未出现'}"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${SEL_STATE_COLORS[s]||'#bbb'};margin-right:3px"></span>${s}${on?'':' (未出现)'}</span>`;
-    }).join('');
+    }).join('')
+    +'<br><span style="color:#e6b800">■ 缠论中枢重叠(&gt;p70)</span> <span style="color:#ef5350">▲ 缠论背驰</span> '
+    +'<span style="color:#42a5f5">▲▼ ICT BOS(顺势破位)</span> <span style="color:#ab47bc">▲▼ ICT CHoCH(性格转变)</span> '
+    +'<span style="color:#ff7043">● VPIN&gt;p95(毒性流)</span>';
   }
   _selChart.timeScale().fitContent();
 }

@@ -226,6 +226,50 @@ async def sel_observations():
     return out
 
 
+@router.get("/sel/lens/events")
+async def sel_lens_events(bars: int = 300):
+    """Chan/ICT lens events (v2.2 batch) for the SEL chart overlay — chan_pivot /
+    chan_divergence / swing_structure / vpin rows from v2_inverse_vocab_events over
+    the chart's window. `time` is unix seconds FLOORED TO THE 4H BAR OPEN (bar-tool
+    events already carry bar-open timestamps; vpin buckets close intra-bar and are
+    floored so markers land on chart bars). label comes from tool_metadata.
+    Graceful [] until populated."""
+    hours = bars * 4
+    p = await get_pool()
+    async with p.acquire() as conn:
+        try:
+            rows = await conn.fetch(
+                "SELECT timestamp, vocab, intensity, associated_state, tool_metadata "
+                "FROM v2_inverse_vocab_events "
+                "WHERE vocab IN ('chan_pivot','chan_divergence','swing_structure','vpin') "
+                "AND timestamp >= NOW() - make_interval(hours => $1) "
+                "ORDER BY timestamp",
+                hours,
+            )
+        except Exception:
+            return []
+    import json as _json
+
+    out = []
+    for r in rows:
+        meta = r["tool_metadata"]
+        if isinstance(meta, str):
+            try:
+                meta = _json.loads(meta)
+            except Exception:
+                meta = {}
+        out.append(
+            {
+                "time": int(r["timestamp"].timestamp() // 14400 * 14400),
+                "vocab": r["vocab"],
+                "label": (meta or {}).get("label") or (meta or {}).get("event"),
+                "value": float(r["intensity"]) if r["intensity"] is not None else None,
+                "state": r["associated_state"],
+            }
+        )
+    return out
+
+
 @router.get("/sel/counterfactual")
 async def sel_counterfactual():
     """Counterfactual S1/S2 entries over the full price history, computed by ASSUMING the
