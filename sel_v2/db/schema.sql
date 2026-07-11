@@ -210,6 +210,21 @@ CREATE TABLE IF NOT EXISTS v2_cross_exchange_prices (
 SELECT create_hypertable('v2_cross_exchange_prices', 'timestamp',
     if_not_exists => TRUE);
 
+-- Offline historical state annotation (Wave S2C Part 4). Separate from v2_state_history
+-- (which is the LIVE paper engine's own record) — this is an offline replay of the SAME
+-- state machine over the full bar history, with explicit feature-completeness tracking.
+CREATE TABLE IF NOT EXISTS v2_state_annotation (
+    timestamp           TIMESTAMPTZ NOT NULL,
+    symbol              TEXT        NOT NULL,
+    state               TEXT,
+    transition_via      TEXT,
+    features_available  TEXT[],   -- feature names present (non-None) for this bar's decision
+    features_missing    TEXT[],   -- feature names that were None (degraded path taken)
+    degraded            BOOLEAN,  -- cold_start or a None-reason forced a fallback
+    annotated_at        TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (timestamp, symbol)
+);
+
 -- ============================================================
 -- TRADING RECORDS (hypertable on entry_time)
 -- ============================================================
