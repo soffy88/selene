@@ -349,6 +349,13 @@ class DBWriter:
             # rewrites in steady state (same state/transition/duration → no write, no bloat),
             # so it self-heals on real changes without churning the table every tick.
             # v2_state_history is uncompressed, so updates are safe (unlike the compressed feeds).
+            # first_written_at / rewritten_at (write-instant instrumentation, see
+            # schema.sql): neither is in the INSERT column list, so a brand-new row
+            # picks up first_written_at's column DEFAULT NOW() and leaves rewritten_at
+            # NULL. The UPDATE branch never touches first_written_at (preserves the
+            # original write instant) and stamps rewritten_at = NOW() alongside the
+            # existing content columns -- so it only fires under the same
+            # IS DISTINCT FROM guard as everything else (a real content change).
             await self._conn.executemany(
                 """
                 INSERT INTO v2_state_history
@@ -361,7 +368,8 @@ class DBWriter:
                     state_features = EXCLUDED.state_features,
                     transition_from = EXCLUDED.transition_from,
                     transition_via = EXCLUDED.transition_via,
-                    duration_4h = EXCLUDED.duration_4h
+                    duration_4h = EXCLUDED.duration_4h,
+                    rewritten_at = NOW()
                 WHERE v2_state_history.state IS DISTINCT FROM EXCLUDED.state
                    OR v2_state_history.transition_from IS DISTINCT FROM EXCLUDED.transition_from
                    OR v2_state_history.transition_via IS DISTINCT FROM EXCLUDED.transition_via

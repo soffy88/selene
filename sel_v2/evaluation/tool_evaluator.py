@@ -20,6 +20,7 @@ Decision rules (v2.1 §2.2):
   B. 0 < lead_time < 86400s OR fp_rate 0.30-0.60  → 'maintain'
   C. fp_rate > 0.60 OR lead_time < 0              → 'deprecate'
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -112,7 +113,9 @@ class ToolEvaluator:
             "correlation_with_others": None,  # computed separately in _compute_correlations
             "sample_size": sample_size,
             "decision": decision,
-            "decision_reason": self._decision_reason(lead_time_sec, fp_rate, sample_size),
+            "decision_reason": self._decision_reason(
+                lead_time_sec, fp_rate, sample_size
+            ),
             "created_by": "cc",
             "created_at": now.isoformat(),
         }
@@ -143,19 +146,27 @@ class ToolEvaluator:
                 WHERE vocab = $1 AND timestamp BETWEEN $2 AND $3
                 ORDER BY timestamp
                 """,
-                vocab, start, end,
+                vocab,
+                start,
+                end,
             )
             signal_ts = [r["timestamp"] for r in rows_sig]
 
-            # State transition timestamps (any transition = potential true event)
+            # State transition timestamps (any transition = potential true event).
+            # v2_state_history holds a one-time pre-2026-06-15 backfill mixed in with
+            # live writes (see the STATUS.md data-constraint note) -- bounding to the
+            # live domain keeps a wide lookback (e.g. month_3's 90 days) from silently
+            # treating backfilled transitions as live tool-evaluation evidence.
             rows_state = await conn.fetch(
                 """
                 SELECT timestamp FROM v2_state_history
                 WHERE timestamp BETWEEN $1 AND $2
+                  AND timestamp >= '2026-06-15'
                   AND transition_from IS NOT NULL
                 ORDER BY timestamp
                 """,
-                start, end,
+                start,
+                end,
             )
             state_ts = [r["timestamp"] for r in rows_state]
 
@@ -223,8 +234,12 @@ class ToolEvaluator:
             return "deprecate"
         if lead_time is not None and lead_time < 0:
             return "deprecate"
-        if (lead_time is not None and lead_time > 86400.0
-                and fp_rate is not None and fp_rate < 0.30):
+        if (
+            lead_time is not None
+            and lead_time > 86400.0
+            and fp_rate is not None
+            and fp_rate < 0.30
+        ):
             return "upgrade"
         return "maintain"
 
@@ -238,7 +253,7 @@ class ToolEvaluator:
             return f"Insufficient sample (n={sample_size} < 5). Maintain pending more data."
         parts = []
         if lead_time is not None:
-            parts.append(f"lead_time={lead_time/3600:.1f}h")
+            parts.append(f"lead_time={lead_time / 3600:.1f}h")
         if fp_rate is not None:
             parts.append(f"fp_rate={fp_rate:.2%}")
         parts.append(f"n={sample_size}")
@@ -275,6 +290,7 @@ class ToolEvaluator:
             series[tid] = arr
 
         from scipy.stats import spearmanr
+
         corr: dict[str, dict[str, float]] = {}
         for tid in _OBSERVATION_TOOL_IDS:
             corr[tid] = {}

@@ -158,6 +158,21 @@ SELECT create_hypertable('v2_state_history', 'timestamp',
 -- idempotent (write_states_bulk uses ON CONFLICT DO NOTHING). (item #6)
 CREATE UNIQUE INDEX IF NOT EXISTS uix_v2_state_history ON v2_state_history (timestamp);
 
+-- Write-instant instrumentation (2026-07-11 small task, not a code-freeze change).
+-- v2_state_history is a full-replay-upsert view of "current code over all history",
+-- not a bar-by-bar archive (see the v2_state_history data-constraint note in
+-- STATUS.md) -- these two columns make that mechanism observable instead of
+-- inferred from Postgres xmin forensics. Order matters: ADD before SET DEFAULT so
+-- pre-existing rows are left NULL (their true first-write instant is unrecoverable,
+-- see the backfill forensics note), not backfilled with a misleading NOW().
+ALTER TABLE v2_state_history ADD COLUMN IF NOT EXISTS first_written_at TIMESTAMPTZ;
+ALTER TABLE v2_state_history ALTER COLUMN first_written_at SET DEFAULT NOW();
+ALTER TABLE v2_state_history ADD COLUMN IF NOT EXISTS rewritten_at TIMESTAMPTZ;
+-- first_written_at NULL  = written before this instrumentation existed (backfill or
+--                          early live -- see the xmin forensics note in STATUS.md).
+-- rewritten_at NOT NULL  = this bar's state has been changed by a later replay
+--                          cycle since it was first written (drift marker).
+
 -- CUSUM events
 CREATE TABLE IF NOT EXISTS v2_cusum_events (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),

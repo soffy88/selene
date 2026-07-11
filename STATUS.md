@@ -8,6 +8,9 @@ explicitly bound `timestamp >= '2026-06-15'`** or it will silently mix backfille
 into a live/operational metric. Clean, purpose-built historical state annotation
 (2yr, degraded-feature-aware) lives in `v2_state_annotation` instead — use that for
 any offline/historical analysis.
+*(2026-07-11 instrumentation)* v2_state_history 为当前代码全历史视图,非逐时存档;
+首写时刻 `first_written_at`(NULL=仪表化前),漂移标记 `rewritten_at`(非空=判定被
+改写)。漂移检查:`SELECT count(*) FROM v2_state_history WHERE rewritten_at IS NOT NULL;`
 
 Canonical task board. Source: trader-view audit (2026-06-30, 7-subsystem deep read).
 Numbering is **this audit's** backlog, distinct from the earlier 24-item / 5-subsystem
