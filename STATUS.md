@@ -52,6 +52,24 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+### Wave V22-C:趋势腿普查 (2026-07-11)
+
+V22-A 门失败归因:2年 BTC-USDT OHLC 里,符合 Wiki 规格(时长10-35天、push 3-6)的
+趋势腿到底存不存在,父状态机 Surging 标注捕获了多少?纯计数,零策略参数/门槛/仿真。
+`sel_v2/offline/leg_census.py`(唯一新文件,按红线),三档粗层阈值(3×ATR/5×ATR/
+固定8%价格)独立全跑全报,细层 push 计数与 substate.py 同参(1.5×ATR)。
+
+`sel_v2/reports/trend_leg_census_v1.md` 原始裁决(不下结论):
+
+| 阈值 | 总腿数 | 符合Wiki规格 | 其中被父状态机捕获(≥50%重叠) |
+|---|---:|---:|---:|
+| 3×ATR | 139 | 8 | 2 |
+| 5×ATR | 61 | 18 | 7 |
+| 8%价格 | 49 | 17 | 5 |
+
+漏检腿的 bar 里 86.9%-96.8% 被标注叫 Drifting_Calm(而非 Surging)。数字上报,
+按 Wave 明示条款不做归因结论。
+
 ### Wave V22-A:v2.2 离线验证门 (2026-07-11)
 
 D1-D5(v2.2 设计草案拍板)的离线 gate,三门裁决,**不进 V22-B**(按本 Wave 明示条款,
