@@ -197,6 +197,19 @@ SELECT create_hypertable('v2_inverse_vocab_events', 'timestamp',
 CREATE UNIQUE INDEX IF NOT EXISTS idx_v2_inverse_vocab_ts_vocab
     ON v2_inverse_vocab_events (timestamp, vocab);
 
+-- Cross-exchange prices (Wave S2C Part 3) — a second reachable venue/product so the S2
+-- Step-5 divergence check is a real signal, not N/A. OKX is globally blocked here and the
+-- local reference is already Binance-perp-derived, so we poll Binance spot: the perp-vs-spot
+-- basis is the reachable cross-market dislocation proxy.
+CREATE TABLE IF NOT EXISTS v2_cross_exchange_prices (
+    timestamp   TIMESTAMPTZ NOT NULL,
+    exchange    TEXT        NOT NULL,   -- 'binance_spot' / 'binance_perp' / ...
+    price       NUMERIC     NOT NULL,
+    PRIMARY KEY (timestamp, exchange)
+);
+SELECT create_hypertable('v2_cross_exchange_prices', 'timestamp',
+    if_not_exists => TRUE);
+
 -- ============================================================
 -- TRADING RECORDS (hypertable on entry_time)
 -- ============================================================

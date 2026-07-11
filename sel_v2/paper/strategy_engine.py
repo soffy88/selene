@@ -514,6 +514,7 @@ class PaperStrategyEngine:
         tick_times=None,
         micro=None,
         staleness: Optional[dict] = None,
+        cross_price: Optional[tuple] = None,
     ) -> dict:
         """Run the full engine over a frame of 4H bars (ascending by time).
         Optional OI/funding/OFI series (helixa-derived) unlock the Coiling / Drifting-Charged
@@ -686,6 +687,14 @@ class PaperStrategyEngine:
                     s2_trig,
                     pause_cusum_reversal=is_current_bar and pause_cusum_reversal,
                 )
+                # Step 5 cross-exchange divergence — a live/now concept, so only the current
+                # bar gets a spread (perp mark vs Binance spot). Stale/absent feed (age>120s
+                # or no price) → None → Step 5 degrades (skips, no abort).
+                cross_spread_pct = None
+                if is_current_bar and cross_price is not None:
+                    cp, age = cross_price
+                    if cp and mark and age is not None and age <= 120:
+                        cross_spread_pct = abs(mark - cp) / mark * 100.0
                 self._maybe_open_s2(
                     t_unix,
                     s2_trig,
@@ -698,6 +707,7 @@ class PaperStrategyEngine:
                     sweep=sweeps[i],
                     liq_pulse=bool(liq_pulse_series[i]),
                     oi_drop_pulse=bool(oi_drop_series[i]),
+                    cross_spread_pct=cross_spread_pct,
                     snapshot=snapshot,
                     blocked=is_current_bar and block_s2_entry,
                 )
@@ -867,6 +877,7 @@ class PaperStrategyEngine:
         sweep=None,
         liq_pulse: bool = False,
         oi_drop_pulse: bool = False,
+        cross_spread_pct=None,
         snapshot=None,
         blocked: bool = False,
     ) -> None:
@@ -887,6 +898,7 @@ class PaperStrategyEngine:
             oi_drop_pulse=oi_drop_pulse,
             absorption=absorption,
             sweep=sweep,
+            cross_spread_pct=cross_spread_pct,
             subaccount_nav_usdt=self.accounts.subaccount_2.nav,
         )
         # Persist a direction-aware vocab event whenever a signature is present (§14.2, Wave
@@ -942,6 +954,7 @@ class PaperStrategyEngine:
             instrument=self.instrument,
             entry_time=ts,
             entry_state=state,
+            entry_confidence=getattr(dec, "entry_confidence", 1.0),
         )
         if pos:
             self._s2_meta[pos.id] = _S2Meta(

@@ -59,6 +59,9 @@ class EntryDecision:
     state_4h: Optional[str] = None
     suggested_leverage: float = MAX_LEVERAGE
     step_reached: int = 0  # which step caused abort/observe
+    entry_confidence: float = (
+        1.0  # Step-5 divergence discount (1.0 clean, 0.7 mid-band)
+    )
 
 
 @dataclass
@@ -222,21 +225,30 @@ class Strategy2EntryFilter:
                 step_reached=4,
             )
 
-        # Step 5: Cross-exchange divergence (STUB — spread feed not yet flowing)
-        if cross_spread_pct is not None and cross_spread_pct > 0.5:
-            return EntryDecision(
-                action="ABORT",
-                reason=(
-                    f"Step 5: Cross-exchange spread {cross_spread_pct:.2f}% > 0.5% "
-                    "— Cascade risk too high"
-                ),
-                cusum_direction=direction,
-                hawkes_lambda=lam_now,
-                hawkes_threshold=h_lambda,
-                hawkes_passed=True,
-                state_4h=state_4h,
-                step_reached=5,
-            )
+        # Step 5: Cross-exchange divergence (Wave S2C Part 3). cross_spread_pct is the
+        # perp-vs-Binance-spot basis %, or None when the ticker feed is stale/absent (age
+        # >120s) — in which case we DEGRADE (skip the filter, do not abort). Bands:
+        #   >0.5%   → ABORT (dislocation too large, cascade risk)
+        #   <0.05%  → clean pass (confidence 1.0)
+        #   between → enter with entry_confidence 0.7 (discounted)
+        entry_confidence = 1.0
+        if cross_spread_pct is not None:
+            if cross_spread_pct > 0.5:
+                return EntryDecision(
+                    action="ABORT",
+                    reason=(
+                        f"Step 5: Cross-exchange divergence {cross_spread_pct:.3f}% > 0.5% "
+                        "— dislocation too large, cascade risk"
+                    ),
+                    cusum_direction=direction,
+                    hawkes_lambda=lam_now,
+                    hawkes_threshold=h_lambda,
+                    hawkes_passed=True,
+                    state_4h=state_4h,
+                    step_reached=5,
+                )
+            if cross_spread_pct >= 0.05:
+                entry_confidence = 0.7
 
         # Step 6: Determine leverage
         leverage = _compute_leverage(vocab)
@@ -246,26 +258,31 @@ class Strategy2EntryFilter:
         )
 
         h_lambda_str = f"{h_lambda:.6f}" if h_lambda is not None else "cold"
+        conf_note = "" if entry_confidence >= 1.0 else f" conf×{entry_confidence:.2f}"
         return EntryDecision(
             action=action,
             reason=(
                 f"Step 6: Entry approved — Type {entry_type} "
                 f"({'reversal' if entry_type == 'A' else 'momentum'}) "
                 f"λ*={lam_now:.6f} h_λ={h_lambda_str} "
-                f"CUSUM_coeff={cusum_trigger.intensity_coeff:.2f}"
+                f"CUSUM_coeff={cusum_trigger.intensity_coeff:.2f}{conf_note}"
             ),
             cusum_direction=direction,
             cusum_intensity_coeff=cusum_trigger.intensity_coeff,
             # §14.4: base size = 10% of subaccount-2, scaled by the CUSUM signal
             # strength (C/h ratio, already capped at 3.0). At the minimum trigger
-            # (coeff≈1) this is the 10% base; a stronger break sizes up to 3×.
-            base_size_pct=BASE_SIZE_FRACTION * max(1.0, cusum_trigger.intensity_coeff),
+            # (coeff≈1) this is the 10% base; a stronger break sizes up to 3×. Then
+            # discounted by the Step-5 cross-exchange confidence (0.7 in the mid band).
+            base_size_pct=BASE_SIZE_FRACTION
+            * max(1.0, cusum_trigger.intensity_coeff)
+            * entry_confidence,
             hawkes_lambda=lam_now,
             hawkes_threshold=h_lambda,
             hawkes_passed=True,
             state_4h=state_4h,
             suggested_leverage=leverage,
             step_reached=6,
+            entry_confidence=entry_confidence,
         )
 
 

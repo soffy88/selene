@@ -259,6 +259,22 @@ class PaperEngine:
                 out["liq_vol"][i] = float(r["liqvol"])
         return out
 
+    async def _load_cross_exchange_price(self):
+        """Latest Binance-spot price + its age in seconds, for the S2 Step-5 divergence check
+        (Wave S2C Part 3). Returns (price, age_seconds) or None when the poller feed is empty.
+        The engine only applies it to the current bar and treats age>120s as unavailable."""
+        from datetime import datetime, timezone
+
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT price, timestamp FROM v2_cross_exchange_prices "
+                "WHERE exchange = 'binance_spot' ORDER BY timestamp DESC LIMIT 1"
+            )
+        if row is None or row["price"] is None:
+            return None
+        age = (datetime.now(timezone.utc) - row["timestamp"]).total_seconds()
+        return float(row["price"]), age
+
     @staticmethod
     def _ofi_proxy(df):
         """Bar-level signed-volume OFI proxy (sign(return) x volume). Coarse but
@@ -368,6 +384,8 @@ class PaperEngine:
         tick_times = await self._load_tick_times(df)
         # Per-bar microstructure → Strategy-2 inverse-vocab + OFI persistence.
         micro = await self._load_microstructure_series(df)
+        # Wave S2C Part 3: latest Binance-spot price for the S2 Step-5 divergence check.
+        cross_price = await self._load_cross_exchange_price()
         # GL1 T0.4: gate new entries / suppress the CUSUM-reversal exit on the current
         # bar only when a source is too old to trust (process_frame applies it only to
         # the newest bar — see its docstring).
@@ -380,6 +398,7 @@ class PaperEngine:
             tick_times=tick_times,
             micro=micro,
             staleness=staleness,
+            cross_price=cross_price,
         )
         self._engine = engine
         await self._persist_summary(summary)
