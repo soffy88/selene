@@ -1,5 +1,14 @@
 # STATUS — Selene / Helios
 
+⚠️ **Data constraint (2026-07-11, forensics below):** `v2_state_history` contains a
+one-time full-history backfill for `timestamp < '2026-06-15'` (4272 rows, all sharing
+a single write transaction — see the v2_state_history backfill forensics note). Any
+query treating this table as "what the live deployment observed in real time" **must
+explicitly bound `timestamp >= '2026-06-15'`** or it will silently mix backfilled rows
+into a live/operational metric. Clean, purpose-built historical state annotation
+(2yr, degraded-feature-aware) lives in `v2_state_annotation` instead — use that for
+any offline/historical analysis.
+
 Canonical task board. Source: trader-view audit (2026-06-30, 7-subsystem deep read).
 Numbering is **this audit's** backlog, distinct from the earlier 24-item / 5-subsystem
 rounds (see memory `opt-pr-3`).
@@ -51,6 +60,36 @@ rounds (see memory `opt-pr-3`).
 ---
 
 ## ✅ Done
+
+### v2_state_history 回填溯源 + 消费方审计 (2026-07-11)
+
+跟进 V22-D 的"06-15起显式截止"假设——溯源确认、复发排查、消费方逐一核对。
+
+- **溯源**:`timestamp < '2026-06-15'` 的 4272 行 xmin(PG 事务ID)**全部相同**
+  (940363),证明一次性单事务写入,非逐bar累积。该事务ID远低于本库其他所有已知
+  锚点(如 epoch e678e8fb 插入时 xmin=29,180,933,对应 2026-07-08 23:17 UTC),
+  说明写入发生在数据库生命周期很早期。对照 git log:commit `bf80c6e`
+  (2026-06-30 23:28:15 +08,"BTC candlestick chart...")提交信息明确写道
+  "Repopulated v2_state_history with current-code states so markers are
+  meaningful"。repo 内唯一具备"全量覆盖写入 v2_state_history"能力的代码是
+  `sel_v2/scheduler/replay.py`(手动 CLI,`--reset` 可先 TRUNCATE 再重放;数据源
+  是本地 parquet 快照而非 v2_bars_4h,Wave 1 遗留)——判定为该次回填的执行工具,
+  在 bf80c6e commit 附近手动跑的(未作为服务部署,git 无记录具体调用时刻)。
+- **复发排查**:全 repo grep 确认写 v2_state_history 只有 2 条代码路径——①
+  `sel_v2/paper/paper_engine.py`(live 部署,`v2-paper-engine` 服务,每周期把当前
+  code 重算的全量 state 提交 upsert,`WHERE ... IS DISTINCT FROM` 令未变化的
+  行不产生新 xmin,故老 bar 长期原地不动);②`sel_v2/scheduler/replay.py`
+  (手动 CLI,未接入任何 docker-compose 服务)。TRUNCATE 只经 replay.py 的
+  `--reset`。无第三方写入路径。
+- **消费方审计**(7个查询点,4个文件):`services/healthcheck/main.py`
+  (dwell检测 LIMIT 200≈33天,当前不越界但 Drifting_Calm p90 dwell 达94天时可能
+  跨06-15)、`sel_v2/paper_interface/api.py` 的 5 处(24h/LIMIT100/LIMIT1 天然安全;
+  30天窗口越界4天;`/sel/chart` 默认300bar≈50天,常规越界但该端点用途是人工看图,
+  不区分 live/回填不影响可用性)、`sel_v2/evaluation/tool_evaluator.py`
+  (`lookback_days=90` 默认值,**无 06-15 护栏**,若被调用会把回填期数据当作
+  live 观测——该工具尚未在生产跑过)、`sel_v2/tools/golive_report.py`
+  (epoch CLEAN 时用 epoch 起始时间,当前安全;NO_EPOCH 回退 30 天窗口越界4天,
+  ~07-15 后自然消解)。STATUS.md 顶部已加数据约束提示。
 
 ### Wave V22-D:Live 捕获率周监控 + V22 收尾裁决 (2026-07-11)
 
