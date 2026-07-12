@@ -1,11 +1,11 @@
 # ICT 视角 v1 — ICT-2 结构 + ICT-1 VPIN pilot
 
 - 生成:`python -m sel_v2.offline.lens_study`(确定性:seed=42,整文件覆写)
-- 数据:`v2_bars_4h ⋈ v2_state_annotation`,BTC-USDT,2024-07-03 → 2026-07-11,4432 bars(逐 bar 精确对齐)
+- 数据:`v2_bars_4h ⋈ v2_state_annotation`,BTC-USDT,2024-07-03 → 2026-07-12,4435 bars(逐 bar 精确对齐)
 - 纪律:observation-only;不碰 `states/**`/`strategies/**`;三视角同数据可并排对比
 
 > **样本量诚实声明**:2 年标注中 Surging 腿仅 13 条(11 Exhaustion + 2 Stress 收尾),
-> 稀有状态 bar 数:**Coiling=12,Critical=16,Cascade=0**(2026-07-11 Coiling 判据放宽后,Coiling 仅出现于
+> 稀有状态 bar 数:**Coiling=10,Critical=16,Cascade=0**(2026-07-11 Coiling 判据放宽后,Coiling 仅出现于
 > 特征齐全的近期窗口;降级历史仍为 None 路径)。凡涉及腿级/事件级检验均为小样本,
 > 功效有限;bar 级检验存在序列相依,p 值偏乐观(均已在对应小节标注)。
 
@@ -13,9 +13,9 @@
 
 | 结构态 | bars | share |
 |---|---:|---:|
-| UP | 1461 | 33.0% |
+| UP | 1461 | 32.9% |
 | DOWN | 1500 | 33.8% |
-| RANGE | 1471 | 33.2% |
+| RANGE | 1474 | 33.2% |
 
 - 事件普查:BOS_UP 33 / BOS_DOWN 36 / CHOCH_UP 17 / CHOCH_DOWN 19
 
@@ -65,12 +65,12 @@
 
 > v2_ticks starts 2026-07-06 (no retention drop) — first honest 30d window ≈ 2026-08-05; re-run `python -m sel_v2.offline.lens_study` then.
 
-- tick:7,431,360 笔,07-06 → 07-12;完成桶 271,VPIN 点 222
-- V_bucket 引导:30d bar 量基线 → 3,264.8(coin 口径);tick/bar 量比 = 57.562(∉[0.5,2] → tick size 与 bar volume 非同一单位,**已按比值换算到 tick 口径**)→ **V_bucket = 187,924.9**(tick 口径)
-- 分布:p50=0.126 p90=0.141 p95=0.144 p97=0.145 max=0.150
-- 桶时长(分钟):median=24.6 min=0.2 max=216.0
-- lag-1 自相关 = 0.977;side-VPIN vs BVC-VPIN 相关 = -0.190(side 为主分类,BVC 为无 side 场景的对照验证)
-- 滚动分位 warmup(100 桶):已达;p95=0.144 p97=0.145
+- tick:7,446,963 笔,07-06 → 07-12;完成桶 283,VPIN 点 234
+- V_bucket 引导:30d bar 量基线 → 3,230.2(coin 口径);tick/bar 量比 = 55.844(∉[0.5,2] → tick size 与 bar volume 非同一单位,**已按比值换算到 tick 口径**)→ **V_bucket = 180,390.7**(tick 口径)
+- 分布:p50=0.133 p90=0.150 p95=0.155 p97=0.159 max=0.164
+- 桶时长(分钟):median=24.3 min=0.2 max=200.4
+- lag-1 自相关 = 0.970;side-VPIN vs BVC-VPIN 相关 = 0.489(side 为主分类,BVC 为无 side 场景的对照验证)
+- 滚动分位 warmup(100 桶):已达;p95=0.155 p97=0.159
 
 ## 现读(最新 bar)
 

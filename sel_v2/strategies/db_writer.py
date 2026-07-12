@@ -371,6 +371,7 @@ class DBWriter:
                     duration_4h = EXCLUDED.duration_4h,
                     rewritten_at = NOW()
                 WHERE v2_state_history.state IS DISTINCT FROM EXCLUDED.state
+                   OR v2_state_history.sub_state IS DISTINCT FROM EXCLUDED.sub_state
                    OR v2_state_history.transition_from IS DISTINCT FROM EXCLUDED.transition_from
                    OR v2_state_history.transition_via IS DISTINCT FROM EXCLUDED.transition_via
                    OR v2_state_history.duration_4h IS DISTINCT FROM EXCLUDED.duration_4h

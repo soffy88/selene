@@ -426,12 +426,23 @@ def check_drifting_calm(features: BarFeatures) -> ConditionResult:
     Acts as the default/fallback when higher-priority states don't fire.
 
     Conditions:
-      - σ in 30-60th pctile (computable)
+      - σ < 60th pctile (computable)
       - LOB entropy in 40-70th pctile (STUB)
       - OI change rate near zero (STUB)
       - No directional OFI (STUB)
+
+    2026-07-12 user ruling (授权处理 C1, see STATUS.md): the original σ band
+    [30th, 60th) left σ<30th bars with NO home when Coiling's accumulation
+    basket didn't fire — nothing was met=True and the arbitration fallback held
+    whatever state came before (the "Charged×30 stickiness" 07-11 investigation).
+    A quiet market WITHOUT accumulation evidence is calm by definition, so the
+    lower bound is dropped: σ < 60th pctile. Coiling (higher priority) still
+    wins whenever its 2-of-3 basket confirms accumulation; this also makes
+    Surging-leg exhaustion monotone in σ (previously a leg whose σ collapsed
+    STRAIGHT below the 30th pctile was held longer than one decaying into
+    [30,60) — an artifact, not a design).
     """
-    sigma_mid: Optional[bool] = 0.30 <= features.sigma_pctile < 0.60
+    sigma_mid: Optional[bool] = features.sigma_pctile < 0.60
 
     entropy_mid: Optional[bool]
     if features.entropy_pctile is None:

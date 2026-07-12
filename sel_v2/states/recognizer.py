@@ -37,6 +37,10 @@ class StateRecognizer:
     def __init__(self) -> None:
         self._dwell = MinDwellTracker()
         self._prev_state: Optional[StateLabel] = None
+        # C3 (2026-07-12 user ruling): Surging direction. Close at leg entry —
+        # sub_state derives from sign(close - entry_close), breakout direction
+        # on the entry bar itself. None outside Surging.
+        self._surging_entry_close: Optional[float] = None
 
     @property
     def current_state(self) -> Optional[StateLabel]:
@@ -56,6 +60,7 @@ class StateRecognizer:
             new_state = StateLabel.DRIFTING_CALM
             vocab, is_legal = identify_transition(self._prev_state, new_state)
             self._dwell.update(new_state)
+            self._surging_entry_close = None
             rec = _make_record(
                 features, new_state, self._prev_state, vocab, is_legal,
                 self._dwell.duration_4h,
@@ -102,15 +107,42 @@ class StateRecognizer:
         cold_start = False
         none_reason = ", ".join(all_none_tags) if all_none_tags else None
 
+        sub_state = self._surging_sub_state(new_state, features)
+
         self._dwell.update(new_state)
         rec = _make_record(
             features, new_state, self._prev_state, vocab, is_legal,
             self._dwell.duration_4h,
             cold_start=cold_start, none_reason=none_reason,
             condition_results=results,
+            sub_state=sub_state,
         )
         self._prev_state = new_state
         return rec
+
+    def _surging_sub_state(
+        self, new_state: StateLabel, features: BarFeatures
+    ) -> Optional[str]:
+        """Direction of the current Surging leg — 'Up'/'Down' (C3, 2026-07-12
+        user ruling; sub_state had been reserved-but-empty since v2.0, forcing
+        every consumer to re-infer leg direction after the fact, V22 series).
+        Causal: entry bar uses the breakout direction that fired Surging; later
+        bars use sign(close - entry_close). None if the entry direction is
+        unknowable (entry without a breakout flag)."""
+        if new_state != StateLabel.SURGING:
+            self._surging_entry_close = None
+            return None
+        if (
+            self._prev_state != StateLabel.SURGING
+            or self._surging_entry_close is None
+        ):
+            self._surging_entry_close = features.close
+            if features.price_breakout_up:
+                return "Up"
+            if features.price_breakout_down:
+                return "Down"
+            return None
+        return "Up" if features.close >= self._surging_entry_close else "Down"
 
 
 def _make_record(
@@ -123,6 +155,7 @@ def _make_record(
     cold_start: bool,
     none_reason: Optional[str],
     condition_results: dict[StateLabel, ConditionResult],
+    sub_state: Optional[str] = None,
 ) -> StateRecord:
     """Assemble a StateRecord from all components."""
     # Build state_features JSONB payload
@@ -171,7 +204,7 @@ def _make_record(
     return StateRecord(
         timestamp=features.timestamp,
         state=state,
-        sub_state=None,
+        sub_state=sub_state,
         state_features=sf,
         transition_from=prev_state,
         transition_via=transition_via,

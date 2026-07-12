@@ -284,10 +284,13 @@ def test_drifting_calm_sigma_too_high():
     assert res.met is False
 
 
-def test_drifting_calm_sigma_too_low():
+def test_drifting_calm_sigma_low_is_calm():
+    # 2026-07-12 ruling: quiet market WITHOUT accumulation evidence is calm —
+    # the old [0.30, 0.60) lower bound left sigma<30pct bars stateless (held
+    # only by the arbitration fallback). Was met=False pre-ruling.
     f = _feat(sigma_pctile=0.25)
     res = check_drifting_calm(f)
-    assert res.met is False
+    assert res.met is True
 
 
 # ── Priority arbitration ──────────────────────────────────────────────────────
@@ -376,3 +379,41 @@ def test_min_dwell_values():
     assert MIN_DWELL_BARS[StateLabel.DRIFTING_CHARGED] == 4
     assert MIN_DWELL_BARS[StateLabel.CRITICAL] == 1
     assert MIN_DWELL_BARS[StateLabel.CASCADE] == 0
+
+
+# ── C3: Surging sub_state direction (2026-07-12 ruling) ──────────────────────
+
+
+def test_surging_sub_state_direction_lifecycle():
+    from sel_v2.states.recognizer import StateRecognizer
+
+    rec = StateRecognizer()
+    # warm into Charged (σ mid + OI elevated), then break out upward
+    for i in range(8):
+        r = rec.recognize(_feat(sigma_pctile=0.50, oi_change_rate_pctile=0.80))
+        assert r.sub_state is None  # sub_state only lives inside Surging
+    r = rec.recognize(
+        _feat(
+            sigma_pctile=0.75,
+            price_breakout_up=True,
+            ofi_cumulative_pctile=0.95,
+        )
+    )
+    assert r.state.value == "Surging" and r.sub_state == "Up"
+    entry_close = 50000.0  # _feat default close
+    # later Surging bar below entry close → Down (direction from entry price)
+    r = rec.recognize(
+        _feat(
+            sigma_pctile=0.75,
+            price_breakout_up=True,
+            ofi_cumulative_pctile=0.95,
+            close=entry_close * 0.97,
+        )
+    )
+    assert r.state.value == "Surging" and r.sub_state == "Down"
+    # leave Surging → sub_state cleared
+    for i in range(12):
+        r = rec.recognize(_feat(sigma_pctile=0.45))
+        if r.state.value != "Surging":
+            assert r.sub_state is None
+            break
