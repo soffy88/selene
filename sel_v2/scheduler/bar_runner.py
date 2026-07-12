@@ -15,6 +15,7 @@ Feature computation strategy:
   - Per-bar: look up precomputed values by index, check monotone/breakout
   - Wave 5: helixa OI/funding/taker_flow series are optional; NaN → None in BarFeatures
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,23 +25,24 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from sel_v2.features.lob_entropy import rolling_entropy_variance, is_rising_3bar
 from sel_v2.states.schema import BarFeatures, StateRecord
 from sel_v2.states.recognizer import StateRecognizer
 
 logger = logging.getLogger(__name__)
 
 # Rolling window sizes (§16.1)
-_SIGMA_WINDOW = 180       # 30 days × 6 bars/day
+_SIGMA_WINDOW = 180  # 30 days × 6 bars/day
 _SIGMA_PCTILE_WINDOW = 180
-_BREAKOUT_WINDOW = 6      # 24h = 6 × 4H bars
+_BREAKOUT_WINDOW = 6  # 24h = 6 × 4H bars
 _TDA_PCTILE_WINDOW = 540  # 90 days for percentile baseline
 
 # Helixa-derived rolling windows
-_OI_PCTILE_WINDOW = 360   # 60 days
+_OI_PCTILE_WINDOW = 360  # 60 days
 _FUNDING_PCTILE_WINDOW = 360
-_OFI_PCTILE_WINDOW = 42   # 7 days
-_LOB_DEPTH_PCTILE_WINDOW = 42   # 7 days (schema: "LOB depth rank in 7-day history")
-_ENTROPY_PCTILE_WINDOW = 180    # 30 days (schema: "entropy rank in 30-day history")
+_OFI_PCTILE_WINDOW = 42  # 7 days
+_LOB_DEPTH_PCTILE_WINDOW = 42  # 7 days (schema: "LOB depth rank in 7-day history")
+_ENTROPY_PCTILE_WINDOW = 180  # 30 days (schema: "entropy rank in 30-day history")
 # Min finite observations before a rolling percentile is emitted (adaptive window, A2):
 # lets recently-started feeds (OI/funding/entropy) produce a percentile instead of staying
 # null until their full window is filled.
@@ -61,10 +63,10 @@ class BarRunner:
         self,
         closes: np.ndarray,
         timestamps: np.ndarray,
-        sigma_series: np.ndarray,          # rolling σ, shape (n,)
-        sigma_pctile_series: np.ndarray,   # rolling pctile of σ, shape (n,)
-        hawkes_br_series: np.ndarray,      # rolling Hawkes BR, shape (n,)
-        tda_l1_series: np.ndarray,         # rolling TDA L^1, shape (n,)
+        sigma_series: np.ndarray,  # rolling σ, shape (n,)
+        sigma_pctile_series: np.ndarray,  # rolling pctile of σ, shape (n,)
+        hawkes_br_series: np.ndarray,  # rolling Hawkes BR, shape (n,)
+        tda_l1_series: np.ndarray,  # rolling TDA L^1, shape (n,)
         tda_l1_pctile_series: np.ndarray,  # rolling 95th pctile of TDA, shape (n,)
         hawkes_br_threshold: float = 0.85,
         tda_l1_threshold: float = 0.000097,
@@ -72,8 +74,12 @@ class BarRunner:
         oi_series: Optional[np.ndarray] = None,
         funding_series: Optional[np.ndarray] = None,
         ofi_proxy_series: Optional[np.ndarray] = None,
-        lob_depth_series: Optional[np.ndarray] = None,   # total top-of-book depth (bid+ask) per bar
-        entropy_series: Optional[np.ndarray] = None,     # LOB Shannon entropy per bar (from v2_lob_snapshots)
+        lob_depth_series: Optional[
+            np.ndarray
+        ] = None,  # total top-of-book depth (bid+ask) per bar
+        entropy_series: Optional[
+            np.ndarray
+        ] = None,  # LOB Shannon entropy per bar (from v2_lob_snapshots)
     ) -> None:
         self._closes = closes
         self._timestamps = timestamps
@@ -118,6 +124,14 @@ class BarRunner:
         self._entropy_pctile = self._precompute_rolling_pctile(
             entropy_series, _ENTROPY_PCTILE_WINDOW
         )
+        # Rolling variance of entropy_4h + 3-bar monotone rise: Critical A2 (GL1 T0.1).
+        # entropy_4h/entropy_pctile were already wired (audit follow-up B above); A2 needed
+        # the *trend* of the series, which was still permanently None (states/critical_logic.py).
+        self._entropy_variance = (
+            rolling_entropy_variance(entropy_series)
+            if entropy_series is not None
+            else None
+        )
 
     # ── Helixa feature precomputation ─────────────────────────────────────────
 
@@ -134,7 +148,10 @@ class BarRunner:
         return rate
 
     def _precompute_rolling_pctile(
-        self, series: Optional[np.ndarray], window: int, min_bars: int = _PCTILE_MIN_BARS
+        self,
+        series: Optional[np.ndarray],
+        window: int,
+        min_bars: int = _PCTILE_MIN_BARS,
     ) -> Optional[np.ndarray]:
         """Rolling rank of `series[i]` within its trailing `window`.
 
@@ -179,7 +196,7 @@ class BarRunner:
         n = len(funding)
         persist = np.full(n, np.nan)
         for i in range(_FUNDING_PERSIST_BARS - 1, n):
-            window = funding[i - _FUNDING_PERSIST_BARS + 1: i + 1]
+            window = funding[i - _FUNDING_PERSIST_BARS + 1 : i + 1]
             if np.all(np.isfinite(window)):
                 signs = np.sign(window)
                 persist[i] = 1.0 if np.all(signs == signs[0]) and signs[0] != 0 else 0.0
@@ -247,18 +264,26 @@ class BarRunner:
             )
 
         sigma = float(self._sigma[i])
-        sigma_pctile = float(self._sigma_pctile[i]) if np.isfinite(self._sigma_pctile[i]) else 0.5
+        sigma_pctile = (
+            float(self._sigma_pctile[i]) if np.isfinite(self._sigma_pctile[i]) else 0.5
+        )
 
         # σ monotone 3 bars: bars i-2, i-1, i all have increasing σ
         sigma_monotone: Optional[bool] = None
-        if i >= 2 and np.isfinite(self._sigma[i - 2]) and np.isfinite(self._sigma[i - 1]):
-            sigma_monotone = bool(self._sigma[i - 2] < self._sigma[i - 1] < self._sigma[i])
+        if (
+            i >= 2
+            and np.isfinite(self._sigma[i - 2])
+            and np.isfinite(self._sigma[i - 1])
+        ):
+            sigma_monotone = bool(
+                self._sigma[i - 2] < self._sigma[i - 1] < self._sigma[i]
+            )
 
         # Price breakout vs last 6 bars (24h)
         price_breakout_up: Optional[bool] = None
         price_breakout_down: Optional[bool] = None
         if i >= _BREAKOUT_WINDOW:
-            window_closes = self._closes[i - _BREAKOUT_WINDOW: i]
+            window_closes = self._closes[i - _BREAKOUT_WINDOW : i]
             price_breakout_up = bool(close > float(np.max(window_closes)))
             price_breakout_down = bool(close < float(np.min(window_closes)))
 
@@ -309,6 +334,12 @@ class BarRunner:
         lob_depth_pctile = _f(self._lob_depth_pctile)
         entropy_4h = _f(self._entropy_raw)
         entropy_pctile = _f(self._entropy_pctile)
+        entropy_variance = _f(self._entropy_variance)
+        entropy_variance_rising: Optional[bool] = (
+            is_rising_3bar(self._entropy_variance, i)
+            if self._entropy_variance is not None
+            else None
+        )
 
         return BarFeatures(
             timestamp=ts,
@@ -337,6 +368,8 @@ class BarRunner:
             lob_depth_pctile=lob_depth_pctile,
             entropy_4h=entropy_4h,
             entropy_pctile=entropy_pctile,
+            entropy_variance=entropy_variance,
+            entropy_variance_rising=entropy_variance_rising,
         )
 
     def process_bar(self, i: int) -> StateRecord:
