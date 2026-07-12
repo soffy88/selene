@@ -853,3 +853,22 @@ KW p=5.8e-26(|收益|)/ 6.3e-145(量),日期对半稳健 ✓,峰值时段 12:00 
 **结论:四中取一。** Killzones 是 ICT 概念族里唯一在我们数据上以压倒性证据存活的,
 且它本质是"时段结构"而非"聪明钱叙事"——已接入观察层;SMC 三大标志性概念
 (sweep/FVG/OB)在 BTC 4H 机械化定义下均无边际。
+
+---
+
+# 候选池追加:ICT-8 SMT Divergence 实证 (2026-07-12)
+
+**来源**:优化批次 B1(数据解锁:发现 iris md 层已采 ETH tick;ETH-USDT 4H 深史经
+binance_backfill 回填 v2_bars_4h symbol 分区,4380 bars)
+**评估人**:Claude
+
+**ICT-8 SMT(跨资产摆动背离,BTC/ETH)— 出池:废弃 (2026-07-12)**
+2026-07-11 ICT 轮唯一因数据缺失跳过的概念独特候选,预注册实证
+(`analysis/smt_v1.md`):2 年 34 事件(bear 20/bull 14;BTC/ETH 相关 0.818,
+背离确属异常);但 bearish SMT 后 BTC 前向 **+0.46%(方向相反,p=0.73)**,
+bullish +0.59%(方向对,p=0.124 未过 0.10)→ **fail**。跨资产背离在 BTC/ETH 4H
+机械化下无反转边际。ETH 4H 深史保留(一次性快照,未接续采;若未来其他跨资产
+候选需要,bar-poller 可加 ETH 实例)。
+
+**ICT 概念族实证总账(2026-07-11/12)**:Killzones ✅(唯一存活,已接入)、
+sweep/FVG/OB/SMT ❌(四废弃)、VPIN+清算-sweep ⏳(08-05 自动补跑,cron 已装)。

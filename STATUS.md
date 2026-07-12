@@ -74,6 +74,21 @@ rounds (see memory `opt-pr-3`).
 
 ## ✅ Done
 
+### 优化批次 A+B1:CI/nginx/月度评估/08-05自动化 + SMT 实证废弃 (2026-07-12)
+
+- **A1** CI 修复(python 3.11→3.12,此前依赖装不上,CI 死于出生)
+- **A2** nginx resolver+变量 proxy_pass:gateway recreate 不再打断前端(已验证换 IP 后不重启即通)
+- **A3** `v2-tool-eval-monthly` 服务(每月 1 日 01:00 UTC 全工具评估→v2_tool_evaluation_results
+  +decision_trail 摘要);tool_evaluator 增 vpin history_days≥30 过滤(pilot 期正确剔除)
+- **A4** 08-05 补跑全自动化:H-ICT1a 正式检验与 ICT-7 清算-sweep 已实现(数据守卫,
+  现打 PENDING),host cron `23 9 5 8 *` 跑 `sel_v2/tools/rerun_20260805.sh`(自删,
+  不自动 commit,verdicts 留人工按池纪律裁决);venv=~/.venvs/selene-analytics
+- **A5** platform-postgres-backup unhealthy 诊断:selene 每日备份正常✓;根因=备份清单含
+  不存在的 infisical 库(每日 Exit 1);且 marketdata(iris 原始数据)不在备份清单
+  ——修复在 helios-platform repo,待人工定夺(见 Needs Human)
+- **B1** SMT divergence(BTC/ETH)实证 **fail** 废弃(bear 方向反,p=0.73;详
+  `analysis/smt_v1.md`);ETH-USDT 4H 深史已回填 v2_bars_4h(4380 bars,一次性快照)
+
 ### ICT"最新技术"扫描 + 实证:四中取一,Killzones 通过并接入 (2026-07-11)
 
 用户指令实证 ICT 最新技术。扫描(SMC 生态零同行评审;清算级联学术有据但自有数据仅数日)
@@ -526,6 +541,12 @@ Surging Up/Down direction (sub_state unused); S2 counterfactual (needs tick-driv
 
 ## 🚨 Needs Human
 
+- **备份清单修复(helios-platform repo,2026-07-12)**:platform-postgres-backup 的
+  `POSTGRES_DB=helios,helixa,selene,tide,infisical`(infrastructure/docker-compose.yml:58)
+  中 infisical 库不存在 → 每日备份 job Exit 1 + 容器 unhealthy(selene 等四库备份本身
+  正常)。建议:(a) 移除 infisical 或补建库;(b) 决定是否把 marketdata(iris 采集层,
+  ETH/SOL/BTC 原始 tick)加入备份清单(体积权衡);(c) healthcheck 8080 未监听,顺带查。
+  跨项目 repo,未擅动。
 - ~~Coiling 四条件 AND 过严 + Charged 粘性回退~~ → **已裁决执行 (2026-07-11 用户授权
   "授权放宽"):** `check_coiling` 放宽为 σ 必要 + 蓄能篮子 {熵<30pct, OI增>0,
   |funding|<80pct} **2-of-3**(单个 False 不再一票否决;可判信号 <2 个时 met=None,
