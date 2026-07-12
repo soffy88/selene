@@ -93,6 +93,12 @@ async def run() -> dict:
             "percentile_disc(0.5) WITHIN GROUP (ORDER BY bid_depth + ask_depth) AS med_depth "
             "FROM v2_lob_snapshots WHERE bid_depth IS NOT NULL GROUP BY 1 ORDER BY 1"
         )
+        liq_rows = await pool.fetch(
+            "SELECT to_timestamp(floor(EXTRACT(epoch FROM timestamp) / 14400) * 14400) "
+            "AT TIME ZONE 'UTC' AS bar_ts, sum(size * price) AS notional "
+            "FROM v2_liquidations WHERE symbol=$1 GROUP BY 1",
+            "BTC-USDT",
+        )
     finally:
         await pool.close()
     n = len(close)
@@ -191,8 +197,53 @@ async def run() -> dict:
         ob_verdict,
     )
 
+    # ── liquidation-sweep (PREREGISTERED 2026-07-12; academically grounded angle) ──
+    # sweep events should coincide with elevated liquidation notional in the
+    # +-2 bar window vs all-bar baseline (MW one-sided greater). GUARD: <30d of
+    # liquidation history -> PENDING (same clock as VPIN, ~2026-08-05).
+    liq_sweep = {"status": "PENDING", "reason": "no liquidation data"}
+    if liq_rows:
+        import datetime as _dt
+
+        liq_by_ts = {}
+        for r in liq_rows:
+            ts = r["bar_ts"]
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=_dt.timezone.utc)
+            liq_by_ts[ts] = float(r["notional"])
+        liq_span = (max(liq_by_ts) - min(liq_by_ts)).total_seconds() / 86400.0
+        if liq_span < 30:
+            liq_sweep = {
+                "status": "PENDING",
+                "reason": f"liquidation history {liq_span:.1f}d < 30d",
+            }
+        else:
+            liq_series = np.array([liq_by_ts.get(t, 0.0) for t in times])
+            liq_start = min(liq_by_ts)
+            era = [i for i, t in enumerate(times) if t >= liq_start]
+            sweep_idx = {e.idx for e in sweeps}
+            def _win(i):
+                return float(np.sum(liq_series[max(0, i - 2) : i + 3]))
+            ev = [_win(i) for i in era if i in sweep_idx]
+            base = [_win(i) for i in era if i not in sweep_idx]
+            if len(ev) >= MIN_GROUP_N:
+                _u, p_liq = mann_whitney_one_sided(ev, base, alternative="greater")
+                liq_sweep = {
+                    "status": "pass" if p_liq < 0.10 else "fail",
+                    "p": p_liq,
+                    "n_events": len(ev),
+                    "med_event": float(np.median(ev)),
+                    "med_base": float(np.median(base)),
+                    "span_days": round(liq_span, 1),
+                }
+            else:
+                liq_sweep = {"status": "UNDERPOWERED", "n_events": len(ev)}
+    logger.info("liq-sweep: %s", liq_sweep.get("status"))
+
     # ── BH family ────────────────────────────────────────────────────────────
     family = [("H-ICT3[KW|ret|]", float(kw_ret.pvalue))]
+    if "p" in liq_sweep:
+        family.append(("H-ICT7[liq-sweep]", liq_sweep["p"]))
     for tag, d in (
         ("H-ICT4[sweep-up]", sw_up),
         ("H-ICT4[sweep-down]", sw_dn),
@@ -300,7 +351,14 @@ async def run() -> dict:
         f"| ICT-4 Sweep | {sw_verdict} |",
         f"| ICT-5 FVG | {fv_verdict} |",
         f"| ICT-6 Order Block | {ob_verdict} |",
-        "| 清算-sweep 关联(学术有据) | PENDING(清算数据 07-06 起,≈08-05 补跑) |",
+        (
+            f"| ICT-7 清算-sweep 关联 | **{liq_sweep['status']}**"
+            + (
+                f"(p={liq_sweep['p']:.4f},事件窗清算中位 {liq_sweep['med_event']:,.0f} vs 基准 {liq_sweep['med_base']:,.0f},{liq_sweep['span_days']}d)|"
+                if "p" in liq_sweep
+                else f"({liq_sweep.get('reason', liq_sweep.get('n_events', ''))})|"
+            )
+        ),
         "",
     ]
     report = "\n".join(lines)
@@ -313,6 +371,7 @@ async def run() -> dict:
     return {
         "killzones": kz_verdict,
         "sweep": sw_verdict,
+        "liq_sweep": liq_sweep.get("status"),
         "fvg": fv_verdict,
         "ob": ob_verdict,
         "counts": {"sweeps": len(sweeps), "fvgs": len(fvgs), "obs": len(obs)},

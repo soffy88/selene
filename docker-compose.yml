@@ -449,6 +449,26 @@ services:
 
   # Weekly live capture-rate monitor (Wave V22-D, offline follow-up to V22-C). Pure
   # read+append diagnostic — no strategy/state coupling, no live trading impact.
+  # Monthly observation-tool evaluation (optimization A3). Sleeps until the 1st
+  # of each month 01:00 UTC, runs ToolEvaluator over all 12 tools (90d lookback),
+  # writes v2_tool_evaluation_results + a v2_decision_trail summary row.
+  v2-tool-eval-monthly:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    command: python -m sel_v2.evaluation.monthly_eval --serve
+    env_file: .env
+    environment:
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
+      - POSTGRES_HOST=platform-postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=selene_app
+      - POSTGRES_PASSWORD=${SELENE_APP_PASSWORD}
+      - POSTGRES_DB=selene
+    networks:
+      - helios-net
+    restart: unless-stopped
+
   # ICT-1 VPIN live monitor (v2.2 lens batch, observation-only). Polls v2_ticks
   # every 5 min, upserts high-VPIN events into v2_inverse_vocab_events
   # (vocab='vpin'). Stateless restart recovery (trailing-30d tick replay).

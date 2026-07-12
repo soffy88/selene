@@ -22,7 +22,7 @@
 | H-CHAN3b | MW(fwd vol) | 0.0000 | 0.0003 | pass |
 | H-ICT2a | 7/13,CP CI [25%,81%] | — | — | 点估计(n=13 不作显著性) |
 | H-ICT2b | 配对 n=2 | None | nan | descriptive |
-| H-ICT1a/1b | VPIN | — | — | **PENDING(数据不足,≈2026-08-05 补跑)** |
+| H-ICT1a/1b | VPIN | — | — | **PENDING(tick history 6.0d < 30d)** |
 
 ## 每条 Surging 腿的三视角对照
 
@@ -57,6 +57,6 @@
 - CHAN-1 盘整参数组:主 `K18`(18 bar, 3.0×ATR),敏感性 `K30`(30 bar, 4.0×ATR)——live 用主参数组
 - CHAN-3 overlap 阈值:**p70 = 2.327**(2yr 全样本,in-sample,live 冻结)
 - ICT-2 zigzag:1.5×ATR(14)(与 CHAN-3 共享,substate 同参)
-- ICT-1 VPIN:V_bucket **自适应**(监控服务启动时按 min(30d, 可用) tick 量自举,= 日均 tick 量/50;本次研究日取值 181,716.4 tick 口径),信号阈值 = 滚动 p95,warmup 100 桶;`history_days` 入 metadata(Month-3 评估剔除 <30d)
+- ICT-1 VPIN:V_bucket **自适应**(监控服务启动时按 min(30d, 可用) tick 量自举,= 日均 tick 量/50;本次研究日取值 187,924.9 tick 口径),信号阈值 = 滚动 p95,warmup 100 桶;`history_days` 入 metadata(Month-3 评估剔除 <30d)
 
 > v2_ticks starts 2026-07-06 (no retention drop) — first honest 30d window ≈ 2026-08-05; re-run `python -m sel_v2.offline.lens_study` then.

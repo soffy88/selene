@@ -70,5 +70,5 @@
 
 ## 现读(最新 bar)
 
-- overlap_ratio = 2.167
+- overlap_ratio = 1.973
 - 高于 p70?否/未知

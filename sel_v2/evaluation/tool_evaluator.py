@@ -165,11 +165,19 @@ class ToolEvaluator:
             if conn is None:
                 return [], []
 
-            # Signal timestamps
+            # Signal timestamps. ICT1/vpin only: exclude the <30d pilot era —
+            # VPIN percentiles are unstable until the tick history window is
+            # honest (candidate-pool ruling; events carry history_days for this).
+            extra = (
+                "AND (tool_metadata->>'history_days')::float >= 30"
+                if tool_id == "ICT1"
+                else ""
+            )
             rows_sig = await conn.fetch(
-                """
+                f"""
                 SELECT timestamp FROM v2_inverse_vocab_events
                 WHERE vocab = $1 AND timestamp BETWEEN $2 AND $3
+                {extra}
                 ORDER BY timestamp
                 """,
                 vocab,

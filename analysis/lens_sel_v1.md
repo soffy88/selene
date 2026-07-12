@@ -46,4 +46,4 @@
 ## 现读(最近 30 bar)
 
 - 状态序列:Charged×18 → Coiling×12
-- 最新 bar:2026-07-11 12:00 UTC,state=Coiling,close=64,170
+- 最新 bar:2026-07-11 12:00 UTC,state=Coiling,close=64,139

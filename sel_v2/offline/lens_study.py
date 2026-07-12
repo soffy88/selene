@@ -197,7 +197,89 @@ async def _run_vpin_pilot(pool, times, volume) -> dict:
             "warmed": calc.completed_buckets >= calc.warmup_buckets,
         }
     )
+    stats["h_ict1a"] = _test_h_ict1a(series, times, volume, calc)
     return stats
+
+
+def _test_h_ict1a(series, times, volume, calc) -> dict:
+    """H-ICT1a (formal, PREREGISTERED — implemented 2026-07-12 so the ~08-05
+    re-run is fully deterministic): VPIN > rolling p95 moments → P(any of the
+    next 6 4H bars has |1-bar log return| > 2σ_180) above the same probability
+    at all tick-era bars (baseline). σ_180 = trailing 180-bar std of 1-bar log
+    returns (the sel σ convention). Fisher one-sided. GUARD: tick history < 30
+    days → status='PENDING' (percentiles not honest yet, candidate-pool ruling).
+
+    H-ICT1b (Critical+VPIN → Cascade conversion) stays structurally untestable
+    while the sample has zero Cascade bars — reported as such, not computed."""
+    if not series:
+        return {"status": "PENDING", "reason": "no buckets"}
+    span_days = (series[-1][0] - series[0][0]).total_seconds() / 86400.0
+    if span_days < 30:
+        return {
+            "status": "PENDING",
+            "reason": f"tick history {span_days:.1f}d < 30d",
+        }
+    import bisect
+
+    # closes/σ over the joined bar frame (times aligned with volume/close upstream)
+    # NOTE: `times` here are bar times; we need closes — recompute from the caller?
+    # The caller passes bar times + volume only; closes come via the module-level
+    # helper below (set by run()). Kept explicit to avoid threading yet another arg.
+    close = _test_h_ict1a._close  # set in run() before the pilot executes
+    logret = np.diff(np.log(close), prepend=np.log(close[0]))
+    n = len(close)
+    sigma = np.full(n, np.nan)
+    for i in range(180, n):
+        sigma[i] = np.std(logret[i - 179 : i + 1])
+    extreme_fwd = np.zeros(n, dtype=bool)  # any of next 6 bars |ret| > 2σ_i
+    for i in range(n - 6):
+        if np.isfinite(sigma[i]) and sigma[i] > 0:
+            extreme_fwd[i] = bool(np.any(np.abs(logret[i + 1 : i + 7]) > 2 * sigma[i]))
+    bar_ts = [t for t in times]
+    tick_era_start = series[0][0]
+    era_idx = [
+        i
+        for i, t in enumerate(bar_ts)
+        if t >= tick_era_start and i < n - 6 and np.isfinite(sigma[i]) and sigma[i] > 0
+    ]
+    if len(era_idx) < 30:
+        return {"status": "PENDING", "reason": "too few tick-era bars"}
+    # high-VPIN moments → containing bar (floor to the most recent bar time)
+    hot_bars: set[int] = set()
+    p95_series = []
+    seen = []
+    for ts, v, _b in series:
+        if v is None:
+            continue
+        seen.append(v)
+        if len(seen) >= 100:
+            p95 = float(np.percentile(seen[-min(len(seen), 2000) :], 95))
+            p95_series.append(p95)
+            if v > p95:
+                j = bisect.bisect_right(bar_ts, ts) - 1
+                if j in era_idx:
+                    hot_bars.add(j)
+    cold_bars = [i for i in era_idx if i not in hot_bars]
+    if len(hot_bars) < MIN_GROUP_N:
+        return {
+            "status": "UNDERPOWERED",
+            "n_hot": len(hot_bars),
+            "n_cold": len(cold_bars),
+        }
+    a = sum(1 for i in hot_bars if extreme_fwd[i])
+    b = len(hot_bars) - a
+    c = sum(1 for i in cold_bars if extreme_fwd[i])
+    d = len(cold_bars) - c
+    p = fisher_one_sided([[a, b], [c, d]])
+    return {
+        "status": "pass" if p < 0.10 else "fail",
+        "p": p,
+        "table": [[a, b], [c, d]],
+        "rate_hot": a / max(1, a + b),
+        "rate_cold": c / max(1, c + d),
+        "n_hot": len(hot_bars),
+        "span_days": round(span_days, 1),
+    }
 
 
 # ── hypothesis tests ─────────────────────────────────────────────────────────
@@ -773,7 +855,12 @@ def _build_ict_report(
         f"背驰 {dm}/{dh + dm}"
         + (f";Fisher p={ict2b['fp_fisher_p']:.3f}" if "fp_fisher_p" in ict2b else ""),
         "",
-        "## ICT-1 VPIN pilot(**H-ICT1a/1b:DATA-INSUFFICIENT-PENDING**)",
+        "## ICT-1 VPIN pilot"
+        + (
+            f"(**H-ICT1a:{vpin['h_ict1a']['status']}**;H-ICT1b:Cascade=0 不可测)"
+            if vpin.get("h_ict1a")
+            else "(**H-ICT1a/1b:DATA-INSUFFICIENT-PENDING**)"
+        ),
         "",
         f"> {VPIN_RERUN_NOTE}",
         "",
@@ -920,7 +1007,14 @@ def _build_verdict(
         f"{'descriptive' if ict2b['n_pairs'] < 6 else 'reported'} |"
     )
     lines += [
-        "| H-ICT1a/1b | VPIN | — | — | **PENDING(数据不足,≈2026-08-05 补跑)** |",
+        (
+            f"| H-ICT1a | VPIN Fisher | {vpin['h_ict1a'].get('p', float('nan')):.4f} | — | "
+            f"**{vpin['h_ict1a']['status']}**(hot {vpin['h_ict1a'].get('rate_hot', 0):.0%} vs "
+            f"cold {vpin['h_ict1a'].get('rate_cold', 0):.0%},{vpin['h_ict1a'].get('span_days', 0)}d)|"
+            if vpin.get("h_ict1a") and "p" in vpin["h_ict1a"]
+            else f"| H-ICT1a/1b | VPIN | — | — | **{(vpin.get('h_ict1a') or {}).get('status', 'PENDING')}"
+            f"({(vpin.get('h_ict1a') or {}).get('reason', '数据不足,≈2026-08-05 补跑')})** |"
+        ),
         "",
         "## 每条 Surging 腿的三视角对照",
         "",
@@ -1031,6 +1125,7 @@ async def run(skip_ticks: bool = False) -> dict:
 
         vpin = {"available": False}
         if not skip_ticks:
+            _test_h_ict1a._close = close  # H-ICT1a needs the bar closes
             vpin = await _run_vpin_pilot(pool, times, volume)
 
         reports = {

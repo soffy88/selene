@@ -61,16 +61,16 @@
 - 配对腿 n=2:median CHoCH lead = 25,median 背驰 lead = 1(配对 <6 → descriptive only)
 - FP(Surging 内信号,6 bar 内未跟腿终结):CHoCH 5/6,背驰 163/181;Fisher p=0.479
 
-## ICT-1 VPIN pilot(**H-ICT1a/1b:DATA-INSUFFICIENT-PENDING**)
+## ICT-1 VPIN pilot(**H-ICT1a:PENDING**;H-ICT1b:Cascade=0 不可测)
 
 > v2_ticks starts 2026-07-06 (no retention drop) — first honest 30d window ≈ 2026-08-05; re-run `python -m sel_v2.offline.lens_study` then.
 
-- tick:7,036,790 笔,07-06 → 07-11;完成桶 266,VPIN 点 217
-- V_bucket 引导:30d bar 量基线 → 3,253.1(coin 口径);tick/bar 量比 = 55.860(∉[0.5,2] → tick size 与 bar volume 非同一单位,**已按比值换算到 tick 口径**)→ **V_bucket = 181,716.4**(tick 口径)
-- 分布:p50=0.133 p90=0.150 p95=0.154 p97=0.157 max=0.166
-- 桶时长(分钟):median=23.0 min=0.0 max=135.2
-- lag-1 自相关 = 0.976;side-VPIN vs BVC-VPIN 相关 = 0.222(side 为主分类,BVC 为无 side 场景的对照验证)
-- 滚动分位 warmup(100 桶):已达;p95=0.154 p97=0.157
+- tick:7,431,360 笔,07-06 → 07-12;完成桶 271,VPIN 点 222
+- V_bucket 引导:30d bar 量基线 → 3,264.8(coin 口径);tick/bar 量比 = 57.562(∉[0.5,2] → tick size 与 bar volume 非同一单位,**已按比值换算到 tick 口径**)→ **V_bucket = 187,924.9**(tick 口径)
+- 分布:p50=0.126 p90=0.141 p95=0.144 p97=0.145 max=0.150
+- 桶时长(分钟):median=24.6 min=0.2 max=216.0
+- lag-1 自相关 = 0.977;side-VPIN vs BVC-VPIN 相关 = -0.190(side 为主分类,BVC 为无 side 场景的对照验证)
+- 滚动分位 warmup(100 桶):已达;p95=0.144 p97=0.145
 
 ## 现读(最新 bar)
 
