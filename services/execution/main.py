@@ -920,10 +920,15 @@ def _assert_safe_exec_mode():
 async def lifespan(app: FastAPI):
     _assert_safe_exec_mode()
     _init_adapters()
-    for name, adp in get_all_adapters().items():
-        adp.on_fill(on_fill)
-        asyncio.create_task(adp.subscribe_fills())
-        logger.info(f"Fill subscription: {name}")
+    # 交易所 fill WS 只在 live 模式有意义:PAPER/NOTIFY_ONLY 不向交易所下单,
+    # 永远等不到回报,订阅只会无限重连刷错误日志(OKX 全局不可达,每 5-60s 一条)。
+    if EXEC_MODE in LIVE_EXEC_MODES:
+        for name, adp in get_all_adapters().items():
+            adp.on_fill(on_fill)
+            asyncio.create_task(adp.subscribe_fills())
+            logger.info(f"Fill subscription: {name}")
+    else:
+        logger.info(f"EXEC_MODE={EXEC_MODE}: exchange fill subscription skipped")
     await _recover_monitoring_orders()
     # run_forever:Redis 断连不再永久杀死消费/心跳任务(2026-07-12 事故;reconcile_loop
     # 写 deadman 心跳,它一死看门狗就 trip cw4:execution:halt——07-10 停单根因)

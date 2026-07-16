@@ -36,20 +36,6 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
-- **v4 停摆事故修复(2026-07-16)— 已部署,端到端验证中**:v4 自 07-10 起无新订单,
-  三层叠加根因:①07-10 03:26Z healthcheck 看门狗因 execution 心跳过期 471s trip 了
-  `cw4:execution:halt`(无 TTL、需人工 `POST /execution/halt/clear`,无人清)→ execution
-  把之后全部 192 条 signal.sized 静默丢弃;②07-12 12:48Z helios-redis 宕机(07-13 06:03Z
-  重启)→ 所有 v4 服务的手写 xreadgroup 消费循环无外层保护,连接异常直接杀死 task,
-  /health 却始终绿(gateway/notification 用的 redis_client 无 socket_timeout,半开 TCP
-  永久阻塞,共享 consume() 的重试轮不到执行);③dockerd 日志管道对旧容器损坏,故障全程
-  不可见。修复:`shared/events/streams.py` 新增 `run_forever` 监督器并接入 signal/
-  portfolio/risk/execution 全部后台任务;`redis_client.init_redis` 加 socket_timeout/
-  keepalive;signal 加过期 K 线守卫(积压回放只热身不评分,`STALE_CANDLE_SECS=900`)。
-  运维:消费组 SETID $ 丢弃 3.5 天陈旧积压+清 1608 条 PEL,重建 10 个 v4 镜像,清 halt。
-  测试:tests/unit+tests/services 285 passed。遗留(见 Needs Human/backlog):TimescaleDB
-  `candles` 表无生产者(HMM 永远冷启动 0/60)、halt 触发后无持续告警、execution OKX
-  适配器在 PAPER 模式下无意义重连(OKX 全局不可达)。
 - **v2.2 lens batch (2026-07-11) — 实施完成,进入 Month-3 采集期**:三视角同数据实证
   (sel/缠论/ICT,`analysis/lens_{sel,chan,ict,verdict}_v1.md`)→ CHAN-1 触发失败标准
   **废弃**(A/C 前向收益无差异,p=0.44/0.79);CHAN-2/CHAN-3/ICT-2 接入 paper engine
@@ -87,6 +73,25 @@ rounds (see memory `opt-pr-3`).
 ---
 
 ## ✅ Done
+
+### v4 停摆事故修复 + 遗留加固(2026-07-16,用户指示"你调查原因…实现他们/提交并开工遗留事项")
+
+- **事故与修复全记录**:v4 自 07-10 起无新订单。三层根因:①07-10 03:26Z 看门狗因
+  execution 心跳过期 trip `cw4:execution:halt`(需人工清,无人清)→ 192 条 signal.sized
+  全部静默丢弃;②07-12 12:48Z helios-redis 宕机(07-13 06:03Z 重启)→ 手写 xreadgroup
+  消费循环无外层保护,task 全灭而 /health 恒绿(redis_client 无 socket_timeout,半开
+  TCP 永久阻塞);③dockerd 日志管道对旧容器损坏,全程不可见。
+  修复(commit 1940cf8 + 后续):`run_forever` 监督器包全部后台任务;redis_client 加
+  socket_timeout/keepalive;signal 过期 K 线守卫(回放只热身不评分)。运维:SETID $ 丢
+  3.5 天积压+清 1608 PEL、重建镜像、经 `POST /execution/halt/clear` 清 halt。
+  **端到端已验证**:重启 1 分钟内 HOMEUSDT 纸面单走完 sized→risk 批准→成交→MONITORING;
+  risk_rejected/stale_dropped 计数正常。tests 285 passed。
+- **遗留加固三件套(同日)**:①candles 落库——scanner payload 补 open/volume,
+  signal `_persist_candle` 写 TimescaleDB(含 backfill 种子,唯一索引
+  `uq_candles_sym_int_time` 去重,已应用线上并入 schema.sql);HMM/risk 相关性查询
+  自此有数据(HMM 下个 6h refresh 生效)。②healthcheck Rule 6b:halt 存活期间每小时
+  重复告警直到清除(07-10 只告警一次漏 6 天的教训)。③PAPER/NOTIFY_ONLY 跳过交易所
+  fill WS 订阅,消除 OKX 不可达的无限重连噪音。
 
 ### C 批次:状态机校准三件套(2026-07-12,用户授权"授权你处理")
 

@@ -336,9 +336,11 @@ class MarketScanner:
                     "symbol": symbol,
                     "backfill": True,
                     "open_time": k["open_time"],
+                    "open": k["open"],
                     "high": k["high"],
                     "low": k["low"],
                     "close": k["close"],
+                    "volume": k["volume"],
                     "indicators": compute_indicators(closes),
                 },
             )
@@ -394,9 +396,11 @@ class MarketScanner:
                 {
                     "symbol": symbol,
                     "open_time": k["open_time"],
+                    "open": k["open"],
                     "high": k["high"],
                     "low": k["low"],
                     "close": k["close"],
+                    "volume": k["volume"],
                     "indicators": compute_indicators(st.closes),
                 },
             )

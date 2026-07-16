@@ -22,7 +22,7 @@ from datetime import datetime
 
 from fastapi import FastAPI
 
-from shared.db.connections import get_redis, redis_health
+from shared.db.connections import get_pg, get_redis, redis_health
 from shared.events.streams import (
     STREAM_MARKET_CANDLES,
     STREAM_MARKET_RAW,
@@ -82,6 +82,8 @@ COOLDOWN_SECS = int(os.getenv("SIGNAL_COOLDOWN_SECS", "3600"))
 # 逐根回放会拿几天前的价格发"当前"信号)。scanner 固定 1h bar。
 CANDLE_INTERVAL_SECS = int(os.getenv("CANDLE_INTERVAL_SECS", "3600"))
 STALE_CANDLE_SECS = int(os.getenv("STALE_CANDLE_SECS", "900"))
+# candles 表 interval 标签,须与 scanner 的 CANDLE_INTERVAL 及 HMM/risk 查询一致
+CANDLE_INTERVAL_LABEL = os.getenv("CANDLE_INTERVAL", "1h")
 
 # ── Regime → 策略开关（核心修复：Regime 驱动策略切换）──────────────────────────
 #
@@ -313,6 +315,33 @@ class SignalService:
         return recorded
 
     # ── 处理 K 线数据 ──────────────────────────────────
+    async def _persist_candle(self, symbol: str, data: dict, open_time_ms: float):
+        """写 TimescaleDB candles 表(HMM lookback 与 risk 相关性查询的数据源)。
+        open/volume 缺失(旧格式消息)或 PG 故障时跳过——持久化失败不阻塞评分。"""
+        open_px = data.get("open")
+        volume = data.get("volume")
+        if not open_time_ms or open_px is None or volume is None:
+            return
+        try:
+            pool = await get_pg()
+            await pool.execute(
+                """
+                INSERT INTO candles (time, symbol, interval, open, high, low, close, volume)
+                VALUES (to_timestamp($1), $2, $3, $4, $5, $6, $7, $8)
+                ON CONFLICT (symbol, interval, time) DO NOTHING
+                """,
+                open_time_ms / 1000,
+                symbol,
+                CANDLE_INTERVAL_LABEL,
+                float(open_px),
+                float(data.get("high", 0)),
+                float(data.get("low", 0)),
+                float(data.get("close", 0)),
+                float(volume),
+            )
+        except Exception as e:
+            logger.warning(f"candle persist {symbol}: {e}")
+
     async def handle_candle(self, data: dict):
         symbol = data.get("symbol", "")
         if not symbol:
@@ -355,6 +384,10 @@ class SignalService:
         open_time_ms = float(data.get("open_time") or 0)
         if open_time_ms:
             mkt["bar_close_ts"] = open_time_ms / 1000 + CANDLE_INTERVAL_SECS
+
+        # 落库 TimescaleDB candles(此前无生产者,HMM/risk 相关性查询永远空手):
+        # backfill 种子也写——一次播种即给 HMM 250 根历史。唯一索引去重,失败不影响评分。
+        await self._persist_candle(symbol, data, open_time_ms)
 
         # 历史回填(market-scanner 给新发现的符号播种 regime 缓冲):只热身
         # detector/缓存,不评分——对着几天前的价格发"当前"信号是错的,而且一次
