@@ -233,19 +233,30 @@ async def process_scored_signal(data: dict):
             _stats["risk_rejected"] += 1
             return
     # ── 路由（使用 portfolio sized 的真实 allocated_capital）──
-    try:
-        plan = await _router.route(signal.symbol, side, allocated)
-        adapter_name = plan.splits[0]["adapter"] if plan.splits else PRIMARY_EXCHANGE
-    except Exception as e:
-        logger.warning(f"Router failed: {e}")
+    # PAPER/NOTIFY_ONLY 不触交易所 REST:route+get_orderbook 在交易所不可达时
+    # 各带多次重试×长超时,会把 exec-worker 串行阻塞数分钟/信号(实测 OKX 断连
+    # 时 BTCUSDT 信号卡 3 分钟)。纸面成交定价本就走 cw4:prices,与真实盘口无关。
+    if EXEC_MODE in LIVE_EXEC_MODES:
+        try:
+            plan = await _router.route(signal.symbol, side, allocated)
+            adapter_name = (
+                plan.splits[0]["adapter"] if plan.splits else PRIMARY_EXCHANGE
+            )
+        except Exception as e:
+            logger.warning(f"Router failed: {e}")
+            adapter_name = PRIMARY_EXCHANGE
+    else:
         adapter_name = PRIMARY_EXCHANGE
-    # ── 实时盘口滑点（真实 spread + symbol realized vol + 估算 ADV）──
+    # ── 滑点估计(live:真实盘口 spread;非 live:默认 spread)──
     try:
-        adp = get_adapter(adapter_name)
-        book = await adp.get_orderbook(signal.symbol)
-        bids = book.get("bids", [[0, 0]])
-        asks = book.get("asks", [[0, 0]])
-        spread = (asks[0][0] - bids[0][0]) / asks[0][0] if asks and bids else 0.002
+        if EXEC_MODE in LIVE_EXEC_MODES:
+            adp = get_adapter(adapter_name)
+            book = await adp.get_orderbook(signal.symbol)
+            bids = book.get("bids", [[0, 0]])
+            asks = book.get("asks", [[0, 0]])
+            spread = (asks[0][0] - bids[0][0]) / asks[0][0] if asks and bids else 0.002
+        else:
+            spread = 0.002
         # 估算 symbol 近期实现年化波动率
         realized_vol = await _estimate_realized_vol(r, signal.symbol)
         # 估算 ADV（默认: price × 5_000_000 units/day；后续可接 binance 24hTicker）
