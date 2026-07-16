@@ -46,6 +46,11 @@ rounds (see memory `opt-pr-3`).
   `python -m sel_v2.offline.lens_study`;Month-3 评估 vpin 须按 metadata.history_days
   剔除 <30d(tool_evaluator 已含 5 个新映射)。出池记录见候选池文档
   `analysis/v2_2_candidate_pool_v1.md`。
+  *(2026-07-16 追加)* **S1b 入池**(用户指示):挤压+中枢多头入场变体+结构位止损,
+  预注册 H-S1B(失败标准 n≥10 时单均≤0 或胜率<50%),前向裁决零新增采集
+  (`v2_cusum_events ⋈ chan_pivot ⋈ σ_pctile重算`);实证见
+  `analysis/state_lens_confluence_v1.md`(1H 迁移同文否决)。live S1 07-14 的 BTC
+  多单本身即首个 S1b 域事件。
 - P2 cleanups (P2-4 tie-aware Spearman, P2-5 vwap, P2-3 router split). P2-1 done (see below).
 - SEL2-SPEC-GL1 Phase 0 (T0.1–T0.6) **done and deployed** (see below). Validation epoch:
   first epoch (e678e8fb, started 2026-07-08 23:17) was **reset on 2026-07-09** per R1 —
