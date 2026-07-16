@@ -1055,6 +1055,42 @@ async def cancel_order(order_id: str):
     return {"status": "cancelled"}
 
 
+@app.post("/orders/{order_id}/close")
+async def close_order(order_id: str):
+    """Operator flatten of a MONITORING position at the current mark. Unlike cancel
+    (which only voids an unfilled order), this drives the full close path — realized
+    PnL, order.lifecycle 'closed', audit, persist — so portfolio reconciles correctly.
+    Priced off cw4:prices, same source the SL/TP monitor uses."""
+    fsm = _orders.get(order_id)
+    if not fsm:
+        return {"error": "not_found"}
+    rec = fsm.record
+    if rec.state != OrderState.MONITORING:
+        return {"error": "not_monitoring", "state": rec.state.value}
+    r = await get_redis()
+    price = 0.0
+    prices_raw = await r.hget("cw4:prices", rec.symbol)
+    if prices_raw:
+        try:
+            val = json.loads(
+                prices_raw.decode() if isinstance(prices_raw, bytes) else prices_raw
+            )
+            price = val.get("price", 0) if isinstance(val, dict) else float(val)
+        except Exception:
+            price = 0.0
+    if not price:
+        return {"error": "no_mark_price", "symbol": rec.symbol}
+    fsm.transition(OrderState.CLOSING, note="manual_close")
+    await _close_position(fsm, price, "manual_close")
+    return {
+        "status": "closed",
+        "order_id": order_id,
+        "symbol": rec.symbol,
+        "exit_price": price,
+        "realized_pnl": rec.realized_pnl,
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 
