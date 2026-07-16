@@ -286,6 +286,9 @@ services:
       <<: *common_env
       SERVICE_NAME: gateway
       SERVICE_PORT: "5000"
+      # 公网域名 sel.kanpan.co 走 Caddy→nginx 同源反代，浏览器不直连 gateway，
+      # 故 CORS 非必需；这里显式放行以防将来有直连 XHR。dev 保留 localhost。
+      GATEWAY_CORS_ORIGINS: ${GATEWAY_CORS_ORIGINS:-http://localhost,http://localhost:80,https://sel.kanpan.co}
       # The mounted sel_v2 paper API (/api/v2/sel/*) reads DB_URL to reach the platform DB;
       # without it every sel_v2 endpoint 500s ("DB_URL must be set"). Same target the v2
       # collectors / paper engine use.
