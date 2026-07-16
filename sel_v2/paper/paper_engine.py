@@ -491,22 +491,46 @@ class PaperEngine:
             if not (token and chat_id):
                 return
             proxy = os.environ.get("TELEGRAM_PROXY", "http://helios-proxy:2080") or None
+            # 纯文本(不用 Markdown):strategy_1 / subaccount_1 的下划线会被 legacy
+            # Markdown 当作斜体标记、不成对 → Telegram 返回 400,消息丢失。
             text = (
-                f"✅ *sel 开仓*\n{pos.strategy} {direction} {pos.instrument}\n"
+                f"✅ sel 开仓\n{pos.strategy} {direction} {pos.instrument}\n"
                 f"入场: {pos.entry_price:.2f}\n"
                 f"杠杆: {pos.leverage:.1f}x  名义: ${pos.size_usdt:,.0f}\n"
                 f"状态: {pos.entry_state}"
             )
-            async with aiohttp.ClientSession() as s:
-                await s.post(
-                    f"https://api.telegram.org/bot{token}/sendMessage",
-                    json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
-                    proxy=proxy,
-                    timeout=aiohttp.ClientTimeout(total=8),
-                )
-            logger.info("sel telegram open notified: %s %s", pos.strategy, direction)
+            # 重试 3 次:经 helios-proxy 首连偶发失败。全失败则回滚去重标记,
+            # 下个重放周期(几分钟)再试 → 至少一次送达。
+            last_err = None
+            for attempt in range(3):
+                try:
+                    async with aiohttp.ClientSession() as s:
+                        async with s.post(
+                            f"https://api.telegram.org/bot{token}/sendMessage",
+                            json={"chat_id": chat_id, "text": text},
+                            proxy=proxy,
+                            timeout=aiohttp.ClientTimeout(total=8),
+                        ) as r:
+                            if r.status == 200:
+                                logger.info(
+                                    "sel telegram open notified: %s %s",
+                                    pos.strategy,
+                                    direction,
+                                )
+                                return
+                            last_err = f"status {r.status}"
+                except Exception as e:
+                    last_err = str(e)
+                await asyncio.sleep(1)
+            raise RuntimeError(last_err or "unknown")
         except Exception as e:
-            logger.warning("sel open notify failed: %s", e)
+            # 回滚去重标记:发送彻底失败,不回滚就会把这次开仓永久标记为"已通知"
+            # 而丢消息。回滚后下个重放周期自动重试。
+            try:
+                await self._redis.srem(self.NOTIFY_SET_KEY, trade_id)
+            except Exception:
+                pass
+            logger.warning("sel open notify failed (will retry next cycle): %s", e)
 
     async def _persist_results(self, engine) -> None:
         """Persist the engine's state history and trades to the v2_* tables that the

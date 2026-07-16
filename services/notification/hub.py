@@ -50,17 +50,25 @@ class TelegramChannel:
         }
         if reply_markup:
             payload["reply_markup"] = reply_markup
-        try:
-            async with s.post(
-                f"{self._base}/sendMessage",
-                json=payload,
-                proxy=self._proxy,
-                timeout=aiohttp.ClientTimeout(total=8),
-            ) as r:
-                return r.status == 200
-        except Exception as e:
-            logger.error(f"Telegram send error: {e}")
-            return False
+        # 重试:经 helios-proxy 的首连偶发失败(冷启动/代理抖动),不重试会漏发。
+        for attempt in range(3):
+            try:
+                async with s.post(
+                    f"{self._base}/sendMessage",
+                    json=payload,
+                    proxy=self._proxy,
+                    timeout=aiohttp.ClientTimeout(total=8),
+                ) as r:
+                    if r.status == 200:
+                        return True
+                    logger.warning(
+                        f"Telegram status {r.status} (attempt {attempt + 1})"
+                    )
+            except Exception as e:
+                logger.warning(f"Telegram send error (attempt {attempt + 1}): {e}")
+            await asyncio.sleep(1)
+        logger.error("Telegram send failed after 3 attempts")
+        return False
 
     async def send_signal(
         self, signal: dict, order_id: str = None, exec_mode: str = "NOTIFY_ONLY"
@@ -217,9 +225,13 @@ class NotificationHub:
             )
         elif is_closed:
             pnl_str = f"${pnl:+.2f}" if pnl is not None else "N/A"
-            text = f"📊 *V4 平仓*\n{symbol}\nPnL: {pnl_str}\n原因: {data.get('close_reason', '')}"
+            # reason 里的下划线(stop_loss / take_profit / manual_close)会破坏 legacy
+            # Markdown 解析 → Telegram 400。换成空格,保持可读且不触发解析错误。
+            reason = str(data.get("close_reason", "")).replace("_", " ")
+            text = f"📊 *V4 平仓*\n{symbol}\nPnL: {pnl_str}\n原因: {reason}"
         else:
-            text = f"❌ *V4 订单失败*\n{symbol}\n原因: {data.get('reject_reason', '')}"
+            reason = str(data.get("reject_reason", "")).replace("_", " ")
+            text = f"❌ *V4 订单失败*\n{symbol}\n原因: {reason}"
 
         if self._tg:
             await self._tg.send(text)
