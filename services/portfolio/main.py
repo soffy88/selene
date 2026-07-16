@@ -144,7 +144,10 @@ class PortfolioEngine:
         signal_id = data.get("signal_id", "")
         symbol = data.get("symbol", "")
 
-        if event == "filled":
+        # PAPER 撮合发 "filled_immediately",live 交易所回报发 "filled"——两者都是建仓。
+        # 此前只认 "filled",PAPER 模式下 portfolio 永远收不到建仓事件、持仓视图恒空,
+        # 只靠启动时 DB 恢复(07-15 HOME/BTC 重复仓对账失效即此因)。
+        if event in ("filled", "filled_immediately"):
             # 建仓
             side = (
                 PositionSide.LONG if data.get("side") == "BUY" else PositionSide.SHORT

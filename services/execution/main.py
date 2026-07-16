@@ -69,6 +69,7 @@ _stats = {
     "cancelled": 0,
     "risk_rejected": 0,
     "stale_dropped": 0,
+    "dup_skipped": 0,
 }
 
 
@@ -214,6 +215,16 @@ async def process_scored_signal(data: dict):
         logger.warning(
             f"DROP unsized signal {signal.symbol} position_size={position_size} allocated={allocated}"
         )
+        return
+    # ── 单符号去重 ── 该符号已有未平仓位则跳过。signal 层 1h 冷却到期后会合法地
+    # 重发同符号信号,但下游此前无人拦截 → 同一币重复开仓(07-15 HOME/BTC 各开 2 仓)。
+    # execution 是唯一的订单写入方、持有权威 _orders,是建仓前最后一道闸。
+    if any(
+        f.record.symbol == signal.symbol and not f.record.is_terminal
+        for f in _orders.values()
+    ):
+        logger.info(f"SKIP duplicate {signal.symbol}: position already open")
+        _stats["dup_skipped"] += 1
         return
     side = "BUY" if signal.direction == Direction.LONG else "SELL"
     r = await get_redis()
