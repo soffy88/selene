@@ -4,6 +4,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timezone, timedelta
+import aiohttp
 import asyncpg
 import redis.asyncio as redis
 
@@ -474,6 +475,39 @@ class PaperEngine:
         except Exception as e:
             logger.warning("failed to persist engine summary: %s", e)
 
+    # 新开仓的 Telegram 去重集(跨重启幂等)。首部署前用现有 v2_trades id 预置,
+    # 使存量仓不误报;此后仅真正的新 trade_id 触发。
+    NOTIFY_SET_KEY = "v2:paper:notified_opens"
+
+    async def _notify_new_open(self, trade_id: str, pos, direction: str) -> None:
+        """开仓即推 Telegram。SADD 去重 + 全程 try/except:通知失败绝不影响引擎。
+        api.telegram.org 从容器仅经 helios-proxy 可达(同 notification-service)。"""
+        try:
+            added = await self._redis.sadd(self.NOTIFY_SET_KEY, trade_id)
+            if not added:
+                return  # 已通知过
+            token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+            chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+            if not (token and chat_id):
+                return
+            proxy = os.environ.get("TELEGRAM_PROXY", "http://helios-proxy:2080") or None
+            text = (
+                f"✅ *sel 开仓*\n{pos.strategy} {direction} {pos.instrument}\n"
+                f"入场: {pos.entry_price:.2f}\n"
+                f"杠杆: {pos.leverage:.1f}x  名义: ${pos.size_usdt:,.0f}\n"
+                f"状态: {pos.entry_state}"
+            )
+            async with aiohttp.ClientSession() as s:
+                await s.post(
+                    f"https://api.telegram.org/bot{token}/sendMessage",
+                    json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+                    proxy=proxy,
+                    timeout=aiohttp.ClientTimeout(total=8),
+                )
+            logger.info("sel telegram open notified: %s %s", pos.strategy, direction)
+        except Exception as e:
+            logger.warning("sel open notify failed: %s", e)
+
     async def _persist_results(self, engine) -> None:
         """Persist the engine's state history and trades to the v2_* tables that the
         paper API (sel_v2/paper_interface/api.py) reads (item #6). Idempotent: state
@@ -511,10 +545,11 @@ class PaperEngine:
                     )
                 for p in acct.open_positions:
                     d = _dir_str(p.direction)
+                    tid = _trade_id(
+                        p.strategy, p.sub_account, p.entry_time, d, p.entry_price
+                    )
                     await self._writer.upsert_trade(
-                        trade_id=_trade_id(
-                            p.strategy, p.sub_account, p.entry_time, d, p.entry_price
-                        ),
+                        trade_id=tid,
                         strategy=p.strategy,
                         sub_account=p.sub_account,
                         entry_time=p.entry_time,
@@ -525,6 +560,9 @@ class PaperEngine:
                         instrument=p.instrument,
                         entry_state=p.entry_state,
                     )
+                    # 新开仓 → Telegram。引擎每周期重放全史,open_positions 恒含所有在场
+                    # 仓,故用 redis 集合去重(SADD 返回 1 = 首次见到该 trade_id)。
+                    await self._notify_new_open(str(tid), p, d)
 
             # Per-bar decision trail (the audit "why" for recent bars, #2).
             if hasattr(engine, "decision_trail"):
