@@ -275,9 +275,14 @@ class PortfolioEngine:
 
 
 _engine = PortfolioEngine()
+# Gate consume/publish until DB recovery succeeds so a transient startup hiccup
+# never lets us act on / broadcast the fresh-start default (equity=10000, no
+# positions). Set only by _recover_portfolio on success.
+_recovered = asyncio.Event()
 
 
 async def consume_loop():
+    await _recovered.wait()
     r = await get_redis()
 
     for stream in [STREAM_SIGNAL_SCORED, STREAM_ORDER_LIFECYCLE]:
@@ -337,9 +342,58 @@ async def consume_loop():
                     logger.error(f"order_event: {e}", exc_info=True)
 
 
+async def _persist_snapshot_and_curve(state_dict: dict):
+    """Durably record an equity snapshot (portfolio_snapshots) and refresh the
+    daily equity-curve cache the gateway serves (cw4:portfolio:equity_curve).
+
+    Kept out of the 5s hot path — state_publisher calls this every ~5 min. The
+    daily curve = last equity per calendar day over the trailing 90 days.
+    """
+    try:
+        pool = await get_pg()
+        r = await get_redis()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO portfolio_snapshots "
+                "(time, total_equity, available_capital, total_exposure, leverage, "
+                " var_95, cvar_95, current_drawdown, max_drawdown, drawdown_level, "
+                " daily_pnl, strategy_alloc) "
+                "VALUES (now(), $1::numeric,$2::numeric,$3::numeric,$4::numeric,"
+                "$5::numeric,$6::numeric,$7::numeric,$8::numeric,$9,$10::numeric,"
+                "$11::jsonb) ON CONFLICT (time) DO NOTHING",
+                state_dict.get("total_equity"),
+                state_dict.get("available_capital"),
+                state_dict.get("total_exposure"),
+                state_dict.get("leverage"),
+                state_dict.get("portfolio_var_95"),
+                state_dict.get("expected_shortfall"),
+                state_dict.get("current_drawdown"),
+                state_dict.get("max_drawdown"),
+                state_dict.get("drawdown_level"),
+                state_dict.get("daily_pnl"),
+                json.dumps(state_dict.get("strategy_allocations") or {}),
+            )
+            rows = await conn.fetch(
+                "SELECT DISTINCT ON (time::date) time::date AS day, total_equity "
+                "FROM portfolio_snapshots "
+                "WHERE time >= now() - interval '90 days' "
+                "ORDER BY time::date, time DESC"
+            )
+        points = [
+            {"time": row["day"].isoformat(), "value": float(row["total_equity"])}
+            for row in rows
+        ]
+        points.sort(key=lambda p: p["time"])
+        await r.set("cw4:portfolio:equity_curve", json.dumps({"points": points}))
+    except Exception as e:
+        logger.error(f"persist_snapshot: {e}")
+
+
 async def state_publisher():
     """每5秒发布 portfolio.state + 更新 Redis 缓存"""
+    await _recovered.wait()
     r = await get_redis()
+    tick = 0
     while True:
         await asyncio.sleep(5)
         try:
@@ -368,75 +422,126 @@ async def state_publisher():
                 approximate=True,
             )
 
+            # Persist an equity snapshot + refresh the daily curve every ~5 min
+            # (and once right after recovery so the chart populates immediately).
+            tick += 1
+            if tick == 1 or tick % 60 == 0:
+                await _persist_snapshot_and_curve(state_dict)
+
         except Exception as e:
             logger.error(f"state_publisher: {e}")
 
 
 async def _recover_portfolio():
-    """On startup: rebuild _positions from MONITORING orders + accumulated realized PnL from DB."""
-    try:
-        pool = await get_pg()
-        r = await get_redis()
-        # Determine session start: Redis key → fallback 2026-04-30 00:00 UTC
-        sess_raw = await r.get("cw4:portfolio:session_start")
-        if sess_raw:
-            session_start = datetime.fromisoformat(
-                sess_raw.decode() if isinstance(sess_raw, bytes) else sess_raw
-            )
-        else:
-            session_start = datetime(2026, 4, 30, 0, 0, 0)
+    """On startup: rebuild _positions from MONITORING orders + accumulated realized PnL from DB.
 
-        async with pool.acquire() as conn:
-            # Rebuild open positions from MONITORING orders
-            mon_rows = await conn.fetch(
-                "SELECT id, signal_id, symbol, side, filled_price, filled_qty, "
-                "stop_price, created_at "
-                "FROM orders WHERE state='MONITORING'"
-            )
-            for row in mon_rows:
-                pos_side = (
-                    PositionSide.LONG if row["side"] == "BUY" else PositionSide.SHORT
+    Retries with capped backoff until DB/Redis are reachable, then sets
+    _recovered so consume_loop/state_publisher may start. A transient startup
+    failure (e.g. DNS/Redis hiccup) must NOT leave the engine at its fresh-start
+    default and broadcast a fake equity=10000 — that silently zeroed the
+    displayed net value on 2026-07-17. Positions are rebuilt into a local dict
+    and swapped in atomically so a mid-recovery error never leaves partial state.
+    """
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            pool = await get_pg()
+            r = await get_redis()
+            # Determine session start: Redis key → fallback 2026-04-30 00:00 UTC
+            sess_raw = await r.get("cw4:portfolio:session_start")
+            if sess_raw:
+                session_start = datetime.fromisoformat(
+                    sess_raw.decode() if isinstance(sess_raw, bytes) else sess_raw
                 )
-                signal_id = (
-                    str(row["signal_id"]) if row["signal_id"] else str(row["id"])
-                )
-                pos = Position(
-                    id=str(row["id"]),
-                    symbol=row["symbol"],
-                    side=pos_side,
-                    entry_price=float(row["filled_price"] or 0),
-                    quantity=float(row["filled_qty"] or 0),
-                    stop_loss=float(row["stop_price"] or 0),
-                    take_profit=0.0,
-                    signal_id=signal_id,
-                    opened_at=row["created_at"],
-                )
-                _engine._positions[signal_id] = pos
+            else:
+                session_start = datetime(2026, 4, 30, 0, 0, 0)
 
-            # Accumulate realized PnL from CLOSED orders since session_start
-            pnl_row = await conn.fetchrow(
-                "SELECT COALESCE(SUM(realized_pnl), 0) AS total_pnl "
-                "FROM orders WHERE state='CLOSED' AND created_at >= $1",
-                session_start,
-            )
-            realized = float(pnl_row["total_pnl"] or 0)
+            new_positions: dict[str, Position] = {}
+            async with pool.acquire() as conn:
+                # Rebuild open positions from MONITORING orders
+                mon_rows = await conn.fetch(
+                    "SELECT id, signal_id, symbol, side, filled_price, filled_qty, "
+                    "stop_price, created_at "
+                    "FROM orders WHERE state='MONITORING'"
+                )
+                for row in mon_rows:
+                    pos_side = (
+                        PositionSide.LONG
+                        if row["side"] == "BUY"
+                        else PositionSide.SHORT
+                    )
+                    signal_id = (
+                        str(row["signal_id"]) if row["signal_id"] else str(row["id"])
+                    )
+                    pos = Position(
+                        id=str(row["id"]),
+                        symbol=row["symbol"],
+                        side=pos_side,
+                        entry_price=float(row["filled_price"] or 0),
+                        quantity=float(row["filled_qty"] or 0),
+                        stop_loss=float(row["stop_price"] or 0),
+                        take_profit=0.0,
+                        signal_id=signal_id,
+                        opened_at=row["created_at"],
+                    )
+                    new_positions[signal_id] = pos
 
-        _engine._realized_pnl = realized
-        _engine._daily_pnl = realized
-        _engine._equity = INITIAL_CAPITAL + realized
-        _engine._peak_equity = max(INITIAL_CAPITAL, _engine._equity)
-        logger.info(
-            f"recovered {len(mon_rows)} positions, realized_pnl={realized:+.4f}, equity={_engine._equity:.2f}"
-        )
-    except Exception as e:
-        logger.error(f"portfolio DB recovery failed: {e}")
+                # Accumulate realized PnL from CLOSED orders since session_start
+                pnl_row = await conn.fetchrow(
+                    "SELECT COALESCE(SUM(realized_pnl), 0) AS total_pnl "
+                    "FROM orders WHERE state='CLOSED' AND created_at >= $1",
+                    session_start,
+                )
+                realized = float(pnl_row["total_pnl"] or 0)
+
+            _engine._positions = new_positions
+            _engine._realized_pnl = realized
+            _engine._daily_pnl = realized
+            _engine._equity = INITIAL_CAPITAL + realized
+            _engine._peak_equity = max(INITIAL_CAPITAL, _engine._equity)
+            logger.info(
+                f"recovered {len(new_positions)} positions, realized_pnl={realized:+.4f}, equity={_engine._equity:.2f}"
+            )
+
+            # Backfill a daily realized-equity history from closed orders so the
+            # equity curve shows history immediately (idempotent; past days only —
+            # today's live MTM point is added by state_publisher's snapshot).
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "INSERT INTO portfolio_snapshots (time, total_equity, daily_pnl) "
+                    "SELECT (d + interval '23:59:59'), "
+                    "  $1::numeric + COALESCE((SELECT SUM(realized_pnl) FROM orders o "
+                    "    WHERE o.state='CLOSED' AND o.created_at < d + interval '1 day'),0), "
+                    "  COALESCE((SELECT SUM(realized_pnl) FROM orders o "
+                    "    WHERE o.state='CLOSED' AND o.created_at >= d "
+                    "      AND o.created_at < d + interval '1 day'),0) "
+                    "FROM generate_series("
+                    "  (SELECT MIN(created_at)::date FROM orders WHERE state='CLOSED'), "
+                    "  CURRENT_DATE - 1, interval '1 day') d "
+                    "ON CONFLICT (time) DO NOTHING",
+                    INITIAL_CAPITAL,
+                )
+
+            _recovered.set()
+            return
+        except Exception as e:
+            backoff = min(30.0, 2.0 ** min(attempt, 5))
+            logger.error(
+                f"portfolio DB recovery failed (attempt {attempt}), "
+                f"retrying in {backoff:.0f}s — NOT publishing until recovered: {e}"
+            )
+            await asyncio.sleep(backoff)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await _recover_portfolio()
-    # run_forever:Redis 断连不再永久杀死消费任务(2026-07-12 事故)
+    # Recovery retries internally until DB/Redis reachable and sets _recovered;
+    # run as a plain task (NOT run_forever, which restarts on normal return) so a
+    # slow-to-reach DB doesn't block startup while consume/publish wait on the gate.
     tasks = [
+        asyncio.create_task(_recover_portfolio()),
+        # run_forever:Redis 断连不再永久杀死消费任务(2026-07-12 事故)
         asyncio.create_task(run_forever("consume_loop", consume_loop)),
         asyncio.create_task(run_forever("state_publisher", state_publisher)),
     ]

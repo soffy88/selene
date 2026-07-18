@@ -507,6 +507,29 @@ async def reconcile_loop():
                 json.dumps({"ts": now, "open_orders": open_n}),
             )
 
+            # Self-heal a stale dead-man halt: writing this heartbeat proves we're
+            # alive again, so a `deadman_heartbeat_stale` trip (from a transient
+            # restart/infra hiccup — 2026-07-17 blocked trading 16h) is a false
+            # alarm. Clear it iff the last reconcile found no phantom exposure. Real
+            # `position_divergence` halts stay sticky for manual review.
+            halt_raw = await r.get("cw4:execution:halt")
+            if halt_raw:
+                try:
+                    halt = json.loads(
+                        halt_raw.decode() if isinstance(halt_raw, bytes) else halt_raw
+                    )
+                except Exception:
+                    halt = {}
+                if (
+                    halt.get("reason") == "deadman_heartbeat_stale"
+                    and _last_reconcile.get("divergences", 0) == 0
+                ):
+                    await r.delete("cw4:execution:halt")
+                    logger.warning(
+                        "EXECUTION HALT auto-cleared: heartbeat recovered, reconcile "
+                        "clean (was deadman_heartbeat_stale)"
+                    )
+
             if EXEC_MODE == "PAPER":
                 continue  # no live exchange to reconcile against
 
