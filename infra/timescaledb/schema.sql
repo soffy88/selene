@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS candles (
 );
 SELECT create_hypertable('candles', 'time', if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS idx_candles_sym_int ON candles (symbol, interval, time DESC);
+-- signal-service 落库 ON CONFLICT 去重依赖(scanner 重启重播种、消费组重投递都会重复)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_candles_sym_int_time ON candles (symbol, interval, time);
 
 -- Continuous aggregate: 1h from 1m
 CREATE MATERIALIZED VIEW IF NOT EXISTS candles_1h

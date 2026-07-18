@@ -18,6 +18,7 @@ Trigger:
 
 Reset after trigger (each accumulator resets independently).
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -36,10 +37,10 @@ DEFAULT_THRESHOLD_WINDOW_BARS: int = 7 * 24 * 3600  # 7 days in seconds (1-sec b
 class CUSUMTrigger:
     triggered: bool
     direction: Optional[Literal["LONG", "SHORT"]]
-    cusum_positive: float    # current C+
-    cusum_negative: float    # current C-
-    threshold: float         # current h_t
-    intensity_coeff: float   # C/h ratio (for position sizing)
+    cusum_positive: float  # current C+
+    cusum_negative: float  # current C-
+    threshold: float  # current h_t
+    intensity_coeff: float  # C/h ratio (for position sizing)
 
 
 class CUSUMShort:
@@ -66,8 +67,8 @@ class CUSUMShort:
 
         self._c_pos: float = 0.0
         self._c_neg: float = 0.0
-        self._peak_pos: float = 0.0    # peak since last positive reset
-        self._peak_neg: float = 0.0    # peak since last negative reset
+        self._peak_pos: float = 0.0  # peak since last positive reset
+        self._peak_neg: float = 0.0  # peak since last negative reset
 
         # Rolling peak history: (timestamp_sec, peak_value)
         self._pos_peaks: Deque[Tuple[float, float]] = deque()
@@ -80,8 +81,25 @@ class CUSUMShort:
         Update CUSUM with standardised return z_t at time t.
         Returns trigger state (check .triggered before acting).
         """
+        prev_pos, prev_neg = self._c_pos, self._c_neg
         self._c_pos = max(0.0, self._c_pos + z_t - self.drift_k)
         self._c_neg = max(0.0, self._c_neg - z_t - self.drift_k)
+
+        # An excursion completed (accumulator decayed back to 0) → record its peak
+        # into the rolling threshold window. Peaks were previously recorded ONLY on
+        # trigger, which deadlocked the documented adaptive threshold ("rolling 95th
+        # pct of peak values"): with the cold-start h=2.0 never exceeded on 4H bars,
+        # no trigger ever fired, so the window never reached the 20-peak minimum and
+        # h stayed frozen at 2.0 forever (verified over 4,422 bars / 2y: zero S1
+        # entries; joint-condition sim 2026-07-09). Recording every completed
+        # excursion is what "rolling percentile of peak values" requires: the window
+        # now warms up from ordinary market noise and h adapts to the current regime.
+        if prev_pos > 0.0 and self._c_pos == 0.0:
+            self._record_peak(t, self._peak_pos, positive=True)
+            self._peak_pos = 0.0
+        if prev_neg > 0.0 and self._c_neg == 0.0:
+            self._record_peak(t, self._peak_neg, positive=False)
+            self._peak_neg = 0.0
 
         if self._c_pos > self._peak_pos:
             self._peak_pos = self._c_pos
@@ -109,9 +127,11 @@ class CUSUMShort:
                     intensity_coeff=0.0,
                 )
 
+        # NOTE: trigger branches no longer call _record_peak — the excursion's peak is
+        # recorded exactly once, when the excursion completes (decay-to-zero above).
+        # Recording again here would double-count the same excursion in the quantile.
         if triggered_pos:
             coeff = self._c_pos / h if h > 0 else 1.0
-            self._record_peak(t, self._peak_pos, positive=True)
             return CUSUMTrigger(
                 triggered=True,
                 direction="LONG",
@@ -123,7 +143,6 @@ class CUSUMShort:
 
         if triggered_neg:
             coeff = self._c_neg / h if h > 0 else 1.0
-            self._record_peak(t, self._peak_neg, positive=False)
             return CUSUMTrigger(
                 triggered=True,
                 direction="SHORT",
@@ -165,6 +184,7 @@ class CUSUMShort:
         if len(peaks) < 20:
             return 2.0  # cold-start default: require 2 sigma equivalent
         from oprim import percentile_value
+
         return float(percentile_value(np.array(peaks), self.threshold_quantile))
 
     def _record_peak(self, t: Optional[float], peak: float, positive: bool) -> None:

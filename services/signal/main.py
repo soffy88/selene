@@ -22,7 +22,7 @@ from datetime import datetime
 
 from fastapi import FastAPI
 
-from shared.db.connections import get_redis, redis_health
+from shared.db.connections import get_pg, get_redis, redis_health
 from shared.events.streams import (
     STREAM_MARKET_CANDLES,
     STREAM_MARKET_RAW,
@@ -31,6 +31,7 @@ from shared.events.streams import (
     CG_SIGNAL,
     encode,
     decode,
+    run_forever,
 )
 from shared.models.signal import (
     ScoredSignal,
@@ -76,6 +77,13 @@ CG = CG_SIGNAL
 MIN_WIN_PROB = float(os.getenv("MIN_WIN_PROBABILITY", "0.55"))
 MIN_DATA_QUAL = float(os.getenv("MIN_DATA_QUALITY", "0.75"))
 COOLDOWN_SECS = int(os.getenv("SIGNAL_COOLDOWN_SECS", "3600"))
+# 过期 K 线守卫:bar 收盘后超过该秒数才被消费(断连恢复的积压回放),只热身
+# detector/缓存,不评分——语义同 backfill(2026-07-12 事故积压 1.2 万根 K 线,
+# 逐根回放会拿几天前的价格发"当前"信号)。scanner 固定 1h bar。
+CANDLE_INTERVAL_SECS = int(os.getenv("CANDLE_INTERVAL_SECS", "3600"))
+STALE_CANDLE_SECS = int(os.getenv("STALE_CANDLE_SECS", "900"))
+# candles 表 interval 标签,须与 scanner 的 CANDLE_INTERVAL 及 HMM/risk 查询一致
+CANDLE_INTERVAL_LABEL = os.getenv("CANDLE_INTERVAL", "1h")
 
 # ── Regime → 策略开关（核心修复：Regime 驱动策略切换）──────────────────────────
 #
@@ -307,6 +315,33 @@ class SignalService:
         return recorded
 
     # ── 处理 K 线数据 ──────────────────────────────────
+    async def _persist_candle(self, symbol: str, data: dict, open_time_ms: float):
+        """写 TimescaleDB candles 表(HMM lookback 与 risk 相关性查询的数据源)。
+        open/volume 缺失(旧格式消息)或 PG 故障时跳过——持久化失败不阻塞评分。"""
+        open_px = data.get("open")
+        volume = data.get("volume")
+        if not open_time_ms or open_px is None or volume is None:
+            return
+        try:
+            pool = await get_pg()
+            await pool.execute(
+                """
+                INSERT INTO candles (time, symbol, interval, open, high, low, close, volume)
+                VALUES (to_timestamp($1), $2, $3, $4, $5, $6, $7, $8)
+                ON CONFLICT (symbol, interval, time) DO NOTHING
+                """,
+                open_time_ms / 1000,
+                symbol,
+                CANDLE_INTERVAL_LABEL,
+                float(open_px),
+                float(data.get("high", 0)),
+                float(data.get("low", 0)),
+                float(data.get("close", 0)),
+                float(volume),
+            )
+        except Exception as e:
+            logger.warning(f"candle persist {symbol}: {e}")
+
     async def handle_candle(self, data: dict):
         symbol = data.get("symbol", "")
         if not symbol:
@@ -346,6 +381,23 @@ class SignalService:
         mkt["kelly_scalar"] = kelly_scalar
         mkt["hmm_state"] = hmm_state
         mkt["indicators"] = data.get("indicators", {})
+        open_time_ms = float(data.get("open_time") or 0)
+        if open_time_ms:
+            mkt["bar_close_ts"] = open_time_ms / 1000 + CANDLE_INTERVAL_SECS
+
+        # 落库 TimescaleDB candles(此前无生产者,HMM/risk 相关性查询永远空手):
+        # backfill 种子也写——一次播种即给 HMM 250 根历史。唯一索引去重,失败不影响评分。
+        await self._persist_candle(symbol, data, open_time_ms)
+
+        # 历史回填(market-scanner 给新发现的符号播种 regime 缓冲):只热身
+        # detector/缓存,不评分——对着几天前的价格发"当前"信号是错的,而且一次
+        # 中途发射就会占掉 1h 冷却窗,把种子完成后的首次真实评分挡住。
+        if data.get("backfill"):
+            return
+
+        # 过期 K 线(消费积压回放):同 backfill,只热身不评分
+        if open_time_ms and time.time() - mkt["bar_close_ts"] > STALE_CANDLE_SECS:
+            return
 
         # 异步刷新 HMM 缓存
         asyncio.create_task(self._refresh_hmm(symbol))
@@ -391,6 +443,14 @@ class SignalService:
         mkt = self._market.get(symbol, {})
         price = mkt.get("price", 0)
         if not price:
+            return
+
+        # 价格时效:candle 断供时 market.raw 仍会触发评分,不能拿过期收盘价当现价
+        bar_close_ts = mkt.get("bar_close_ts")
+        if (
+            bar_close_ts
+            and time.time() - bar_close_ts > CANDLE_INTERVAL_SECS + STALE_CANDLE_SECS
+        ):
             return
 
         # 冷却检查
@@ -834,11 +894,11 @@ async def lifespan(app: FastAPI):
     # 启动 HMM Regime 检测器（后台协程，每6小时重训练）
     symbols = os.getenv("SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT").split(",")
     hmm_detector = HMMRegimeDetector(r, pg, symbols)
-    hmm_task = asyncio.create_task(hmm_detector.run())
+    hmm_task = asyncio.create_task(run_forever("hmm_detector", hmm_detector.run))
 
     # 启动 EWMA 权重学习器（后台协程，每小时更新）
     weight_learner = WeightLearner(r, pg)
-    wl_task = asyncio.create_task(weight_learner.run())
+    wl_task = asyncio.create_task(run_forever("weight_learner", weight_learner.run))
 
     # onchain→signal 桥：消费 signal.raw 里 onchain-sentinel 的鲸鱼流更新，收到即刷新
     # 该 symbol 的链上因子缓存。否则 signal.raw 是只产不消的孤儿流。(audit P1-a)
@@ -849,14 +909,18 @@ async def lifespan(app: FastAPI):
         _svc._onchain_cache[symbol] = await get_onchain_factor(symbol)
 
     onchain_bridge_task = asyncio.create_task(
-        consume_onchain_factor_updates(_onchain_rescore)
+        run_forever(
+            "onchain_bridge", lambda: consume_onchain_factor_updates(_onchain_rescore)
+        )
     )
 
-    # 主消费循环
-    consume_task = asyncio.create_task(consume_loop())
+    # 主消费循环（run_forever:Redis 断连不再永久杀死消费任务,2026-07-12 事故）
+    consume_task = asyncio.create_task(run_forever("consume_loop", consume_loop))
 
     # Calibration 定期 refit（每6小时）
-    cal_task = asyncio.create_task(calibration_refit_loop())
+    cal_task = asyncio.create_task(
+        run_forever("calibration_refit", calibration_refit_loop)
+    )
 
     logger.info(
         f"Signal service ready | HMM symbols={symbols} | WeightLearner ON | CalibrationRefit ON | OnchainBridge ON"

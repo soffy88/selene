@@ -3,6 +3,7 @@ CryptoWatch v4 — Redis Client
 Connection factory + Stream publish/consume helpers.
 All services use this module for Redis interaction.
 """
+
 import asyncio
 import json
 import logging
@@ -20,7 +21,19 @@ _redis: Optional[aioredis.Redis] = None
 
 def init_redis(url: str) -> aioredis.Redis:
     global _redis
-    _redis = aioredis.from_url(url, decode_responses=False)
+    # socket_timeout + keepalive:redis 服务端重启后留下的半开 TCP 连接会让
+    # 阻塞式 XREADGROUP 永远挂在 await 上(consume() 的外层重试根本轮不到执行,
+    # 2026-07-12 事故 gateway/notification 消费者就是这么死的)。有超时后异常
+    # 走 consume() 的 benign-timeout 分支,连接被拆除,下一条命令自动重连。
+    # 30s 需大于 consume() 的 block_ms(默认 1s),避免正常空轮询被误伤。
+    _redis = aioredis.from_url(
+        url,
+        decode_responses=False,
+        socket_timeout=30,
+        socket_connect_timeout=5,
+        socket_keepalive=True,
+        health_check_interval=60,
+    )
     return _redis
 
 
@@ -41,6 +54,7 @@ async def health_check() -> bool:
 
 # ── Stream Publisher ──────────────────────────────────────────────────────────
 
+
 async def publish(stream: str, data: dict) -> str:
     """
     Publish an event to a Redis Stream.
@@ -54,6 +68,7 @@ async def publish(stream: str, data: dict) -> str:
 
 
 # ── Consumer Group Manager ────────────────────────────────────────────────────
+
 
 async def ensure_consumer_group(stream: str, group: str) -> None:
     """Create consumer group if it doesn't exist. Idempotent."""
@@ -151,6 +166,7 @@ async def get_stream_info(stream: str) -> dict:
 
 
 # ── Cache helpers (Redis Hash/String for real-time state) ─────────────────────
+
 
 async def set_json(key: str, value: dict, ex: int = None) -> None:
     r = get_redis()

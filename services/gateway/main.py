@@ -4,6 +4,7 @@ Single public-facing FastAPI service. All frontend/CLI traffic goes here.
 Aggregates data from Redis cache (set by individual services).
 WebSocket endpoint for real-time push to frontend.
 """
+
 import asyncio
 import json
 import logging
@@ -11,17 +12,32 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Header, Depends
+from fastapi import (
+    FastAPI,
+    WebSocket,
+    WebSocketDisconnect,
+    HTTPException,
+    Query,
+    Header,
+    Depends,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from shared.db.redis_client import init_redis, get_redis, hgetall_json, get_json
 from shared.events.streams import (
-    STREAM_SIGNAL_SCORED, STREAM_ORDER_LIFECYCLE, STREAM_PORTFOLIO_STATE,
-    STREAM_SYSTEM_ALERTS, STREAM_ONCHAIN_EVENTS, CG_GATEWAY, consume, StreamEvent
+    STREAM_SIGNAL_SCORED,
+    STREAM_ORDER_LIFECYCLE,
+    STREAM_PORTFOLIO_STATE,
+    STREAM_SYSTEM_ALERTS,
+    STREAM_ONCHAIN_EVENTS,
+    CG_GATEWAY,
+    consume,
+    StreamEvent,
 )
 
 logger = logging.getLogger(__name__)
+
 
 # ── WebSocket manager ─────────────────────────────────────────────────────────
 class WSManager:
@@ -58,14 +74,18 @@ ws_manager = WSManager()
 async def _on_signal(event: StreamEvent):
     await ws_manager.broadcast({"type": "signal", "data": event.data})
 
+
 async def _on_order(event: StreamEvent):
     await ws_manager.broadcast({"type": "order", "data": event.data})
+
 
 async def _on_portfolio(event: StreamEvent):
     await ws_manager.broadcast({"type": "portfolio", "data": event.data})
 
+
 async def _on_alert(event: StreamEvent):
     await ws_manager.broadcast({"type": "alert", "data": event.data})
+
 
 async def _on_onchain(event: StreamEvent):
     """实时链上事件推送到前端 WebSocket"""
@@ -76,17 +96,28 @@ async def _on_onchain(event: StreamEvent):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import os
+
     redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
     init_redis(redis_url)
     logger.info("Gateway: Redis connected")
 
     # Start stream consumers for real-time WS push
     tasks = [
-        asyncio.create_task(consume(STREAM_SIGNAL_SCORED,   CG_GATEWAY, "gw-signals",   _on_signal)),
-        asyncio.create_task(consume(STREAM_ORDER_LIFECYCLE, CG_GATEWAY, "gw-orders",    _on_order)),
-        asyncio.create_task(consume(STREAM_PORTFOLIO_STATE, CG_GATEWAY, "gw-portfolio", _on_portfolio)),
-        asyncio.create_task(consume(STREAM_SYSTEM_ALERTS,   CG_GATEWAY, "gw-alerts",    _on_alert)),
-        asyncio.create_task(consume(STREAM_ONCHAIN_EVENTS,  CG_GATEWAY, "gw-onchain",   _on_onchain)),
+        asyncio.create_task(
+            consume(STREAM_SIGNAL_SCORED, CG_GATEWAY, "gw-signals", _on_signal)
+        ),
+        asyncio.create_task(
+            consume(STREAM_ORDER_LIFECYCLE, CG_GATEWAY, "gw-orders", _on_order)
+        ),
+        asyncio.create_task(
+            consume(STREAM_PORTFOLIO_STATE, CG_GATEWAY, "gw-portfolio", _on_portfolio)
+        ),
+        asyncio.create_task(
+            consume(STREAM_SYSTEM_ALERTS, CG_GATEWAY, "gw-alerts", _on_alert)
+        ),
+        asyncio.create_task(
+            consume(STREAM_ONCHAIN_EVENTS, CG_GATEWAY, "gw-onchain", _on_onchain)
+        ),
     ]
     logger.info("Gateway: ready")
     yield
@@ -99,10 +130,19 @@ app = FastAPI(title="CryptoWatch v4 Gateway", version="4.0.0", lifespan=lifespan
 
 # CORS: tightened off "*" (item #21). Set GATEWAY_CORS_ORIGINS (comma-separated)
 # to your dashboard origin(s); defaults to localhost only.
-_cors_origins = [o.strip() for o in os.getenv(
-    "GATEWAY_CORS_ORIGINS", "http://localhost,http://localhost:80").split(",") if o.strip()]
-app.add_middleware(CORSMiddleware, allow_origins=_cors_origins,
-                   allow_methods=["*"], allow_headers=["*"])
+_cors_origins = [
+    o.strip()
+    for o in os.getenv(
+        "GATEWAY_CORS_ORIGINS", "http://localhost,http://localhost:80"
+    ).split(",")
+    if o.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ── Auth for state-changing routes (item #21) ───────────────────────────────────
@@ -116,8 +156,10 @@ async def require_api_key(x_api_key: str = Header(default="")):
         raise HTTPException(status_code=401, detail="invalid or missing X-API-Key")
     return True
 
+
 try:
     from sel_engine.paper_interface.api import router as sel_router
+
     app.include_router(sel_router, prefix="/api/v4")
 except ImportError:
     logger.warning("sel_engine not available — /api/v4/sel/* endpoints disabled")
@@ -125,6 +167,7 @@ except ImportError:
 # sel_v2 paper API (new)
 try:
     from sel_v2.paper_interface.api import router as sel_v2_router
+
     if sel_v2_router is not None:
         app.include_router(sel_v2_router, prefix="/api/v2")
         logger.info("sel_v2 paper API enabled at /api/v2/sel/*")
@@ -136,6 +179,7 @@ except ImportError as e:
 @app.get("/health")
 async def health():
     from shared.db.redis_client import health_check
+
     redis_ok = await health_check()
     return {
         "status": "ok" if redis_ok else "degraded",
@@ -158,28 +202,60 @@ async def metrics():
     out = []
     redis_ok = await health_check()
     out.append({"name": "selene_up", "value": 1, "help": "gateway process is up"})
-    out.append({"name": "selene_redis_up", "value": redis_ok, "help": "redis reachable"})
-    out.append({"name": "selene_ws_clients", "value": ws_manager.count,
-                "help": "connected websocket clients"})
+    out.append(
+        {"name": "selene_redis_up", "value": redis_ok, "help": "redis reachable"}
+    )
+    out.append(
+        {
+            "name": "selene_ws_clients",
+            "value": ws_manager.count,
+            "help": "connected websocket clients",
+        }
+    )
     try:
         pf = await get_json("cw4:portfolio:state") or {}
         if "total_equity" in pf:
-            out.append({"name": "selene_portfolio_equity_usd", "value": pf.get("total_equity", 0),
-                        "help": "portfolio mark-to-market equity"})
+            out.append(
+                {
+                    "name": "selene_portfolio_equity_usd",
+                    "value": pf.get("total_equity", 0),
+                    "help": "portfolio mark-to-market equity",
+                }
+            )
         if "current_drawdown" in pf:
-            out.append({"name": "selene_portfolio_drawdown", "value": pf.get("current_drawdown", 0),
-                        "help": "current drawdown fraction"})
+            out.append(
+                {
+                    "name": "selene_portfolio_drawdown",
+                    "value": pf.get("current_drawdown", 0),
+                    "help": "current drawdown fraction",
+                }
+            )
         if "position_count" in pf:
-            out.append({"name": "selene_open_positions", "value": pf.get("position_count", 0),
-                        "help": "open position count"})
+            out.append(
+                {
+                    "name": "selene_open_positions",
+                    "value": pf.get("position_count", 0),
+                    "help": "open position count",
+                }
+            )
         risk = await get_json("cw4:risk:status") or {}
         if "daily_pnl" in risk:
-            out.append({"name": "selene_daily_pnl_usd", "value": risk.get("daily_pnl", 0),
-                        "help": "realized daily PnL"})
+            out.append(
+                {
+                    "name": "selene_daily_pnl_usd",
+                    "value": risk.get("daily_pnl", 0),
+                    "help": "realized daily PnL",
+                }
+            )
         r = get_redis()
         halted = bool(await r.get("cw4:execution:halt"))
-        out.append({"name": "selene_execution_halted", "value": halted,
-                    "help": "1 if execution halt is engaged"})
+        out.append(
+            {
+                "name": "selene_execution_halted",
+                "value": halted,
+                "help": "1 if execution halt is engaged",
+            }
+        )
     except Exception as e:
         logger.warning(f"/metrics partial: {e}")
     return PlainTextResponse(render_prometheus(out))
@@ -189,12 +265,17 @@ async def metrics():
 @app.get("/api/v4/market")
 async def market_snapshot():
     """Aggregate market snapshot from Redis cache."""
-    prices    = await hgetall_json("cw4:prices")       or {}
-    funding   = await hgetall_json("cw4:funding_rates") or {}
-    oi        = await hgetall_json("cw4:oi")            or {}
-    lsr       = await hgetall_json("cw4:lsr")           or {}
-    return {"prices": prices, "funding_rates": funding, "oi": oi, "lsr": lsr,
-            "symbol_count": len(prices)}
+    prices = await hgetall_json("cw4:prices") or {}
+    funding = await hgetall_json("cw4:funding_rates") or {}
+    oi = await hgetall_json("cw4:oi") or {}
+    lsr = await hgetall_json("cw4:lsr") or {}
+    return {
+        "prices": prices,
+        "funding_rates": funding,
+        "oi": oi,
+        "lsr": lsr,
+        "symbol_count": len(prices),
+    }
 
 
 # ── Signals ─────────────────────────────────────────────────────────────────────
@@ -211,10 +292,14 @@ async def list_signals(
     signals = list(raw.values())
     signals.sort(key=lambda s: s.get("timestamp", ""), reverse=True)
 
-    if symbol:        signals = [s for s in signals if s.get("symbol") == symbol.upper()]
-    if signal_type:   signals = [s for s in signals if s.get("signal_type") == signal_type]
-    if regime:        signals = [s for s in signals if s.get("regime") == regime]
-    if min_probability > 0: signals = [s for s in signals if s.get("win_probability", 0) >= min_probability]
+    if symbol:
+        signals = [s for s in signals if s.get("symbol") == symbol.upper()]
+    if signal_type:
+        signals = [s for s in signals if s.get("signal_type") == signal_type]
+    if regime:
+        signals = [s for s in signals if s.get("regime") == regime]
+    if min_probability > 0:
+        signals = [s for s in signals if s.get("win_probability", 0) >= min_probability]
 
     return {"signals": signals[:limit], "total": len(signals)}
 
@@ -225,10 +310,16 @@ async def pending_signals():
     return {"pending": list(raw.values()), "count": len(raw)}
 
 
-@app.post("/api/v4/signals/{signal_id}/confirm", dependencies=[Depends(require_api_key)])
+@app.post(
+    "/api/v4/signals/{signal_id}/confirm", dependencies=[Depends(require_api_key)]
+)
 async def confirm_signal(signal_id: str):
     r = get_redis()
-    await r.hset("cw4:signals:confirmed", signal_id, json.dumps({"action": "confirm", "ts": datetime.utcnow().isoformat()}))
+    await r.hset(
+        "cw4:signals:confirmed",
+        signal_id,
+        json.dumps({"action": "confirm", "ts": datetime.utcnow().isoformat()}),
+    )
     await r.hdel("cw4:signals:pending", signal_id)
     return {"status": "confirmed", "id": signal_id}
 
@@ -255,6 +346,12 @@ async def portfolio_pnl(period: str = Query("7d")):
     return {"period": period, "pnl": pnl}
 
 
+@app.get("/api/v4/portfolio/equity_curve")
+async def portfolio_equity_curve():
+    """Daily account equity history (set by portfolio-service). {points:[{time,value}]}."""
+    return await get_json("cw4:portfolio:equity_curve") or {"points": []}
+
+
 # ── Regime ──────────────────────────────────────────────────────────────────────
 @app.get("/api/v4/regime")
 async def regime_status():
@@ -262,7 +359,9 @@ async def regime_status():
         regimes = await hgetall_json("cw4:regimes") or {}
         return {"regimes": regimes, "symbol_count": len(regimes)}
     except Exception as exc:
-        import logging; logging.getLogger(__name__).error("regime_status failed: %s", exc)
+        import logging
+
+        logging.getLogger(__name__).error("regime_status failed: %s", exc)
         return {"regimes": {}, "symbol_count": 0, "error": str(exc)}
 
 
@@ -275,7 +374,11 @@ async def current_regime():
         r = v.get("regime", "UNKNOWN") if isinstance(v, dict) else str(v)
         distribution[r] = distribution.get(r, 0) + 1
     dominant = max(distribution, key=distribution.get) if distribution else "UNKNOWN"
-    return {"distribution": distribution, "dominant": dominant, "total_symbols": len(regimes)}
+    return {
+        "distribution": distribution,
+        "dominant": dominant,
+        "total_symbols": len(regimes),
+    }
 
 
 # ── Risk ────────────────────────────────────────────────────────────────────────
@@ -330,18 +433,26 @@ async def list_orders(limit: int = Query(50, le=200), state: str = Query(None)):
 @app.get("/api/v4/execution/slippage/{symbol}")
 async def slippage_estimate(symbol: str, notional: float = Query(10000)):
     from services.execution.slippage.model import SlippageModel
+
     sm = SlippageModel()
     prices = await hgetall_json("cw4:prices") or {}
-    price  = prices.get(symbol.upper(), {})
+    price = prices.get(symbol.upper(), {})
     if isinstance(price, dict):
         price = price.get("price", 0)
     # Rough estimate without live order book
     est = sm.estimate(notional, 0.80, 50_000_000, 0.02, "MARKET")
-    return {"symbol": symbol, "notional_usd": notional, "estimate": {
-        "spread_pct": est.spread, "impact_pct": est.impact,
-        "timing_pct": est.timing, "total_pct": est.total,
-        "total_usd": est.total_usd, "recommendation": est.recommendation,
-    }}
+    return {
+        "symbol": symbol,
+        "notional_usd": notional,
+        "estimate": {
+            "spread_pct": est.spread,
+            "impact_pct": est.impact,
+            "timing_pct": est.timing,
+            "total_pct": est.total,
+            "total_usd": est.total_usd,
+            "recommendation": est.recommendation,
+        },
+    }
 
 
 # ── Funding Arbitrage ────────────────────────────────────────────────────────────
@@ -360,7 +471,9 @@ async def funding_positions():
 @app.post("/api/v4/funding/execute/{symbol}", dependencies=[Depends(require_api_key)])
 async def execute_funding_arb(symbol: str):
     r = get_redis()
-    await r.publish("cw4:commands", json.dumps({"cmd": "open_funding_arb", "symbol": symbol}))
+    await r.publish(
+        "cw4:commands", json.dumps({"cmd": "open_funding_arb", "symbol": symbol})
+    )
     return {"status": "command_sent", "symbol": symbol}
 
 
@@ -378,6 +491,7 @@ async def run_wfo(
 ):
     import uuid
     from fastapi import BackgroundTasks
+
     global _backtest_running
     if _backtest_running:
         return {"status": "already_running"}
@@ -390,6 +504,7 @@ async def run_wfo(
         try:
             from backtest.engine import WFOEngine, WFOConfig
             from services.data.ingestion.market_provider import MarketDataRESTClient
+
             engine = WFOEngine(WFOConfig(train_days=90, test_days=30))
             client = MarketDataRESTClient()
             results = {}
@@ -421,10 +536,12 @@ async def moonshots(limit: int = Query(20, le=100)):
 
 # ── Onchain Sentinel (v4.1) ────────────────────────────────────────────────────
 
+
 @app.get("/api/v4/onchain/state")
 async def onchain_state():
     """所有 symbol 的链上状态快照（评分、regime调整、历史事件）"""
     from services.signal.factors.composite import get_onchain_composite
+
     result = {}
     for sym in ["BTCUSDT", "ETHUSDT", "SOLUSDT"]:
         result[sym] = await get_onchain_composite(sym)
@@ -435,6 +552,7 @@ async def onchain_state():
 async def onchain_state_symbol(symbol: str):
     """单个 symbol 的链上状态"""
     from services.signal.factors.composite import get_onchain_composite
+
     state = await get_onchain_composite(symbol.upper())
     if not state:
         raise HTTPException(404, f"No onchain data for {symbol}")
@@ -453,6 +571,7 @@ async def onchain_stats(
     例：过去90天 BTC 鲸鱼流入后24h 的胜率和均值收益。
     """
     from services.onchain.historian import get_signal_stats
+
     return get_signal_stats(symbol.upper(), signal_class, window, lookback)
 
 
@@ -460,6 +579,7 @@ async def onchain_stats(
 async def onchain_wallet_stats(address: str, chain: str = Query("ETH")):
     """聪明钱包历史行为画像"""
     from services.onchain.historian import get_wallet_stats
+
     return get_wallet_stats(address, chain.upper())
 
 
@@ -467,17 +587,22 @@ async def onchain_wallet_stats(address: str, chain: str = Query("ETH")):
 async def onchain_summary(symbol: str, days: int = Query(7)):
     """链上活跃度日度汇总"""
     from services.onchain.historian import get_daily_summary
-    return {"symbol": symbol.upper(), "summary": get_daily_summary(symbol.upper(), days)}
+
+    return {
+        "symbol": symbol.upper(),
+        "summary": get_daily_summary(symbol.upper(), days),
+    }
 
 
 # ── Monitoring Service (v4.1) ──────────────────────────────────────────────────
+
 
 @app.get("/api/v4/monitor/health")
 async def monitor_health():
     """监控服务状态"""
     r = get_redis()
     last = await r.get("cw4:monitor:last_run_date") or "从未运行"
-    raw  = await r.get("cw4:monitor:trend")
+    raw = await r.get("cw4:monitor:trend")
     trend_days = len(json.loads(raw)) if raw else 0
     return {"last_report": last, "trend_days": trend_days}
 
@@ -485,11 +610,13 @@ async def monitor_health():
 @app.get("/api/v4/monitor/report")
 async def monitor_report():
     """获取最新简报完整数据"""
-    r   = get_redis()
+    r = get_redis()
     raw = await r.get("cw4:monitor:latest_report")
     if not raw:
-        return {"status": "no_data",
-                "msg": "尚未生成报告，POST /api/v4/monitor/trigger 立即生成"}
+        return {
+            "status": "no_data",
+            "msg": "尚未生成报告，POST /api/v4/monitor/trigger 立即生成",
+        }
     return json.loads(raw)
 
 
@@ -497,8 +624,10 @@ async def monitor_report():
 async def monitor_trigger(days: int = Query(1)):
     """手动触发立即生成简报"""
     import asyncio
+
     # 异步调用 monitoring-service 的内部 HTTP
     import aiohttp
+
     try:
         async with aiohttp.ClientSession() as s:
             async with s.post(
@@ -507,15 +636,20 @@ async def monitor_trigger(days: int = Query(1)):
             ) as resp:
                 return await resp.json()
     except Exception as e:
-        return {"status": "error", "msg": str(e),
-                "hint": "确认 monitoring-service 已启动"}
+        return {
+            "status": "error",
+            "msg": str(e),
+            "hint": "确认 monitoring-service 已启动",
+        }
 
 
 @app.get("/api/v4/monitor/mode-thresholds")
-@app.get("/api/v4/monitor/recommendation")   # deprecated alias (Helios observe-only: prefer /mode-thresholds)
+@app.get(
+    "/api/v4/monitor/recommendation"
+)  # deprecated alias (Helios observe-only: prefer /mode-thresholds)
 async def monitor_mode_thresholds():
     """返回模式切换门槛的【观察状态】（不是建议；Dashboard 首页展示用）。"""
-    r   = get_redis()
+    r = get_redis()
     raw = await r.get("cw4:monitor:latest_report")
     if not raw:
         return {"status": "no_data"}
@@ -523,32 +657,32 @@ async def monitor_mode_thresholds():
     rec = data.get("data", {}).get("recommendation", {})
     return {
         "mode_thresholds": rec,
-        "recommendation":  rec,   # deprecated key kept for back-compat
-        "trend":           data.get("trend", {}),
-        "generated_at":    data.get("generated_at"),
+        "recommendation": rec,  # deprecated key kept for back-compat
+        "trend": data.get("trend", {}),
+        "generated_at": data.get("generated_at"),
     }
 
 
 @app.get("/api/v4/monitor/trend")
 async def monitor_trend():
     """IC 历史趋势（最近30天）"""
-    r   = get_redis()
+    r = get_redis()
     raw = await r.get("cw4:monitor:trend")
     if not raw:
         return {"trend": [], "analysis": {}}
     trend = json.loads(raw)
     # 简单趋势分析
     recent = [t["mean_ic"] for t in trend[-7:] if t.get("mean_ic")]
-    avg    = round(sum(recent)/len(recent), 4) if recent else None
+    avg = round(sum(recent) / len(recent), 4) if recent else None
     return {
-        "trend":      trend[-30:],
+        "trend": trend[-30:],
         "total_days": len(trend),
-        "avg_ic_7d":  avg,
+        "avg_ic_7d": avg,
     }
 
 
-
 # ── Regime / HMM / Weights (v4.1) ─────────────────────────────────────────────
+
 
 @app.get("/api/v4/regime/hmm/{symbol}")
 async def regime_hmm(symbol: str):
@@ -556,8 +690,11 @@ async def regime_hmm(symbol: str):
     r = get_redis()
     raw = await r.get(f"cw4:regime:hmm:{symbol.upper()}")
     if not raw:
-        return {"status": "no_data", "symbol": symbol.upper(),
-                "msg": "HMM 尚未完成首次训练（需要 ≥60 条 1h K线）"}
+        return {
+            "status": "no_data",
+            "symbol": symbol.upper(),
+            "msg": "HMM 尚未完成首次训练（需要 ≥60 条 1h K线）",
+        }
     return json.loads(raw)
 
 
@@ -565,6 +702,7 @@ async def regime_hmm(symbol: str):
 async def regime_fused_all():
     """所有 symbol 的融合 Regime 状态（HMM × ADX+ATR）"""
     import aiohttp
+
     try:
         async with aiohttp.ClientSession() as s:
             results = {}
@@ -584,6 +722,7 @@ async def regime_fused_all():
 async def signal_weights():
     """EWMA 学习到的当前动态因子权重 + 准确率"""
     import aiohttp
+
     try:
         async with aiohttp.ClientSession() as s:
             async with s.get(
@@ -599,22 +738,22 @@ async def signal_weights():
 async def circuit_breaker_status():
     """熔断器持久化状态（重启后不丢失）"""
     r = get_redis()
-    raw_state  = await r.get("cw4:circuit_breaker:state")
-    raw_ts     = await r.get("cw4:circuit_breaker:open_ts")
+    raw_state = await r.get("cw4:circuit_breaker:state")
+    raw_ts = await r.get("cw4:circuit_breaker:open_ts")
     raw_reason = await r.get("cw4:circuit_breaker:reason")
 
     def dec(v):
         return (v.decode() if isinstance(v, bytes) else v) if v else None
 
-    state  = dec(raw_state)  or "CLOSED"
-    ts     = dec(raw_ts)     or ""
+    state = dec(raw_state) or "CLOSED"
+    ts = dec(raw_ts) or ""
     reason = dec(raw_reason) or ""
 
     return {
-        "state":         state,
-        "is_open":       state.upper() == "OPEN",
-        "open_ts":       ts,
-        "reason":        reason,
+        "state": state,
+        "is_open": state.upper() == "OPEN",
+        "open_ts": ts,
+        "reason": reason,
         "reset_command": "POST /api/v4/risk/circuit-breaker/reset",
     }
 
@@ -623,6 +762,7 @@ async def circuit_breaker_status():
 async def circuit_breaker_reset():
     """手动解除熔断（同时清除 Redis + 写 PG 审计）"""
     import aiohttp
+
     try:
         async with aiohttp.ClientSession() as s:
             async with s.post(
@@ -683,30 +823,33 @@ async def system_overview():
     if monitor:
         rec = monitor.get("data", {}).get("recommendation", {})
         recommendation = {
-            "action":     rec.get("action", ""),
+            "action": rec.get("action", ""),
             "confidence": rec.get("confidence", ""),
-            "next_mode":  rec.get("next_mode", ""),
-            "blockers":   len(rec.get("blockers", [])),
+            "next_mode": rec.get("next_mode", ""),
+            "blockers": len(rec.get("blockers", [])),
         }
 
     import os
+
     return {
         "ts": datetime.utcnow().isoformat(),
         "exec_mode": os.environ.get("EXEC_MODE", "PAPER"),
         "portfolio": {
-            "equity":    portfolio.get("total_equity")    if portfolio else None,
-            "daily_pnl": portfolio.get("daily_pnl")       if portfolio else None,
-            "positions": portfolio.get("position_count")  if portfolio else 0,
-            "drawdown":  portfolio.get("current_drawdown") if portfolio else None,
+            "equity": portfolio.get("total_equity") if portfolio else None,
+            "daily_pnl": portfolio.get("daily_pnl") if portfolio else None,
+            "positions": portfolio.get("position_count") if portfolio else 0,
+            "drawdown": portfolio.get("current_drawdown") if portfolio else None,
         },
         "risk": {
             "circuit_broken": cb_state.upper() == "OPEN",
             "drawdown_level": risk.get("level") if risk else "UNKNOWN",
-            "new_trades":     risk.get("new_trades_allowed", True) if risk else False,
+            "new_trades": risk.get("new_trades_allowed", True) if risk else False,
         },
         "regimes": {
             "distribution": regime_dist,
-            "dominant": max(regime_dist, key=regime_dist.get) if regime_dist else "UNKNOWN",
+            "dominant": max(regime_dist, key=regime_dist.get)
+            if regime_dist
+            else "UNKNOWN",
         },
         "monitor": recommendation,
         "signal_count": await safe_hlen("cw4:signals:recent"),
@@ -718,9 +861,13 @@ async def system_overview():
 async def get_config(module: str):
     import os
     import re
+
     prefix = module.upper() + "_"
-    cfg = {k.replace(prefix, "").lower(): v
-           for k, v in os.environ.items() if k.startswith(prefix)}
+    cfg = {
+        k.replace(prefix, "").lower(): v
+        for k, v in os.environ.items()
+        if k.startswith(prefix)
+    }
     return {"module": module, "config": cfg}
 
 
@@ -731,19 +878,25 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         # Send current state on connect
         market_data = await market_snapshot()
-        signals_resp = await list_signals(limit=20, symbol=None, signal_type=None, regime=None, min_probability=0.0)
-        await websocket.send_json({
-            "type": "init",
-            "data": {
-                "prices": market_data.get("prices", {}),
-                "funding_rates": market_data.get("funding_rates", {}),
-                "signals": signals_resp.get("signals", [])[:20],
+        signals_resp = await list_signals(
+            limit=20, symbol=None, signal_type=None, regime=None, min_probability=0.0
+        )
+        await websocket.send_json(
+            {
+                "type": "init",
+                "data": {
+                    "prices": market_data.get("prices", {}),
+                    "funding_rates": market_data.get("funding_rates", {}),
+                    "signals": signals_resp.get("signals", [])[:20],
+                },
             }
-        })
+        )
         # Keep-alive loop
         while True:
             await asyncio.sleep(25)
-            await websocket.send_json({"type": "ping", "ts": datetime.utcnow().isoformat()})
+            await websocket.send_json(
+                {"type": "ping", "ts": datetime.utcnow().isoformat()}
+            )
     except WebSocketDisconnect:
         ws_manager.disconnect(websocket)
     except Exception as e:

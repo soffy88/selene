@@ -12,6 +12,7 @@ Design contract:
   - This writer is called EXTERNALLY by the event loop / replay
   - Write failures log a warning and do NOT raise (never block decision path)
 """
+
 from __future__ import annotations
 
 import json
@@ -99,8 +100,8 @@ class DBWriter:
     async def write_cusum_event(
         self,
         timestamp: datetime,
-        cusum_type: str,          # 'short'
-        direction: str,           # 'up' / 'down'
+        cusum_type: str,  # 'short'
+        direction: str,  # 'up' / 'down'
         peak_value: float,
         threshold_h: float,
         z_returns_window: Optional[list] = None,
@@ -129,12 +130,95 @@ class DBWriter:
             logger.warning("DBWriter.write_cusum_event failed: %s", exc)
             return False
 
+    async def write_cusum_events_bulk(self, rows) -> int:
+        """Upsert CUSUM trigger events into v2_cusum_events. Rows are
+        (timestamp, cusum_type, direction, peak_value, threshold_h, z_returns_window).
+        Idempotent on (timestamp, cusum_type): the paper engine replays the full history
+        every tick, so a natural-key upsert keeps one row per (bar, accumulator) instead of
+        duplicating the same trigger each cycle (the table's only PK is a random UUID). The
+        WHERE guard skips no-op rewrites so a sealed bar's trigger settles after one write."""
+        if self._conn is None or not rows:
+            return 0
+        try:
+            encoded = [
+                (
+                    ts,
+                    cusum_type,
+                    direction,
+                    peak_value,
+                    threshold_h,
+                    json.dumps(z_window) if z_window is not None else None,
+                )
+                for ts, cusum_type, direction, peak_value, threshold_h, z_window in rows
+            ]
+            await self._conn.executemany(
+                """
+                INSERT INTO v2_cusum_events
+                    (timestamp, cusum_type, direction, peak_value, threshold_h, z_returns_window)
+                VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+                ON CONFLICT (timestamp, cusum_type) DO UPDATE SET
+                    direction = EXCLUDED.direction,
+                    peak_value = EXCLUDED.peak_value,
+                    threshold_h = EXCLUDED.threshold_h,
+                    z_returns_window = EXCLUDED.z_returns_window
+                WHERE v2_cusum_events.peak_value IS DISTINCT FROM EXCLUDED.peak_value
+                   OR v2_cusum_events.direction IS DISTINCT FROM EXCLUDED.direction
+                   OR v2_cusum_events.threshold_h IS DISTINCT FROM EXCLUDED.threshold_h
+                """,
+                encoded,
+            )
+            return len(rows)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("DBWriter.write_cusum_events_bulk failed: %s", exc)
+            return 0
+
+    async def write_inverse_vocab_events_bulk(self, rows) -> int:
+        """Upsert direction-aware inverse-vocab signatures into v2_inverse_vocab_events
+        (Wave S2C Step-3 telemetry). Rows are (timestamp, vocab, direction, state, details).
+        Idempotent on (timestamp, vocab) so the full-history replay backfills once. Direction
+        + detector internals go into tool_metadata; observation_only=TRUE (this records what
+        Step 3 *saw*; the entry decision itself lives in v2_strategy_decision)."""
+        if self._conn is None or not rows:
+            return 0
+        try:
+            encoded = []
+            for ts, vocab, direction, state, details in rows:
+                meta = {"direction": direction, **(details or {})}
+                encoded.append(
+                    (
+                        ts,
+                        vocab,
+                        state,
+                        "inverse_vocab",
+                        True,
+                        json.dumps(meta, default=str),
+                    )
+                )
+            await self._conn.executemany(
+                """
+                INSERT INTO v2_inverse_vocab_events
+                    (timestamp, vocab, associated_state, tool_source,
+                     observation_only, tool_metadata)
+                VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+                ON CONFLICT (timestamp, vocab) DO UPDATE SET
+                    associated_state = EXCLUDED.associated_state,
+                    tool_metadata = EXCLUDED.tool_metadata
+                WHERE v2_inverse_vocab_events.tool_metadata
+                      IS DISTINCT FROM EXCLUDED.tool_metadata
+                """,
+                encoded,
+            )
+            return len(rows)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("DBWriter.write_inverse_vocab_events_bulk failed: %s", exc)
+            return 0
+
     # ── v2_decision_trail ──────────────────────────────────────────────────────
 
     async def write_strategy2_decision(
         self,
         timestamp: datetime,
-        action: str,                  # ENTER_LONG / ENTER_SHORT / ABORT / OBSERVE
+        action: str,  # ENTER_LONG / ENTER_SHORT / ABORT / OBSERVE
         reason: str,
         state_4h: Optional[str],
         cusum_direction: Optional[str],
@@ -206,7 +290,9 @@ class DBWriter:
         Used for W2/B1/I1 etc. (Wave 5 tools) — Wave 3 interface placeholder.
         """
         if self._conn is None:
-            logger.warning("DBWriter.write_inverse_vocab_event: not connected, skipping")
+            logger.warning(
+                "DBWriter.write_inverse_vocab_event: not connected, skipping"
+            )
             return False
         try:
             await self._conn.execute(
@@ -243,15 +329,17 @@ class DBWriter:
 
         rows = []
         for r in records:
-            rows.append((
-                r.timestamp,
-                r.state.value,
-                r.sub_state,
-                json.dumps(r.state_features),
-                r.transition_from.value if r.transition_from else None,
-                r.transition_via,
-                r.duration_4h,
-            ))
+            rows.append(
+                (
+                    r.timestamp,
+                    r.state.value,
+                    r.sub_state,
+                    json.dumps(r.state_features),
+                    r.transition_from.value if r.transition_from else None,
+                    r.transition_via,
+                    r.duration_4h,
+                )
+            )
 
         try:
             # ON CONFLICT DO UPDATE (not DO NOTHING): the paper engine replays the full history
@@ -261,6 +349,13 @@ class DBWriter:
             # rewrites in steady state (same state/transition/duration → no write, no bloat),
             # so it self-heals on real changes without churning the table every tick.
             # v2_state_history is uncompressed, so updates are safe (unlike the compressed feeds).
+            # first_written_at / rewritten_at (write-instant instrumentation, see
+            # schema.sql): neither is in the INSERT column list, so a brand-new row
+            # picks up first_written_at's column DEFAULT NOW() and leaves rewritten_at
+            # NULL. The UPDATE branch never touches first_written_at (preserves the
+            # original write instant) and stamps rewritten_at = NOW() alongside the
+            # existing content columns -- so it only fires under the same
+            # IS DISTINCT FROM guard as everything else (a real content change).
             await self._conn.executemany(
                 """
                 INSERT INTO v2_state_history
@@ -273,8 +368,10 @@ class DBWriter:
                     state_features = EXCLUDED.state_features,
                     transition_from = EXCLUDED.transition_from,
                     transition_via = EXCLUDED.transition_via,
-                    duration_4h = EXCLUDED.duration_4h
+                    duration_4h = EXCLUDED.duration_4h,
+                    rewritten_at = NOW()
                 WHERE v2_state_history.state IS DISTINCT FROM EXCLUDED.state
+                   OR v2_state_history.sub_state IS DISTINCT FROM EXCLUDED.sub_state
                    OR v2_state_history.transition_from IS DISTINCT FROM EXCLUDED.transition_from
                    OR v2_state_history.transition_via IS DISTINCT FROM EXCLUDED.transition_via
                    OR v2_state_history.duration_4h IS DISTINCT FROM EXCLUDED.duration_4h
@@ -390,9 +487,22 @@ class DBWriter:
                     pnl_pct = EXCLUDED.pnl_pct,
                     fees_paid = EXCLUDED.fees_paid
                 """,
-                trade_id, strategy, sub_account, entry_time, entry_price,
-                direction, size, leverage, instrument, entry_state,
-                exit_time, exit_price, exit_reason, pnl_usdt, pnl_pct, fees_paid,
+                trade_id,
+                strategy,
+                sub_account,
+                entry_time,
+                entry_price,
+                direction,
+                size,
+                leverage,
+                instrument,
+                entry_state,
+                exit_time,
+                exit_price,
+                exit_reason,
+                pnl_usdt,
+                pnl_pct,
+                fees_paid,
             )
             return True
         except Exception as exc:  # noqa: BLE001
@@ -401,24 +511,42 @@ class DBWriter:
 
     async def write_decision_trail_bulk(self, rows) -> int:
         """Upsert per-bar decision rows into v2_strategy_decision (#2). Rows are
-        (timestamp, strategy, action, reason, step_reached, state_4h, direction).
-        Idempotent + self-healing across the per-tick replay (WHERE guard skips no-op writes)."""
+        (timestamp, strategy, action, reason, step_reached, state_4h, direction, decision_trail)
+        where decision_trail is a dict (or None) of the full numeric input snapshot the
+        decision actually consumed (GL1 T0.3 / D1: audit what the decision used, not a
+        separately-recomputed value). Idempotent + self-healing across the per-tick replay
+        (WHERE guard skips no-op writes; decision_trail is refreshed on every upsert since
+        it can carry a newer snapshot for an otherwise-unchanged action/step_reached)."""
         if self._conn is None or not rows:
             return 0
         try:
+            encoded = [
+                (
+                    ts,
+                    strat,
+                    action,
+                    reason,
+                    step_reached,
+                    state_4h,
+                    direction,
+                    json.dumps(trail, default=str) if trail is not None else None,
+                )
+                for ts, strat, action, reason, step_reached, state_4h, direction, trail in rows
+            ]
             await self._conn.executemany(
                 """
                 INSERT INTO v2_strategy_decision
-                    (timestamp, strategy, action, reason, step_reached, state_4h, direction)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    (timestamp, strategy, action, reason, step_reached, state_4h, direction, decision_trail)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
                 ON CONFLICT (timestamp, strategy) DO UPDATE SET
                     action = EXCLUDED.action, reason = EXCLUDED.reason,
                     step_reached = EXCLUDED.step_reached, state_4h = EXCLUDED.state_4h,
-                    direction = EXCLUDED.direction
+                    direction = EXCLUDED.direction, decision_trail = EXCLUDED.decision_trail
                 WHERE v2_strategy_decision.action IS DISTINCT FROM EXCLUDED.action
                    OR v2_strategy_decision.step_reached IS DISTINCT FROM EXCLUDED.step_reached
+                   OR v2_strategy_decision.decision_trail IS DISTINCT FROM EXCLUDED.decision_trail
                 """,
-                rows,
+                encoded,
             )
             return len(rows)
         except Exception as exc:  # noqa: BLE001
@@ -451,7 +579,13 @@ class DBWriter:
                     state_4h = EXCLUDED.state_4h, direction = EXCLUDED.direction,
                     updated_at = NOW()
                 """,
-                strategy, timestamp, action, reason, step_reached, state_4h, direction,
+                strategy,
+                timestamp,
+                action,
+                reason,
+                step_reached,
+                state_4h,
+                direction,
             )
             return True
         except Exception as exc:  # noqa: BLE001
@@ -591,4 +725,36 @@ class DBWriter:
             return True
         except Exception as exc:
             logger.warning("DBWriter.write_strategy1_decision failed: %s", exc)
+            return False
+
+    async def write_staleness_event(
+        self,
+        source: str,
+        stale: bool,
+        reason_code: Optional[str],
+        last_update: Optional[datetime],
+        age_seconds: Optional[float],
+    ) -> bool:
+        """Record a fresh<->stale transition for one source (GL1 T0.4). Callers should
+        only call this on an actual state change, not every cycle (v2_staleness_events
+        is a transition log, not a per-cycle snapshot)."""
+        if self._conn is None:
+            logger.warning("DBWriter.write_staleness_event: not connected, skipping")
+            return False
+        try:
+            await self._conn.execute(
+                """
+                INSERT INTO v2_staleness_events
+                    (source, stale, reason_code, last_update, age_seconds)
+                VALUES ($1, $2, $3, $4, $5)
+                """,
+                source,
+                stale,
+                reason_code,
+                last_update,
+                age_seconds,
+            )
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("DBWriter.write_staleness_event failed: %s", exc)
             return False

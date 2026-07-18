@@ -21,7 +21,12 @@ x-common-env: &common_env
   # not mainnet. Set ENVIRONMENT=production deliberately for a real deploy.
   ENVIRONMENT:          ${ENVIRONMENT:-development}
   DEBUG:                ${DEBUG:-false}
-  EXEC_MODE:            ${EXEC_MODE:-NOTIFY_ONLY}
+  # PAPER(纯模拟撮合):用户拍板 2026-07-10("一定要让能开单")。零真实下单——PAPER 分支
+  # 不触任何 exchange adapter(submit_to_exchange 模拟路径,按 cw4:prices 定价成交),
+  # 写 orders 表 + order.lifecycle,风控门全程参与。🔒 Never 已同步修订:禁的是 live 模式
+  # (AUTO_EXEC/CONFIRM_THEN_EXEC)。写死不再 ${} 插值:.env:34 的 EXEC_MODE=NOTIFY_ONLY
+  # 已过时(受保护文件,待人工清理)。
+  EXEC_MODE:            PAPER
   MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-OKX}
 
 services:
@@ -31,6 +36,29 @@ services:
   # never implemented; real ingestion is the v2-*-collector services. Its
   # permanently-unhealthy no-op container and the depends_on edges that pointed at
   # it have been dropped.
+
+  # ── Market scanner ─────────────────────────────────────────────────────────
+  # v4 链缺失的前半截(2026-07-10):小币趋势发现 + market.candles/market.raw 生产者。
+  # 此前两个输入流零生产者,signal.scored 恒为 0(整条 v4 链无头)。
+  # Binance USD-M REST,经 helios-proxy(与 execution adapter 同一 venue)。
+  market-scanner:
+    <<: *defaults
+    build:
+      context: .
+      dockerfile: services/scanner/Dockerfile
+    command: python -m services.scanner.main
+    environment:
+      <<: *common_env
+      SERVICE_NAME: market-scanner
+      # 显式写死可用代理:.env 里的 HTTPS_PROXY 指向已失效的旧 IP(STATUS Needs-Human,
+      # .env 受保护待人工改),compose ${} 插值会读到它,不能用作默认值来源。
+      SCANNER_PROXY: http://helios-proxy:2080
+      MIN_QUOTE_VOLUME_USD: ${MIN_QUOTE_VOLUME_USD:-20000000}
+      MIN_24H_CHANGE_PCT:   ${MIN_24H_CHANGE_PCT:-5.0}
+      SCANNER_TOP_N:        ${SCANNER_TOP_N:-5}
+    deploy:
+      resources:
+        limits: {cpus: '0.5', memory: 256M}
 
   # ── Signal ───────────────────────────────────────────────────────────────
   signal-service:
@@ -258,6 +286,9 @@ services:
       <<: *common_env
       SERVICE_NAME: gateway
       SERVICE_PORT: "5000"
+      # 公网域名 sel.kanpan.co 走 Caddy→nginx 同源反代，浏览器不直连 gateway，
+      # 故 CORS 非必需；这里显式放行以防将来有直连 XHR。dev 保留 localhost。
+      GATEWAY_CORS_ORIGINS: ${GATEWAY_CORS_ORIGINS:-http://localhost,http://localhost:80,https://sel.kanpan.co}
       # The mounted sel_v2 paper API (/api/v2/sel/*) reads DB_URL to reach the platform DB;
       # without it every sel_v2 endpoint 500s ("DB_URL must be set"). Same target the v2
       # collectors / paper engine use.
@@ -381,6 +412,24 @@ services:
       - helios-net
     restart: unless-stopped
 
+  # Binance spot ticker poller (Wave S2C Part 3). Second reachable price for the S2 Step-5
+  # cross-exchange divergence check (perp-vs-spot basis; OKX is blocked). REST poll every 30s
+  # via the known-good BINANCE_PROXY (helios-proxy:2080), NOT the container HTTPS_PROXY.
+  v2-binance-ticker:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    command: python -m sel_v2.data.v2_binance_ticker
+    env_file: .env
+    environment:
+      - BINANCE_PROXY=${BINANCE_PROXY:-http://helios-proxy:2080}
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - SYMBOLS=BTC-USDT
+    networks:
+      - helios-net
+    restart: unless-stopped
+
   # Forward 4H-bar poller (2026-07-03 OKX→Binance migration). The tick-fed bar-aggregator
   # is dead while OKX WS is unreachable, so this keeps v2_bars_4h fresh from Binance REST.
   # Idempotent (ON CONFLICT DO NOTHING); coexists with v2-bar-aggregator harmlessly.
@@ -397,6 +446,61 @@ services:
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
       - MD_DSN=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/marketdata
+    networks:
+      - helios-net
+    restart: unless-stopped
+
+  # Weekly live capture-rate monitor (Wave V22-D, offline follow-up to V22-C). Pure
+  # read+append diagnostic — no strategy/state coupling, no live trading impact.
+  # Monthly observation-tool evaluation (optimization A3). Sleeps until the 1st
+  # of each month 01:00 UTC, runs ToolEvaluator over all 12 tools (90d lookback),
+  # writes v2_tool_evaluation_results + a v2_decision_trail summary row.
+  v2-tool-eval-monthly:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    command: python -m sel_v2.evaluation.monthly_eval --serve
+    env_file: .env
+    environment:
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
+      - POSTGRES_HOST=platform-postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=selene_app
+      - POSTGRES_PASSWORD=${SELENE_APP_PASSWORD}
+      - POSTGRES_DB=selene
+    networks:
+      - helios-net
+    restart: unless-stopped
+
+  # ICT-1 VPIN live monitor (v2.2 lens batch, observation-only). Polls v2_ticks
+  # every 5 min, upserts high-VPIN events into v2_inverse_vocab_events
+  # (vocab='vpin'). Stateless restart recovery (trailing-30d tick replay).
+  v2-vpin-monitor:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    command: python -m sel_v2.observation_tools.vpin_monitor --serve
+    env_file: .env
+    environment:
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - SYMBOLS=BTC-USDT
+    networks:
+      - helios-net
+    restart: unless-stopped
+
+  # Sleeps until the next Monday 00:30 UTC, runs sel_v2/offline/capture_monitor.py,
+  # writes v2_capture_rate_weekly + appends sel_v2/reports/capture_rate_weekly.md.
+  v2-capture-monitor:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    command: python -m sel_v2.offline.capture_monitor --serve
+    env_file: .env
+    environment:
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - SYMBOLS=BTC-USDT
     networks:
       - helios-net
     restart: unless-stopped
@@ -423,23 +527,14 @@ services:
       - helios-net
     restart: unless-stopped
 
-  v2-ofi-persister:
-    build:
-      context: .
-      dockerfile: sel_v2/Dockerfile
-    command: python -m sel_v2.data.ofi_persister
-    env_file: .env
-    environment:
-      - HTTPS_PROXY=${HTTPS_PROXY:-http://helios-proxy:2080}
-      - HTTP_PROXY=${HTTP_PROXY:-http://helios-proxy:2080}
-      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
-      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
-      - SYMBOLS=BTC-USDT
-    networks:
-      - helios-net
-    restart: unless-stopped
-    depends_on:
-      - v2-bar-aggregator
+  # v2-ofi-persister REMOVED (GL1 T0.3/D1, 2026-07-08): v2_ofi_features was a
+  # write-only duplicate — the paper engine already recomputes the same per-bar
+  # OFI/LOB values inline (_load_microstructure_series). D1 kept the inline compute
+  # (no engine data-path change) and instead audits what it actually used into
+  # v2_strategy_decision.decision_trail (StrategyEngine._bar_snapshot). Rollback:
+  # restore this block (command: python -m sel_v2.data.ofi_persister, same env as
+  # v2-bar-aggregator below); sel_v2/data/ofi_persister.py and the v2_ofi_features
+  # table are both kept (DEPRECATED, not dropped).
 
   v2-paper-engine:
     build:

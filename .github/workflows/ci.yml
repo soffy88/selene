@@ -13,7 +13,9 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          # requirements-ci.txt pins numpy==2.5.0 which requires Python >= 3.12
+          # (3.11 made the dependency install itself fail — CI was dead on arrival)
+          python-version: "3.12"
 
       - name: Install public dependencies
         run: |

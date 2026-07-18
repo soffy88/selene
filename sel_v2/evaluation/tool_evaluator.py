@@ -20,6 +20,7 @@ Decision rules (v2.1 §2.2):
   B. 0 < lead_time < 86400s OR fp_rate 0.30-0.60  → 'maintain'
   C. fp_rate > 0.60 OR lead_time < 0              → 'deprecate'
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -33,7 +34,23 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-_OBSERVATION_TOOL_IDS = ["B1", "B2", "TDA2", "I1", "T2", "W2", "H3"]
+_OBSERVATION_TOOL_IDS = [
+    "B1",
+    "B2",
+    "TDA2",
+    "I1",
+    "T2",
+    "W2",
+    "H3",
+    # v2.2 lens batch (CHAN-1 rejected offline — analysis/lens_verdict_v1.md;
+    # ICT1/vpin events carry history_days in metadata: the Month-3 evaluation
+    # must exclude the <30d pilot era)
+    "CHAN2",
+    "CHAN3",
+    "ICT2",
+    "ICT1",
+    "ICT3",
+]
 
 _VOCAB_TO_TOOL = {
     "hmm_disagreement": "B1",
@@ -43,6 +60,11 @@ _VOCAB_TO_TOOL = {
     "te_funding_to_price": "T2",
     "multifractal_spectrum_wide": "W2",
     "hawkes_cascade_early_warning": "H3",
+    "chan_divergence": "CHAN2",
+    "chan_pivot": "CHAN3",
+    "swing_structure": "ICT2",
+    "vpin": "ICT1",
+    "killzone_anomaly": "ICT3",
 }
 
 _TOOL_NAMES = {
@@ -53,6 +75,11 @@ _TOOL_NAMES = {
     "T2": "TE 滚動監控",
     "W2": "Wavelet 多分形谱宽",
     "H3": "Hawkes Cascade 早期予警",
+    "CHAN2": "缠论 背驰",
+    "CHAN3": "缠论 中枢重叠",
+    "ICT2": "ICT Swing结构 BOS/CHoCH",
+    "ICT1": "ICT VPIN 毒性流",
+    "ICT3": "ICT Killzone 时段异动",
 }
 
 
@@ -112,7 +139,9 @@ class ToolEvaluator:
             "correlation_with_others": None,  # computed separately in _compute_correlations
             "sample_size": sample_size,
             "decision": decision,
-            "decision_reason": self._decision_reason(lead_time_sec, fp_rate, sample_size),
+            "decision_reason": self._decision_reason(
+                lead_time_sec, fp_rate, sample_size
+            ),
             "created_by": "cc",
             "created_at": now.isoformat(),
         }
@@ -136,26 +165,42 @@ class ToolEvaluator:
             if conn is None:
                 return [], []
 
-            # Signal timestamps
+            # Signal timestamps. ICT1/vpin only: exclude the <30d pilot era —
+            # VPIN percentiles are unstable until the tick history window is
+            # honest (candidate-pool ruling; events carry history_days for this).
+            extra = (
+                "AND (tool_metadata->>'history_days')::float >= 30"
+                if tool_id == "ICT1"
+                else ""
+            )
             rows_sig = await conn.fetch(
-                """
+                f"""
                 SELECT timestamp FROM v2_inverse_vocab_events
                 WHERE vocab = $1 AND timestamp BETWEEN $2 AND $3
+                {extra}
                 ORDER BY timestamp
                 """,
-                vocab, start, end,
+                vocab,
+                start,
+                end,
             )
             signal_ts = [r["timestamp"] for r in rows_sig]
 
-            # State transition timestamps (any transition = potential true event)
+            # State transition timestamps (any transition = potential true event).
+            # v2_state_history holds a one-time pre-2026-06-15 backfill mixed in with
+            # live writes (see the STATUS.md data-constraint note) -- bounding to the
+            # live domain keeps a wide lookback (e.g. month_3's 90 days) from silently
+            # treating backfilled transitions as live tool-evaluation evidence.
             rows_state = await conn.fetch(
                 """
                 SELECT timestamp FROM v2_state_history
                 WHERE timestamp BETWEEN $1 AND $2
+                  AND timestamp >= '2026-06-15'
                   AND transition_from IS NOT NULL
                 ORDER BY timestamp
                 """,
-                start, end,
+                start,
+                end,
             )
             state_ts = [r["timestamp"] for r in rows_state]
 
@@ -223,8 +268,12 @@ class ToolEvaluator:
             return "deprecate"
         if lead_time is not None and lead_time < 0:
             return "deprecate"
-        if (lead_time is not None and lead_time > 86400.0
-                and fp_rate is not None and fp_rate < 0.30):
+        if (
+            lead_time is not None
+            and lead_time > 86400.0
+            and fp_rate is not None
+            and fp_rate < 0.30
+        ):
             return "upgrade"
         return "maintain"
 
@@ -238,7 +287,7 @@ class ToolEvaluator:
             return f"Insufficient sample (n={sample_size} < 5). Maintain pending more data."
         parts = []
         if lead_time is not None:
-            parts.append(f"lead_time={lead_time/3600:.1f}h")
+            parts.append(f"lead_time={lead_time / 3600:.1f}h")
         if fp_rate is not None:
             parts.append(f"fp_rate={fp_rate:.2%}")
         parts.append(f"n={sample_size}")
@@ -275,6 +324,7 @@ class ToolEvaluator:
             series[tid] = arr
 
         from scipy.stats import spearmanr
+
         corr: dict[str, dict[str, float]] = {}
         for tid in _OBSERVATION_TOOL_IDS:
             corr[tid] = {}

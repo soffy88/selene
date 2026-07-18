@@ -112,6 +112,30 @@ async def check_rules(pool, r):
                     )
                 )
 
+        # Rule 4b: state-dwell anomaly (Wave S2C). A trend/coiling state stuck too long is
+        # the "Surging pinned 54 bars, nobody noticed" failure from the diagnosis. Only the
+        # ACTIVE states (Surging / Coiling) alert — long Drifting_* dwell is normal and quiet.
+        dwell_rows = await conn.fetch(
+            "SELECT state FROM v2_state_history ORDER BY timestamp DESC LIMIT 200"
+        )
+        if dwell_rows:
+            cur_state = dwell_rows[0]["state"]
+            dwell = 0
+            for row in dwell_rows:
+                if row["state"] == cur_state:
+                    dwell += 1
+                else:
+                    break
+            if cur_state in ("Surging", "Coiling") and dwell > 42:  # 7 days x 6 bars
+                alerts.append(
+                    (
+                        "WARNING",
+                        "state_dwell_anomaly",
+                        f"state '{cur_state}' has held {dwell} 4H bars (>42 / 7d) — "
+                        "check the state machine isn't stuck (Drifting_* long dwell is normal)",
+                    )
+                )
+
     # Rule 5: paper_engine container logs (not implemented via log scanning here, relying on last_bar_ts instead for simplicity)
     # A stuck paper_engine won't update last_bar_ts.
     last_paper_ts_raw = await r.get("v2:paper:last_bar_ts")
@@ -166,6 +190,28 @@ async def check_rules(pool, r):
                     )
         except Exception as e:
             logger.warning(f"dead-man check failed to parse heartbeat: {e}")
+
+    # Rule 6b: an ACTIVE halt silently drops every new v4 order, so it must keep
+    # alerting until an operator clears it — the 07-10 halt alerted once and then
+    # blocked trading unnoticed for 6 days. Own dedup key: re-alert hourly (the
+    # shared dedup below is 30 min, too chatty for a standing condition).
+    halt_raw = await r.get("cw4:execution:halt")
+    if halt_raw:
+        try:
+            halt = json.loads(
+                halt_raw.decode() if isinstance(halt_raw, bytes) else halt_raw
+            )
+            ts = float(halt.get("ts", 0))
+            age_h = (now.timestamp() - ts) / 3600 if ts else -1.0
+            if not await r.exists("hc_dedup:exec_halt_active"):
+                await r.set("hc_dedup:exec_halt_active", "1", ex=3600)
+                await send_telegram(
+                    f"[CRITICAL] cw4:execution:halt ACTIVE {age_h:.1f}h "
+                    f"(reason={halt.get('reason', '?')}) — every new v4 order is being "
+                    f"dropped; clear with POST /execution/halt/clear after review"
+                )
+        except Exception as e:
+            logger.warning(f"halt-active check failed: {e}")
 
     # Deduplicate and send
     for severity, rule_id, msg in alerts:

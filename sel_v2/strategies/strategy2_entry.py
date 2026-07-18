@@ -9,22 +9,34 @@ Decision tree (v2.1):
   Step 1b: Hawkes intensity gate λ*(t) > h_λ          [v2.1 H1 NEW]
            ↳ FAIL → action=OBSERVE (log, no entry)
   Step 2:  4H state veto — Cascade only                [v2.0]
-  Step 3:  Inverse vocab classification (A/B/abort)    [v2.0, stub]
-  Step 4:  Cascade risk filter (liquidation pulse)     [v2.0, stub]
-  Step 5:  Cross-exchange divergence check             [v2.0, stub]
+  Step 3:  Inverse vocab classification (A/B/abort)    [v2.0, Wave S2C]
+  Step 4:  Cascade risk filter (liq pulse + OI drop)   [v2.0, Wave S2C]
+  Step 5:  Cross-exchange divergence check             [v2.0, Wave S2C]
   Step 6:  Position size computation                   [v2.0]
 
-Steps 3–5 are marked STUB — full implementation requires LOB + liquidation
-feeds which are not yet flowing (v2_liquidations = 0 rows).
-See sel_v2/strategies/STUB_BOUNDARIES.md for the complete stub registry.
+Wave S2C (2026-07-11) completes Steps 3–5, which were STUB'd when the LOB/tick/
+liquidation feeds did not exist. They have流 stably since 2026-07, so:
+  Step 3 — sel_v2/strategies/inverse_vocab.py: direction-aware Absorption/Sweep +
+           §14.2 Type A/B classification (engine supplies the structured signals).
+  Step 4 — engine-derived liquidation-pulse + OI-drop guards.
+  Step 5 — cross-exchange divergence vs the Binance ticker poller (Wave S2C Part 3).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
 from sel_v2.strategies.cusum_short import CUSUMTrigger
-from sel_v2.strategies.hawkes_intensity import HawkesIntensityTracker, RollingIntensityThreshold
+from sel_v2.strategies.hawkes_intensity import (
+    HawkesIntensityTracker,
+    RollingIntensityThreshold,
+)
+from sel_v2.strategies.inverse_vocab import (
+    AbsorptionSignal,
+    SweepSignal,
+    classify_entry_type,
+)
 
 EntryAction = Literal["ENTER_LONG", "ENTER_SHORT", "OBSERVE", "ABORT"]
 
@@ -39,14 +51,17 @@ class EntryDecision:
     action: EntryAction
     reason: str
     cusum_direction: Optional[Literal["LONG", "SHORT"]] = None
-    cusum_intensity_coeff: float = 0.0    # C/h ratio for sizing
-    base_size_pct: float = 0.0            # fraction of subaccount-2 NAV to commit
+    cusum_intensity_coeff: float = 0.0  # C/h ratio for sizing
+    base_size_pct: float = 0.0  # fraction of subaccount-2 NAV to commit
     hawkes_lambda: Optional[float] = None
     hawkes_threshold: Optional[float] = None
     hawkes_passed: Optional[bool] = None
     state_4h: Optional[str] = None
     suggested_leverage: float = MAX_LEVERAGE
-    step_reached: int = 0                 # which step caused abort/observe
+    step_reached: int = 0  # which step caused abort/observe
+    entry_confidence: float = (
+        1.0  # Step-5 divergence discount (1.0 clean, 0.7 mid-band)
+    )
 
 
 @dataclass
@@ -73,7 +88,10 @@ class Strategy2EntryFilter:
         inverse_vocab: Optional[list[str]] = None,
         ofi_persistent_same_direction: Optional[bool] = None,
         liq_pulse: bool = False,
+        oi_drop_pulse: bool = False,
         cross_spread_pct: Optional[float] = None,
+        absorption: Optional[AbsorptionSignal] = None,
+        sweep: Optional[SweepSignal] = None,
         subaccount_nav_usdt: float = 10_000.0,
     ) -> EntryDecision:
         """
@@ -148,9 +166,22 @@ class Strategy2EntryFilter:
                 step_reached=2,
             )
 
-        # Step 3: Inverse vocab classification (STUB — LOB data not yet flowing)
+        # Step 3: Inverse vocab classification (§14.2). When the engine supplies the
+        # direction-aware Absorption/Sweep signals (real microstructure, Wave S2C), use the
+        # frozen §14.2 classifier; otherwise fall back to the legacy string-vocab path (kept
+        # for callers/tests that pass tags without structured signals).
         vocab = set(inverse_vocab or [])
-        entry_type = _classify_entry_type(direction, vocab, ofi_persistent_same_direction)
+        if absorption is not None or sweep is not None:
+            entry_type = classify_entry_type(
+                direction,
+                absorption or AbsorptionSignal(present=False),
+                sweep or SweepSignal(present=False),
+                ofi_persistent_same_direction,
+            )
+        else:
+            entry_type = _classify_entry_type(
+                direction, vocab, ofi_persistent_same_direction
+            )
         if entry_type is None:
             return EntryDecision(
                 action="ABORT",
@@ -176,11 +207,16 @@ class Strategy2EntryFilter:
             # Momentum: enter same as CUSUM direction
             actual_direction = direction  # type: ignore[assignment]
 
-        # Step 4: Cascade risk filter (STUB — liquidation feed not yet flowing)
-        if liq_pulse:
+        # Step 4: Cascade risk filter (§14.2). Abort if a liquidation pulse OR a sharp OI
+        # drop is under way in the last 5 min — either says a cascade may be starting, so
+        # don't add fuel. Both are engine-derived from real feeds (Wave S2C); absent/False
+        # when the feed is cold, which fails open here by design (the Cascade *state* veto in
+        # Step 2 is the hard gate; this is the finer intra-window guard).
+        if liq_pulse or oi_drop_pulse:
+            trigger = "Liquidation pulse" if liq_pulse else "OI drop pulse"
             return EntryDecision(
                 action="ABORT",
-                reason="Step 4: Liquidation pulse detected in last 5 min — abort",
+                reason=f"Step 4: {trigger} detected in last 5 min — cascade risk, abort",
                 cusum_direction=direction,
                 hawkes_lambda=lam_now,
                 hawkes_threshold=h_lambda,
@@ -189,52 +225,69 @@ class Strategy2EntryFilter:
                 step_reached=4,
             )
 
-        # Step 5: Cross-exchange divergence (STUB — spread feed not yet flowing)
-        if cross_spread_pct is not None and cross_spread_pct > 0.5:
-            return EntryDecision(
-                action="ABORT",
-                reason=(
-                    f"Step 5: Cross-exchange spread {cross_spread_pct:.2f}% > 0.5% "
-                    "— Cascade risk too high"
-                ),
-                cusum_direction=direction,
-                hawkes_lambda=lam_now,
-                hawkes_threshold=h_lambda,
-                hawkes_passed=True,
-                state_4h=state_4h,
-                step_reached=5,
-            )
+        # Step 5: Cross-exchange divergence (Wave S2C Part 3). cross_spread_pct is the
+        # perp-vs-Binance-spot basis %, or None when the ticker feed is stale/absent (age
+        # >120s) — in which case we DEGRADE (skip the filter, do not abort). Bands:
+        #   >0.5%   → ABORT (dislocation too large, cascade risk)
+        #   <0.05%  → clean pass (confidence 1.0)
+        #   between → enter with entry_confidence 0.7 (discounted)
+        entry_confidence = 1.0
+        if cross_spread_pct is not None:
+            if cross_spread_pct > 0.5:
+                return EntryDecision(
+                    action="ABORT",
+                    reason=(
+                        f"Step 5: Cross-exchange divergence {cross_spread_pct:.3f}% > 0.5% "
+                        "— dislocation too large, cascade risk"
+                    ),
+                    cusum_direction=direction,
+                    hawkes_lambda=lam_now,
+                    hawkes_threshold=h_lambda,
+                    hawkes_passed=True,
+                    state_4h=state_4h,
+                    step_reached=5,
+                )
+            if cross_spread_pct >= 0.05:
+                entry_confidence = 0.7
 
         # Step 6: Determine leverage
         leverage = _compute_leverage(vocab)
 
-        action: EntryAction = "ENTER_LONG" if actual_direction == "LONG" else "ENTER_SHORT"
+        action: EntryAction = (
+            "ENTER_LONG" if actual_direction == "LONG" else "ENTER_SHORT"
+        )
 
         h_lambda_str = f"{h_lambda:.6f}" if h_lambda is not None else "cold"
+        conf_note = "" if entry_confidence >= 1.0 else f" conf×{entry_confidence:.2f}"
         return EntryDecision(
             action=action,
             reason=(
                 f"Step 6: Entry approved — Type {entry_type} "
                 f"({'reversal' if entry_type == 'A' else 'momentum'}) "
                 f"λ*={lam_now:.6f} h_λ={h_lambda_str} "
-                f"CUSUM_coeff={cusum_trigger.intensity_coeff:.2f}"
+                f"CUSUM_coeff={cusum_trigger.intensity_coeff:.2f}{conf_note}"
             ),
             cusum_direction=direction,
             cusum_intensity_coeff=cusum_trigger.intensity_coeff,
             # §14.4: base size = 10% of subaccount-2, scaled by the CUSUM signal
             # strength (C/h ratio, already capped at 3.0). At the minimum trigger
-            # (coeff≈1) this is the 10% base; a stronger break sizes up to 3×.
-            base_size_pct=BASE_SIZE_FRACTION * max(1.0, cusum_trigger.intensity_coeff),
+            # (coeff≈1) this is the 10% base; a stronger break sizes up to 3×. Then
+            # discounted by the Step-5 cross-exchange confidence (0.7 in the mid band).
+            base_size_pct=BASE_SIZE_FRACTION
+            * max(1.0, cusum_trigger.intensity_coeff)
+            * entry_confidence,
             hawkes_lambda=lam_now,
             hawkes_threshold=h_lambda,
             hawkes_passed=True,
             state_4h=state_4h,
             suggested_leverage=leverage,
             step_reached=6,
+            entry_confidence=entry_confidence,
         )
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
 
 def _classify_entry_type(
     cusum_direction: Optional[str],
@@ -269,11 +322,7 @@ def _classify_entry_type(
         return "A"
 
     # Type B: momentum — requires confirmed OFI persistence and no Absorption
-    if (
-        ofi_persistent_same_direction is True
-        and not has_absorption
-        and len(vocab) > 0
-    ):
+    if ofi_persistent_same_direction is True and not has_absorption and len(vocab) > 0:
         return "B"
 
     # Ambiguous / data not available → abort per §14.2
@@ -287,8 +336,7 @@ def _compute_leverage(vocab: set[str]) -> float:
     Default: 3x.
     """
     enhancements = sum(
-        1 for tag in ("Absorption", "Sweep", "Crowding", "Divergence")
-        if tag in vocab
+        1 for tag in ("Absorption", "Sweep", "Crowding", "Divergence") if tag in vocab
     )
     if enhancements >= 2:
         return HIGH_CONF_LEVERAGE
