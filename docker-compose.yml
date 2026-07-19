@@ -495,7 +495,15 @@ services:
     build:
       context: .
       dockerfile: sel_v2/Dockerfile
-    command: python -m sel_v2.offline.capture_monitor --serve
+    # Two weekly jobs share this container, an hour apart so they never contend
+    # for the DB: capture_monitor at Mon 00:30 UTC, fill_prob (Wave EXEC-S) at
+    # Mon 01:30. `wait -n` returns as soon as EITHER exits, and we then exit
+    # non-zero so restart:unless-stopped recreates the container — without it a
+    # dead scheduler would sit silently inside a "running" container.
+    command: >
+      bash -c "python -m sel_v2.offline.capture_monitor --serve &
+               python -m sel_v2.offline.fill_prob --serve &
+               wait -n; exit 1"
     env_file: .env
     environment:
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
