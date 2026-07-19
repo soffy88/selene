@@ -38,7 +38,9 @@ jobs:
         run: ruff check . || true
 
       - name: Run tests
-        run: pytest -q
+        # -rs prints every skip with its reason, so private-stack gaps stay
+        # visible in the log instead of hiding inside a "N skipped" count.
+        run: pytest -q -rs
 
   docker-build:
     runs-on: ubuntu-latest

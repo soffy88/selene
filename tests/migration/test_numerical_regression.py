@@ -6,11 +6,21 @@ equivalent results to the original Selene implementation.
 import math
 
 import numpy as np
+import importlib.util
+
 import pytest
 
 from tests.migration import fixtures
 
 
+# These exercise oprim-backed kernels (pearson_spearman_corr / hurst_exponent).
+# The production helpers swallow the missing-import into a `return None`, so the
+# failure surfaces as `assert None is not None` rather than ModuleNotFoundError —
+# the root conftest hook cannot catch it. Skip explicitly when the stack is absent.
+@pytest.mark.skipif(
+    importlib.util.find_spec("oprim") is None,
+    reason="private quant stack (oprim) not installed",
+)
 class TestComputeAutocorr:
     """Bucket A #8: compute_autocorr → oprim.pearson_spearman_corr"""
 

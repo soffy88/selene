@@ -6,6 +6,8 @@ import math
 from datetime import datetime, timezone
 
 import numpy as np
+import importlib.util
+
 import pytest
 
 from sel_engine.features.derived import compute_LV, compute_hurst_rs
@@ -93,6 +95,14 @@ class TestOrderbookEntropy:
 
 # ── compute_autocorr ──────────────────────────────────────────────────────────
 
+# These exercise oprim-backed kernels (pearson_spearman_corr / hurst_exponent).
+# The production helpers swallow the missing-import into a `return None`, so the
+# failure surfaces as `assert None is not None` rather than ModuleNotFoundError —
+# the root conftest hook cannot catch it. Skip explicitly when the stack is absent.
+@pytest.mark.skipif(
+    importlib.util.find_spec("oprim") is None,
+    reason="private quant stack (oprim) not installed",
+)
 class TestComputeAutocorr:
     def test_insufficient_data(self):
         closes = [100.0] * 12  # need 13 for window=12
@@ -135,6 +145,14 @@ class TestComputeAutocorr:
 
 # ── compute_hurst_rs ──────────────────────────────────────────────────────────
 
+# These exercise oprim-backed kernels (pearson_spearman_corr / hurst_exponent).
+# The production helpers swallow the missing-import into a `return None`, so the
+# failure surfaces as `assert None is not None` rather than ModuleNotFoundError —
+# the root conftest hook cannot catch it. Skip explicitly when the stack is absent.
+@pytest.mark.skipif(
+    importlib.util.find_spec("oprim") is None,
+    reason="private quant stack (oprim) not installed",
+)
 class TestHurstRS:
     def test_insufficient_data(self):
         assert compute_hurst_rs([1.0] * 10) is None
