@@ -36,6 +36,19 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
+- **EXEC-S shadow 积累中,门 N≥30**(2026-07-19 上线):`v2-shadow-exec` 对每个 S2
+  would-enter 信号并排记录市价臂/挂单臂假想执行(`v2_shadow_orders`),周报
+  `sel_v2/reports/shadow_exec_weekly.md`(Mon 02:30);P_fill 首达表 `v2_fill_prob`
+  (Mon 01:30)。**全 shadow,未下任何订单、未改 live 行为**。
+  **上游阀门 = S2 信号率**:07-18 观察 `strategy_2` 为 316 OBSERVE + 39 ABORT、
+  **0 条 would-enter**,故 N 目前为 0 —— 记录器就位等信号,这不是失败。
+  ⚠️ 另一个更紧的阀门:Type A 定价依赖 Sweep 结构位,而 **Sweep 事件近 30 天仅 1 条
+  (最新 2026-06-25)**,故即使 S2 出信号,Type A 臂也可能取不到结构位。
+  **两处待裁决**(阻塞过设计照抄,已按 CC 方案实施并标注):①设计文档
+  `sel_exec_limit_design_draft1.md` 不在仓库,`v2_shadow_orders` schema 为 CC 自行设计
+  而非 §5 照抄;②Absorption **无价位字段**(仅布尔 + 比率),Type A 仅用 Sweep 极值定价,
+  每行标 `notes.absorption='unavailable_no_price_in_source'`。
+
 - **v2.2 lens batch (2026-07-11) — 实施完成,进入 Month-3 采集期**:三视角同数据实证
   (sel/缠论/ICT,`analysis/lens_{sel,chan,ict,verdict}_v1.md`)→ CHAN-1 触发失败标准
   **废弃**(A/C 前向收益无差异,p=0.44/0.79);CHAN-2/CHAN-3/ICT-2 接入 paper engine

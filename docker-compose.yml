@@ -503,6 +503,7 @@ services:
     command: >
       bash -c "python -m sel_v2.offline.capture_monitor --serve &
                python -m sel_v2.offline.fill_prob --serve &
+               python -m sel_v2.shadow.shadow_report --serve &
                wait -n; exit 1"
     env_file: .env
     environment:
