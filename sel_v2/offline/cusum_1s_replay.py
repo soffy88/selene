@@ -34,7 +34,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from datetime import timezone
+from datetime import datetime, timezone
 
 import asyncpg
 import numpy as np
@@ -45,6 +45,13 @@ from sel_v2.strategies.cusum_short import CUSUMShort
 logger = logging.getLogger(__name__)
 
 SYMBOL = os.environ.get("SYMBOLS", "BTC-USDT")
+# Freeze the data window so a regression run sees byte-identical input to the one
+# it is compared against; live ticks keep arriving otherwise.
+REPLAY_END = (
+    datetime.fromisoformat(os.environ["REPLAY_END"])
+    if os.environ.get("REPLAY_END")
+    else None
+)
 
 # z-score standardisation window — NOT a module constant (see docstring).
 ZSCORE_WINDOW_SEC = 7 * 24 * 3600
@@ -84,11 +91,22 @@ async def load_1s_series(conn: asyncpg.Connection) -> pd.DataFrame:
     rows = await conn.fetch(
         """
         SELECT date_trunc('second', timestamp) AS s,
-               (array_agg(price ORDER BY timestamp DESC))[1] AS px
+               -- trade_id breaks ties: ~6% of seconds have several ticks sharing
+               -- the last timestamp with DIFFERENT prices, and ORDER BY timestamp
+               -- alone leaves the pick to Postgres, so the 1s series (and every
+               -- number derived from it) silently varied run to run. trade_id is
+               -- monotonic per venue, so the max IS the second's last trade —
+               -- semantics, not just determinism. Cast to bigint: the column is
+               -- text, so a plain DESC is lexicographic and would silently invert
+               -- at a digit-count rollover (all ids are 10 digits today, so this
+               -- changes no current result).
+               (array_agg(price ORDER BY timestamp DESC, trade_id::bigint DESC))[1] AS px
         FROM v2_ticks WHERE symbol = $1
+          AND ($2::timestamptz IS NULL OR timestamp < $2::timestamptz)
         GROUP BY 1 ORDER BY 1
         """,
         SYMBOL,
+        REPLAY_END,
     )
     if not rows:
         return pd.DataFrame(columns=["s", "px"])
