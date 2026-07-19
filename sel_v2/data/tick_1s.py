@@ -133,3 +133,37 @@ class Tick1sAggregator:
             if total >= DENSITY_MIN_TICKS:
                 return False
         return True
+
+
+# ── z-score standardisation ──────────────────────────────────────────────────
+# cusum_short accepts z = (r - mu)/sigma but defines no standardisation window,
+# so the choice lives here — in the ONE place both the live engine and the
+# offline harness read it from. The Wave S2G acceptance criterion is that the
+# engine's S2_EVENT set diffs to zero against the harness's confirmed clusters;
+# that is only provable if both sides standardise identically, which two copies
+# of this arithmetic would not guarantee.
+ZSCORE_WINDOW_SEC = 7 * 24 * 3600
+# Start z-scores after an hour rather than discarding the first 7 days: with ~13
+# days of ticks a strict burn-in would leave almost nothing to measure.
+ZSCORE_MIN_PERIODS = 3600
+
+
+def zscores_1s(px):
+    """1s log returns standardised on a rolling window.
+
+    Backward-looking, so appending newer data never changes an earlier z — which
+    is what makes a frozen-window regression meaningful.
+
+    numpy/pandas are imported here rather than at module scope so the pure
+    aggregation above stays importable without the scientific stack — that is
+    what lets the tick-aggregation tests run anywhere.
+    """
+    import numpy as np
+    import pandas as pd
+
+    r = np.diff(np.log(px), prepend=np.log(px[0]))
+    s = pd.Series(r)
+    mu = s.rolling(ZSCORE_WINDOW_SEC, min_periods=ZSCORE_MIN_PERIODS).mean()
+    sd = s.rolling(ZSCORE_WINDOW_SEC, min_periods=ZSCORE_MIN_PERIODS).std()
+    z = (s - mu) / sd
+    return z.replace([np.inf, -np.inf], np.nan).fillna(0.0).to_numpy()

@@ -530,18 +530,31 @@ class DBWriter:
                     state_4h,
                     direction,
                     json.dumps(trail, default=str) if trail is not None else None,
+                    event_id,
                 )
-                for ts, strat, action, reason, step_reached, state_4h, direction, trail in rows
+                for (
+                    ts,
+                    strat,
+                    action,
+                    reason,
+                    step_reached,
+                    state_4h,
+                    direction,
+                    trail,
+                    event_id,
+                ) in rows
             ]
             await self._conn.executemany(
                 """
                 INSERT INTO v2_strategy_decision
-                    (timestamp, strategy, action, reason, step_reached, state_4h, direction, decision_trail)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+                    (timestamp, strategy, action, reason, step_reached, state_4h,
+                     direction, decision_trail, event_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::uuid)
                 ON CONFLICT (timestamp, strategy) DO UPDATE SET
                     action = EXCLUDED.action, reason = EXCLUDED.reason,
                     step_reached = EXCLUDED.step_reached, state_4h = EXCLUDED.state_4h,
-                    direction = EXCLUDED.direction, decision_trail = EXCLUDED.decision_trail
+                    direction = EXCLUDED.direction, decision_trail = EXCLUDED.decision_trail,
+                    event_id = EXCLUDED.event_id
                 WHERE v2_strategy_decision.action IS DISTINCT FROM EXCLUDED.action
                    OR v2_strategy_decision.step_reached IS DISTINCT FROM EXCLUDED.step_reached
                    OR v2_strategy_decision.decision_trail IS DISTINCT FROM EXCLUDED.decision_trail

@@ -40,6 +40,7 @@ import asyncpg
 import numpy as np
 import pandas as pd
 
+from sel_v2.data.tick_1s import zscores_1s
 from sel_v2.strategies.cusum_short import CUSUMShort
 
 logger = logging.getLogger(__name__)
@@ -53,11 +54,9 @@ REPLAY_END = (
     else None
 )
 
-# z-score standardisation window — NOT a module constant (see docstring).
-ZSCORE_WINDOW_SEC = 7 * 24 * 3600
-# Let z-scores start after an hour rather than discarding the first 7 days; with
-# only ~13 days of ticks a strict 7-day burn-in would leave almost nothing.
-ZSCORE_MIN_PERIODS = 3600
+# z-score standardisation now lives in sel_v2.data.tick_1s so the live engine and
+# this harness cannot drift apart — the S2G acceptance criterion is a zero diff
+# between them.
 
 CREATE_TRIGGERS = """
 CREATE TABLE IF NOT EXISTS v2_sim_cusum1s_triggers (
@@ -119,16 +118,6 @@ async def load_1s_series(conn: asyncpg.Connection) -> pd.DataFrame:
     return df.dropna().rename_axis("s").reset_index()
 
 
-def zscores(px: np.ndarray) -> np.ndarray:
-    """1s log returns standardised on a 7-day rolling window (see docstring)."""
-    r = np.diff(np.log(px), prepend=np.log(px[0]))
-    s = pd.Series(r)
-    mu = s.rolling(ZSCORE_WINDOW_SEC, min_periods=ZSCORE_MIN_PERIODS).mean()
-    sd = s.rolling(ZSCORE_WINDOW_SEC, min_periods=ZSCORE_MIN_PERIODS).std()
-    z = (s - mu) / sd
-    return z.replace([np.inf, -np.inf], np.nan).fillna(0.0).to_numpy()
-
-
 def replay(ts: pd.Series, z: np.ndarray) -> tuple[list, list, int | None]:
     """Feed the 1s z-series through the SHIPPED accumulator, unmodified.
 
@@ -177,7 +166,7 @@ async def main() -> None:
             df["s"].iloc[0],
             df["s"].iloc[-1],
         )
-        z = zscores(df["px"].to_numpy())
+        z = zscores_1s(df["px"].to_numpy())
         logger.info(
             "z: finite=%d |z|>2 count=%d",
             int(np.isfinite(z).sum()),
