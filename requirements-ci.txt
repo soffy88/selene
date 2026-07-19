@@ -1,9 +1,13 @@
 # Public test/runtime dependencies for CI (optimization item #13).
 # Pinned to the versions the test suite is known-green against.
 #
-# NOTE: oprim / oskill are private packages (native quant stack) not on PyPI and
-# are REQUIRED — many production modules import them. CI installs them from a
-# private index (PRIVATE_INDEX_URL secret); set it or the test job will fail.
+# NOTE: oprim / oskill are REQUIRED — many production modules import them — but
+# they are NOT private and need no index secret: both are public MIT repos under
+# github.com/helios-plat. CI installs them by explicit `name @ git+URL` pinned to
+# the versions production vendors (see .github/workflows/ci.yml).
+#
+# Never `pip install oskill` from PyPI: an UNRELATED package squats that name
+# ("The pytest for Agent Skills"). oprim is not on PyPI at all.
 pytest==9.1.1
 pytest-asyncio==1.4.0
 asyncpg==0.31.0
@@ -22,5 +26,14 @@ python-dotenv==1.2.2
 PyYAML==6.0.3
 # parquet engine for pandas read_parquet/to_parquet (sel_v2 replay + offline calib)
 pyarrow==22.0.0
+# oprim/oskill eager-import deps. They are installed with --no-deps so CI mirrors
+# the production image's dependency set (sel_v2/Dockerfile) instead of dragging in
+# oprim's full surface (stripe, alipay-sdk, paramiko, mcp, ...), none of which any
+# code path here touches. Verified by import: oprim needs pydantic+chardet, oskill
+# additionally needs structlog; statsmodels is declared by both and installed in
+# the production image.
+chardet==7.4.3
+statsmodels==0.14.6
+structlog==26.1.0
 httpx==0.28.1
 ruff==0.9.6
