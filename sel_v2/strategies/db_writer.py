@@ -530,19 +530,12 @@ class DBWriter:
                     state_4h,
                     direction,
                     json.dumps(trail, default=str) if trail is not None else None,
-                    event_id,
+                    # Wave S2G: S2 rows carry their S2_EVENT id inside the trail;
+                    # lift it into its own column without changing this method's
+                    # row contract. None for S1 and for every pre-S2G row.
+                    (trail or {}).get("event_id") if isinstance(trail, dict) else None,
                 )
-                for (
-                    ts,
-                    strat,
-                    action,
-                    reason,
-                    step_reached,
-                    state_4h,
-                    direction,
-                    trail,
-                    event_id,
-                ) in rows
+                for ts, strat, action, reason, step_reached, state_4h, direction, trail in rows
             ]
             await self._conn.executemany(
                 """

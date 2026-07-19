@@ -1196,6 +1196,14 @@ class PaperStrategyEngine:
                 # means S1's append sites did not have to change at all.
                 ts, state, d, snapshot = entry[:4]
                 event_id = entry[4] if len(entry) > 4 else None
+                # event_id rides INSIDE the snapshot rather than widening this
+                # tuple. The row shape is positional and has several consumers —
+                # appending a field silently changed what r[-1] meant (it had been
+                # the trail dict), which is exactly the kind of quiet semantic
+                # shift that passes review and fails later. db_writer lifts it out
+                # into its own column.
+                if event_id is not None:
+                    snapshot = {**(snapshot or {}), "event_id": event_id}
                 rows.append(
                     (
                         _as_dt(ts),
@@ -1207,7 +1215,6 @@ class PaperStrategyEngine:
                         getattr(d, "direction", None)
                         or getattr(d, "cusum_direction", None),
                         snapshot,
-                        event_id,
                     )
                 )
         return rows
