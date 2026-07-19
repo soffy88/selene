@@ -171,9 +171,10 @@ class FakeConn:
         self.executed.append((query, args))
 
 
-def _resting_row(entry_type: str, deadline: datetime):
+def _resting_row(entry_type: str, deadline: datetime, strategy: str = "strategy_2"):
     return {
         "signal_ts": TS,
+        "strategy": strategy,
         "direction": "LONG",
         "entry_type": entry_type,
         "limit_price": 100.0,
@@ -228,3 +229,16 @@ def test_recovery_reads_state_from_the_table_not_memory():
     conn = FakeConn([_resting_row("A", past)], {"extreme": 100.5})
     asyncio.run(advance_resting(conn))  # no prior poll/bookkeeping call
     assert conn.executed and conn.executed[0][1][0] == CANCELLED
+
+
+def test_update_is_scoped_by_the_rows_own_strategy():
+    """Regression: advance_resting selects resting rows across all strategies, so
+    the UPDATE must key on each row's own strategy. Keying on the module constant
+    made a foreign row match no UPDATE and be reprocessed forever."""
+    past = datetime.now(timezone.utc) - timedelta(minutes=1)
+    conn = FakeConn([_resting_row("A", past, strategy="other_strategy")], {"extreme": 100.5})
+    asyncio.run(advance_resting(conn))
+    assert conn.executed, "a past-deadline row must transition"
+    assert "other_strategy" in conn.executed[0][1], (
+        "UPDATE used the module STRATEGY constant instead of the row's strategy"
+    )
