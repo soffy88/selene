@@ -100,7 +100,9 @@ async def build_section(conn: asyncpg.Connection) -> str:
         f"\n### S2 event funnel (7d)\n\n"
         f"events **{s2['events'] or 0}** | entries **{s2['entries'] or 0}** | "
         f"throttled **{s2['throttled'] or 0}**"
-        f" — S2G-0 baseline ~64 events/day; entries are capped at 4/UTC day.\n"
+        f" — baseline ~40 events/day (531 confirmed over 13.1d; the ~64/day figure\n"
+        f"in S2G-0 counted clusters including singletons, which never confirm);\n"
+        f" entries are capped at 4/UTC day.\n"
     )
     lines.append(
         f"Signals recorded: **{total}** | closed (24h mark in): **{closed}** | "

@@ -630,6 +630,18 @@ Surging Up/Down direction (sub_state unused); S2 counterfactual (needs tick-driv
 
 ## 🚨 Needs Human
 
+- **BUG:healthcheck 在 DB 级停顿时会一起哑掉(2026-07-19 实测)**。事故窗口内
+  `v2_ticks` 持久化被锁阻塞 3h20m,而 healthcheck 近 5 小时**只在 14:29 产生过日志**
+  (2 行)—— 它自己的探针 `SELECT max(timestamp) FROM v2_ticks` 正是
+  `pg_stat_activity` 里被卡 3h20m 的那条(pid 65)。**监控被它本该检测的同一把锁卡住**,
+  在最需要出声的 3 小时里完全静默;`ticks_stale` 告警直到阻塞被清除后才发出,
+  滞后约 3.5 小时。
+  这是 healthcheck 建成以来第一次真实事故,结论是**监控闭环未成立**。
+  方向(未实施,待裁决):探针需独立于被监控资源——例如给 healthcheck 连接设
+  `statement_timeout`(超时即视为"不可达"并告警,而不是无限等待)、或改用
+  `pg_stat_replication`/文件心跳等旁路信号判活。
+  影响面:任何"轮询 DB 判断 DB 健康"的规则都有同一盲区,不止 ticks_stale。
+
 - **备份清单修复(helios-platform repo,2026-07-12)**:platform-postgres-backup 的
   `POSTGRES_DB=helios,helixa,selene,tide,infisical`(infrastructure/docker-compose.yml:58)
   中 infisical 库不存在 → 每日备份 job Exit 1 + 容器 unhealthy(selene 等四库备份本身

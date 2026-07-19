@@ -152,7 +152,7 @@ async def check_rules(pool, r):
                 (
                     "WARNING",
                     "s2_event_rate",
-                    f"only {s2_events_24h} S2 events in 24h (<5; S2G-0 baseline ~64/day) "
+                    f"only {s2_events_24h} S2 events in 24h (<5; baseline ~40/day) "
                     "— check the 1s tick channel is feeding, not that the market is quiet",
                 )
             )
@@ -161,7 +161,7 @@ async def check_rules(pool, r):
                 (
                     "WARNING",
                     "s2_event_rate",
-                    f"{s2_events_24h} S2 events in 24h (>300; S2G-0 baseline ~64/day) "
+                    f"{s2_events_24h} S2 events in 24h (>300; baseline ~40/day) "
                     "— event-ification may not be collapsing clusters as intended",
                 )
             )
