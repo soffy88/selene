@@ -13,17 +13,21 @@ import pytest
 from tests.migration import fixtures
 
 
-# These exercise oprim-backed kernels (pearson_spearman_corr / hurst_exponent).
-# The production helpers swallow the missing-import into a `return None`, so the
-# failure surfaces as `assert None is not None` rather than ModuleNotFoundError —
-# the root conftest hook cannot catch it. Skip explicitly when the stack is absent.
-@pytest.mark.skipif(
+
+# compute_autocorr/compute_hurst_rs delegate to oprim kernels and swallow the
+# missing import into `return None`, so the failure surfaces as
+# `assert None is not None`, which the root conftest hook cannot catch.
+# Applied per-test: sibling tests in these classes do not need oprim and must
+# keep running.
+_needs_oprim = pytest.mark.skipif(
     importlib.util.find_spec("oprim") is None,
     reason="private quant stack (oprim) not installed",
 )
+
 class TestComputeAutocorr:
     """Bucket A #8: compute_autocorr → oprim.pearson_spearman_corr"""
 
+    @_needs_oprim
     def test_matches_corrcoef(self):
         """Verify oprim.pearson_spearman_corr matches np.corrcoef for lag-1."""
         prices = fixtures.get_price_series(200).tolist()
