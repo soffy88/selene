@@ -153,6 +153,17 @@ def limit_level(
     cap is pulled in rather than silently accepted.
     """
     if entry_type == "A":
+        # ABSORPTION BRANCH NOT ACTIVE. The Wave prices Type A off the sweep
+        # extreme "or the Absorption price if it is better", but Absorption
+        # carries no price anywhere in the data: v2_inverse_vocab_events stores
+        # only booleans (result_low / effort_high) and a price_response ratio.
+        # Rather than invent a level, Type A rests on the sweep extreme alone and
+        # every row is stamped notes.absorption='unavailable_no_price_in_source'.
+        # Re-enable here if the S2 decision record ever carries an
+        # `absorption_price`: take whichever of the two levels is better for the
+        # side. Adding that field is a strategies/** change that resets the epoch,
+        # so it is deliberately NOT done from this shadow layer.
+        #
         # inside = toward the market from the extreme
         raw = (
             ref_price + INSIDE_ATR * atr

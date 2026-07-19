@@ -44,10 +44,14 @@ rounds (see memory `opt-pr-3`).
   **0 条 would-enter**,故 N 目前为 0 —— 记录器就位等信号,这不是失败。
   ⚠️ 另一个更紧的阀门:Type A 定价依赖 Sweep 结构位,而 **Sweep 事件近 30 天仅 1 条
   (最新 2026-06-25)**,故即使 S2 出信号,Type A 臂也可能取不到结构位。
-  **两处待裁决**(阻塞过设计照抄,已按 CC 方案实施并标注):①设计文档
-  `sel_exec_limit_design_draft1.md` 不在仓库,`v2_shadow_orders` schema 为 CC 自行设计
-  而非 §5 照抄;②Absorption **无价位字段**(仅布尔 + 比率),Type A 仅用 Sweep 极值定价,
-  每行标 `notes.absorption='unavailable_no_price_in_source'`。
+  **Absorption 价位缺失,Type A 仅用 Sweep 极值定价**;`v2_inverse_vocab_events` 中
+  Absorption 只有布尔(`result_low`/`effort_high`)与比率(`price_response`),无价位。
+  每行标 `notes.absorption='unavailable_no_price_in_source'`。**S2 决策记录若未来携带
+  `absorption_price` 字段则启用该分支**(取两个价位中对该方向更优者);加该字段属
+  `strategies/**` 变更、会重置 epoch,故不从 shadow 层发起。
+  **schema 自设计已追认**(2026-07-19):26 列对 §5 覆盖 9/10,唯一缺口是**两臂费用无独立列**
+  —— 费率为冻结常量且已算进 `outcome_*`,可从 `limit_status` 反推,但不可直读;
+  若日后需按行重算历史费用,需补 `fee_market`/`fee_limit`。
 
 - **v2.2 lens batch (2026-07-11) — 实施完成,进入 Month-3 采集期**:三视角同数据实证
   (sel/缠论/ICT,`analysis/lens_{sel,chan,ict,verdict}_v1.md`)→ CHAN-1 触发失败标准
