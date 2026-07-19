@@ -199,13 +199,13 @@ class PaperEngine:
         """
         import numpy as np
 
-        from sel_v2.data.tick_1s import LAST_PRICE_PER_SECOND_SQL, zscores_1s
+        from sel_v2.data.tick_1s import LAST_PRICE_PER_SECOND_SQL, TIME_MAX, zscores_1s
 
         last_bar = df["time"].iloc[-1]
         cutoff = last_bar - timedelta(days=lookback_days)
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                LAST_PRICE_PER_SECOND_SQL, self._symbol, cutoff, None
+                LAST_PRICE_PER_SECOND_SQL, self._symbol, cutoff, TIME_MAX
             )
         if len(rows) < 2:
             return None

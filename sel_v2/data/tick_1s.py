@@ -25,7 +25,7 @@ twice, or late, yields the same second→price map.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Iterable, Mapping
 
 # Density guard (Wave S2G Part 1): a second whose trailing 60s carries fewer than
@@ -34,16 +34,29 @@ from typing import Iterable, Mapping
 # were also the three lowest-tick days), so a sparse feed can manufacture
 # z-scores that look like signal. The z-score is still computed; the TRIGGER is
 # suppressed and counted.
+TIME_MIN = datetime(2000, 1, 1, tzinfo=timezone.utc)
+TIME_MAX = datetime(2100, 1, 1, tzinfo=timezone.utc)
+
 DENSITY_WINDOW_S = 60
 DENSITY_MIN_TICKS = 10
 
 # The canonical SQL. Callers select their own time window and symbol.
+# Ordering is (length, text), not trade_id::bigint. Both are numerically correct
+# for digit strings — more digits is a larger number, and within one length
+# lexicographic IS numeric — but the cast parses 14M strings inside an ordered
+# aggregate and measured 3.6x slower on a single day (358ms vs 99ms), which over
+# the full window was the difference between a working replay and one that never
+# printed its first log line.
+#
+# Bounds are explicit, never `($2 IS NULL OR timestamp >= $2)`. v2_ticks is a
+# partitioned hypertable, and that NULL-guard form is not sargable: the planner
+# cannot prune chunks with it, and even EXPLAIN stalled. Callers pass concrete
+# datetimes and use TIME_MIN / TIME_MAX when they mean "unbounded".
 LAST_PRICE_PER_SECOND_SQL = """
 SELECT date_trunc('second', timestamp) AS s,
-       (array_agg(price ORDER BY timestamp DESC, trade_id::bigint DESC))[1] AS px
+       (array_agg(price ORDER BY timestamp DESC, length(trade_id) DESC, trade_id DESC))[1] AS px
 FROM v2_ticks
-WHERE symbol = $1 AND ($2::timestamptz IS NULL OR timestamp >= $2::timestamptz)
-                  AND ($3::timestamptz IS NULL OR timestamp <  $3::timestamptz)
+WHERE symbol = $1 AND timestamp >= $2::timestamptz AND timestamp < $3::timestamptz
 GROUP BY 1 ORDER BY 1
 """
 

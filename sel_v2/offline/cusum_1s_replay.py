@@ -99,7 +99,7 @@ async def load_1s_series(conn: asyncpg.Connection) -> pd.DataFrame:
                -- text, so a plain DESC is lexicographic and would silently invert
                -- at a digit-count rollover (all ids are 10 digits today, so this
                -- changes no current result).
-               (array_agg(price ORDER BY timestamp DESC, trade_id::bigint DESC))[1] AS px
+               (array_agg(price ORDER BY timestamp DESC, length(trade_id) DESC, trade_id DESC))[1] AS px
         FROM v2_ticks WHERE symbol = $1
           AND ($2::timestamptz IS NULL OR timestamp < $2::timestamptz)
         GROUP BY 1 ORDER BY 1
