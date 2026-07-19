@@ -25,8 +25,14 @@ jobs:
       - name: Install private quant stack (required)
         # oprim / oskill are private wheels required by many production modules.
         # Set the PRIVATE_INDEX_URL repo secret to a private package index.
-        if: ${{ secrets.PRIVATE_INDEX_URL != '' }}
-        run: pip install --index-url "${{ secrets.PRIVATE_INDEX_URL }}" oprim oskill
+        # `secrets` is not an allowed context in a step-level `if:` — referencing it
+        # there is a workflow *validation* error, so GitHub failed the run before
+        # creating any job (0 jobs / 0s / no logs, every run since 6f773be added it).
+        # Hoist the secret into `env` and branch on that instead.
+        env:
+          PRIVATE_INDEX_URL: ${{ secrets.PRIVATE_INDEX_URL }}
+        if: ${{ env.PRIVATE_INDEX_URL != '' }}
+        run: pip install --index-url "$PRIVATE_INDEX_URL" oprim oskill
 
       - name: Lint (ruff, non-blocking)
         run: ruff check . || true
