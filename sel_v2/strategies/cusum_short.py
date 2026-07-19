@@ -21,11 +21,10 @@ Reset after trigger (each accumulator resets independently).
 
 from __future__ import annotations
 
+from bisect import bisect_left, insort
 from collections import deque
 from dataclasses import dataclass
 from typing import Deque, Literal, Optional, Tuple
-
-import numpy as np
 
 # Placeholder calibration per v2.0 §11.4
 DEFAULT_DRIFT_K: float = 0.5
@@ -73,6 +72,9 @@ class CUSUMShort:
         # Rolling peak history: (timestamp_sec, peak_value)
         self._pos_peaks: Deque[Tuple[float, float]] = deque()
         self._neg_peaks: Deque[Tuple[float, float]] = deque()
+        # Same multiset as the two deques above, kept sorted by value so the
+        # rolling quantile is an index rather than a full re-sort each step.
+        self._sorted_peaks: list[float] = []
 
     # ── Update ────────────────────────────────────────────────────────────
 
@@ -178,20 +180,44 @@ class CUSUMShort:
     # ── Threshold ─────────────────────────────────────────────────────────
 
     def _current_threshold(self, t: Optional[float]) -> float:
-        """7-day rolling 95th pct of peak values; fallback=2.0 when cold."""
-        self._evict(t)
-        peaks = [v for _, v in self._pos_peaks] + [v for _, v in self._neg_peaks]
-        if len(peaks) < 20:
-            return 2.0  # cold-start default: require 2 sigma equivalent
-        from oprim import percentile_value
+        """7-day rolling 95th pct of peak values; fallback=2.0 when cold.
 
-        return float(percentile_value(np.array(peaks), self.threshold_quantile))
+        Incremental (Wave S2G Part 1). The previous form rebuilt a list of every
+        retained peak and re-ran the percentile on EVERY update — O(P) per step.
+        At the accumulator's designed 1s granularity P reaches hundreds of
+        thousands (peaks accrue ~0.33/step against a 7-day window), making the
+        whole replay O(n²): 200k steps took 393s, 1.13M took 84 min (S2G-0).
+
+        `_sorted_peaks` holds exactly the same multiset as the two deques, kept
+        sorted by value, so the quantile is a direct index. The arithmetic below
+        is numpy's default 'linear' method, which is bit-for-bit what
+        `oprim.percentile_value` computes (verified: percentile_value(a, q) ==
+        np.percentile(a, q*100) on both sorted and unsorted input). The
+        mathematical semantics of update() are therefore unchanged — S2G-0's
+        replay is re-run as a regression to prove the trigger set is identical.
+        """
+        self._evict(t)
+        n = len(self._sorted_peaks)
+        if n < 20:
+            return 2.0  # cold-start default: require 2 sigma equivalent
+        pos = self.threshold_quantile * (n - 1)
+        lo = int(pos)
+        hi = min(lo + 1, n - 1)
+        frac = pos - lo
+        a = self._sorted_peaks[lo]
+        b = self._sorted_peaks[hi]
+        # numpy's _lerp exactly: it switches formulation at frac>=0.5 to avoid
+        # catastrophic cancellation, and matching that is what makes this
+        # bit-identical to percentile_value rather than merely close.
+        diff = b - a
+        return float(a + diff * frac if frac < 0.5 else b - diff * (1.0 - frac))
 
     def _record_peak(self, t: Optional[float], peak: float, positive: bool) -> None:
         if t is None:
             return
         target = self._pos_peaks if positive else self._neg_peaks
         target.append((t, peak))
+        insort(self._sorted_peaks, peak)
 
     def _evict(self, t: Optional[float]) -> None:
         if t is None:
@@ -199,7 +225,13 @@ class CUSUMShort:
         cutoff = t - self.threshold_window_sec
         for buf in (self._pos_peaks, self._neg_peaks):
             while buf and buf[0][0] < cutoff:
-                buf.popleft()
+                _, value = buf.popleft()
+                # drop the matching value from the by-value multiset; the peaks
+                # are the same float objects that were inserted, so bisect_left
+                # lands on an exact match.
+                i = bisect_left(self._sorted_peaks, value)
+                if i < len(self._sorted_peaks) and self._sorted_peaks[i] == value:
+                    del self._sorted_peaks[i]
 
     @property
     def state(self) -> dict:

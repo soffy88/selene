@@ -80,8 +80,30 @@ async def build_section(conn: asyncpg.Connection) -> str:
         "SELECT count(*) FROM v2_shadow_orders WHERE limit_status='RESTING'"
     )
 
+    # Wave S2G Part 4: the S2 event funnel sits alongside the shadow numbers
+    # because they answer the same question from two ends — how many chances the
+    # strategy saw, and what the limit arm would have done with them.
+    s2 = await conn.fetchrow(
+        """
+        SELECT count(DISTINCT event_id) AS events,
+               count(*) FILTER (WHERE action IN ('ENTER_LONG','ENTER_SHORT')) AS entries,
+               count(*) FILTER (WHERE reason ILIKE '%THROTTLED%') AS throttled
+        FROM v2_strategy_decision
+        WHERE strategy='strategy_2' AND event_id IS NOT NULL
+          AND timestamp > now() - interval '7 days'
+        """
+    )
+
     now = datetime.now(timezone.utc)
     lines = [f"\n## Run {now.isoformat()}\n"]
+    lines.append(
+        f"\n### S2 event funnel (7d)\n\n"
+        f"events **{s2['events'] or 0}** | entries **{s2['entries'] or 0}** | "
+        f"throttled **{s2['throttled'] or 0}**"
+        f" — baseline ~40 events/day (531 confirmed over 13.1d; the ~64/day figure\n"
+        f"in S2G-0 counted clusters including singletons, which never confirm);\n"
+        f" entries are capped at 4/UTC day.\n"
+    )
     lines.append(
         f"Signals recorded: **{total}** | closed (24h mark in): **{closed}** | "
         f"still resting: {resting}\n"

@@ -17,6 +17,8 @@ replay uses, so paper and replay produce identical states for identical input.
 
 from __future__ import annotations
 
+import datetime as _dt
+
 import logging
 import math
 from dataclasses import dataclass, field
@@ -138,6 +140,15 @@ class PaperStrategyEngine:
     _s1_filter: Strategy1EntryFilter = field(init=False)
     _s2_filter: Strategy2EntryFilter = field(init=False)
     _s2_cusum: CUSUMShort = field(init=False)
+    # Wave S2G: a SECOND accumulator, fed the 1s series, drives ENTRY only.
+    # _s2_cusum above stays on the per-bar cadence because _manage_s2_exits
+    # advances meta.cusum_peak from its trigger on every bar — moving it to 1s
+    # would silently mis-level the CUSUM-decay/reversal exits with no error.
+    _s2_cusum_1s: CUSUMShort = field(init=False)
+    # Event layer is INJECTED, not constructed here: a fresh engine is built every
+    # replay cycle (paper_engine._reprocess_inner), so cluster/daily-cap state kept
+    # here would be amnesiac and re-emit. It hangs off the long-lived PaperEngine.
+    s2_event_layer: object = None
     _s1_meta: dict = field(init=False, default_factory=dict)
     _s2_meta: dict = field(init=False, default_factory=dict)
     _prev_state: Optional[str] = field(init=False, default=None)
@@ -175,6 +186,9 @@ class PaperStrategyEngine:
                 exc,
             )
         self._s2_cusum = CUSUMShort()
+        self._s2_cusum_1s = CUSUMShort()
+        # S2_EVENTs produced this replay: (event, throttle_reason_or_None)
+        self._s2_events = []
         # Latest per-strategy entry decision (action/reason/step) — for the "why no entry"
         # UI panel. Captured on the final bar of each replay.
         self._last_s1 = None
@@ -512,6 +526,7 @@ class PaperStrategyEngine:
         funding_series=None,
         ofi_series=None,
         tick_times=None,
+        ticks_1s=None,
         micro=None,
         staleness: Optional[dict] = None,
         cross_price: Optional[tuple] = None,
@@ -572,6 +587,8 @@ class PaperStrategyEngine:
         absorptions, sweeps = self._inverse_vocab_signals(df, micro)
         liq_pulse_series, oi_drop_series = self._cascade_pulses(df, micro, oi_series)
 
+        # cursor for the 1s entry channel: which seconds this bar covers
+        prev_bar_unix = None
         for i in range(n):
             # Staleness (GL1 T0.4) is a live-cadence concept (data age vs wall-clock
             # now) — it only means something for the bar being evaluated *right now*.
@@ -695,23 +712,34 @@ class PaperStrategyEngine:
                     cp, age = cross_price
                     if cp and mark and age is not None and age <= 120:
                         cross_spread_pct = abs(mark - cp) / mark * 100.0
-                self._maybe_open_s2(
-                    t_unix,
-                    s2_trig,
-                    state,
-                    mark,
-                    ts,
-                    vocab=vocab_series[i],
-                    flow_dir=flow_dir[i],
-                    absorption=absorptions[i],
-                    sweep=sweeps[i],
-                    liq_pulse=bool(liq_pulse_series[i]),
-                    oi_drop_pulse=bool(oi_drop_series[i]),
-                    cross_spread_pct=cross_spread_pct,
-                    snapshot=snapshot,
-                    blocked=is_current_bar and block_s2_entry,
-                )
-
+                # ── Wave S2G: event-driven entry on the 1s channel ──────────
+                # The per-bar s2_trig above still drives exits. Entry now comes
+                # from confirmed CUSUM clusters on the 1s series: advance that
+                # accumulator through this bar's seconds, and evaluate only the
+                # events the layer confirms (2nd distinct excursion within 300s).
+                # Step 3-5 context stays per-bar — _inverse_vocab_signals is built
+                # at 4H granularity by design ("the bar IS the trigger window"), so
+                # an event is evaluated against the bar it lands in.
+                s2_events = self._advance_1s_channel(ticks_1s, prev_bar_unix, t_unix)
+                prev_bar_unix = t_unix
+                for ev in s2_events:
+                    self._maybe_open_s2(
+                        ev.eval_ts.timestamp(),
+                        self._trigger_from_event(ev),
+                        state,
+                        mark,
+                        ts,
+                        vocab=vocab_series[i],
+                        flow_dir=flow_dir[i],
+                        absorption=absorptions[i],
+                        sweep=sweeps[i],
+                        liq_pulse=bool(liq_pulse_series[i]),
+                        oi_drop_pulse=bool(oi_drop_series[i]),
+                        cross_spread_pct=cross_spread_pct,
+                        snapshot=snapshot,
+                        blocked=is_current_bar and block_s2_entry,
+                        event=ev,
+                    )
             # ── portfolio-wide cascade red line ──
             if state == "Cascade":
                 for closed in self.accounts.cascade_close_all(mark, ts):
@@ -864,6 +892,60 @@ class PaperStrategyEngine:
             self._apply_exit(acct, pos.id, dec, mark, ts, is_s1=True)
 
     # ── Strategy 2 helpers ─────────────────────────────────────────────────────
+    def _advance_1s_channel(self, ticks_1s, prev_unix, bar_unix) -> list:
+        """Run the 1s accumulator over (prev_unix, bar_unix] and return confirmed events.
+
+        `ticks_1s` is (unix_seconds ndarray, z ndarray) built by paper_engine from
+        the SHARED aggregation + standardisation in sel_v2.data.tick_1s, so the
+        engine and the offline harness cannot drift — the S2G acceptance criterion
+        is a zero diff between their event sets.
+
+        Returns [] when no 1s feed is supplied, which keeps every existing caller
+        and unit test working unchanged (they simply produce no S2 entries).
+        """
+        layer = self.s2_event_layer
+        if ticks_1s is None or layer is None:
+            return []
+        secs, zs = ticks_1s
+        if len(secs) == 0:
+            return []
+        import numpy as _np
+
+        lo = 0 if prev_unix is None else int(_np.searchsorted(secs, prev_unix, "right"))
+        hi = int(_np.searchsorted(secs, bar_unix, "right"))
+        out = []
+        for k in range(lo, hi):
+            t = float(secs[k])
+            trig = self._s2_cusum_1s.update(float(zs[k]), t)
+            if not trig.triggered:
+                continue
+            ev = layer.on_trigger(
+                _dt.datetime.fromtimestamp(t, _dt.timezone.utc),
+                trig.direction,
+                max(trig.cusum_positive, trig.cusum_negative),
+            )
+            if ev is not None:
+                out.append(ev)
+        return out
+
+    @staticmethod
+    def _trigger_from_event(ev) -> CUSUMTrigger:
+        """The confirmed cluster expressed as the trigger Step 1a expects.
+
+        The peak is the cluster's max, not the confirming excursion's, so sizing
+        reflects the whole disturbance.
+        """
+        pos = ev.peak if ev.direction == "LONG" else 0.0
+        neg = ev.peak if ev.direction == "SHORT" else 0.0
+        return CUSUMTrigger(
+            triggered=True,
+            direction=ev.direction,
+            cusum_positive=pos,
+            cusum_negative=neg,
+            threshold=0.0,
+            intensity_coeff=1.0,
+        )
+
     def _maybe_open_s2(
         self,
         t_unix,
@@ -880,6 +962,7 @@ class PaperStrategyEngine:
         cross_spread_pct=None,
         snapshot=None,
         blocked: bool = False,
+        event=None,
     ) -> None:
         # OFI persistently same direction as the CUSUM signal: real taker-flow sign
         # (flow_dir, already persistence-gated via the Crowding tag) agrees with the
@@ -918,7 +1001,10 @@ class PaperStrategyEngine:
         self._last_s2 = (ts, state, dec)  # latest S2 decision (for the UI "why" panel)
         self._s2_trail.append(
             (
-                ts,
+                # Event-driven (Wave S2G): the row is keyed on the EVENT's instant,
+                # not the bar's, so two events inside one bar no longer collide on
+                # the (timestamp, strategy) primary key.
+                (event.eval_ts if event is not None else ts),
                 state,
                 dec,
                 {
@@ -930,10 +1016,23 @@ class PaperStrategyEngine:
                     "flow_dir": float(flow_dir) if flow_dir is not None else None,
                     "inverse_vocab": sorted(vocab) if vocab else [],
                 },
+                (event.event_id if event is not None else None),
             )
         )
         if dec.action not in ("ENTER_LONG", "ENTER_SHORT"):
             return
+        # ── Wave S2G throttle (Part 3) ──────────────────────────────────────
+        # Applied AFTER the trail append on purpose: a throttled opportunity is
+        # recorded, not dropped, so "what did we pass up" stays answerable.
+        if event is not None and self.s2_event_layer is not None:
+            open_dirs = {
+                m.direction for m in self._s2_meta.values() if m.direction is not None
+            }
+            reason = self.s2_event_layer.throttle_reason(event, open_dirs)
+            if reason:
+                self._s2_events.append((event, reason))
+                logger.info("S2 event %s throttled: %s", event.event_id[:8], reason)
+                return
         if blocked:  # GL1 T0.4: ticks stale -> S2 (tick-flow-driven) new entry blocked
             logger.info("S2 new entry blocked (STALE_TICKS)")
             return
@@ -1090,7 +1189,21 @@ class PaperStrategyEngine:
             ("strategy_1", self._s1_trail),
             ("strategy_2", self._s2_trail),
         ):
-            for ts, state, d, snapshot in trail[-last_n:]:
+            for entry in trail[-last_n:]:
+                # S1 appends 4-tuples and keeps its per-bar cadence untouched by
+                # Wave S2G; S2 appends a 5th element, the id of the S2_EVENT this
+                # decision came from (including throttled ones). Unpacking this way
+                # means S1's append sites did not have to change at all.
+                ts, state, d, snapshot = entry[:4]
+                event_id = entry[4] if len(entry) > 4 else None
+                # event_id rides INSIDE the snapshot rather than widening this
+                # tuple. The row shape is positional and has several consumers —
+                # appending a field silently changed what r[-1] meant (it had been
+                # the trail dict), which is exactly the kind of quiet semantic
+                # shift that passes review and fails later. db_writer lifts it out
+                # into its own column.
+                if event_id is not None:
+                    snapshot = {**(snapshot or {}), "event_id": event_id}
                 rows.append(
                     (
                         _as_dt(ts),

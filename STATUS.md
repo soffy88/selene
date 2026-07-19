@@ -28,6 +28,18 @@ rounds (see memory `opt-pr-3`).
   guard or the `I_UNDERSTAND_LIVE_AUTO_EXEC` ack requirement.
   *(2026-07-10: wording amended by explicit user decision — original said "MUST stay
   NOTIFY_ONLY"; user instructed enabling paper order placement for the v4 chain.)*
+- **Never abandon a long-running task without ending it.** Either follow it to a
+  terminal state or terminate it explicitly — "I no longer need the result" is not
+  "it has stopped". *(2026-07-19: an abandoned 14M-row analysis query ran 5h24m,
+  queued the TimescaleDB compression policy behind it, and every writer behind
+  that — v2_ticks persistence stalled 3h20m. Collection never stopped and no data
+  was lost (zero gaps >2min), but the healthcheck's own probe
+  `SELECT max(timestamp) FROM v2_ticks` was stuck in the same queue, so the
+  monitoring went silent for the entire window and the stale alert only fired
+  AFTER the blockage was cleared. Second process rule this project has bought with
+  an incident.)* For heavy analysis: set `statement_timeout`, export once and
+  compare offline, and check `pg_stat_activity` for your own leftovers before
+  starting anything new.
 - Never weaken a risk gate to make a test pass. Gates fail closed.
 - Never treat a missing/None feature as a confirmed signal (three-state discipline).
 - Never silently smooth a *signal* in the sel_v2 path (state-machine dwell is OK).
@@ -35,6 +47,20 @@ rounds (see memory `opt-pr-3`).
 ---
 
 ## 🔄 In Progress
+
+- **Wave S2G 下一工作单元(2026-07-19 钉死,到时不重议)** —— PR #9(base `wave/exec-s`,
+  CI 绿 1443 passed / 0 skipped)已交付:CUSUM 增量化(**回归整行 diff=0**,804×)、
+  1s 聚合规范 `sel_v2/data/tick_1s.py`(live/离线**共享同一实现**)、密度守卫(60s<10 抑制并计数)、
+  事件化 `s2_event_layer.py`(300s 簇 / 第2偏移确认)、节流(同向持仓 / 日上限4)、34 条测试含端到端链路。
+  **唯一任务**:`strategy_engine.py` 接线(1s 通道 + `v2_strategy_decision` 加 `event_id` 迁移 +
+  S1/出场路径隔离确认)→ Part 4 观测/周报 → Part 5 部署 + epoch reset(R2 授权文本在 S2G prompt 内,仍有效)。
+  ⚠️ **接线专属验收**(在 S2G prompt 验收之上追加):接线后、部署前,引擎在 **staging 态
+  (不重启生产容器)** 对同一冻结窗跑一次**引擎级回放对账** —— 引擎产出的 S2_EVENT 集合
+  必须与离线 harness 的簇确认集合 **diff=0**。离线已证的等价性**不能替接线层作证**,因为
+  `_maybe_open_s2`/`process_frame` 的状态流是本次唯一新变量。
+  部署后 24h 对账基线照旧:事件 ~64/天,**偏离 3× 停报**(不回滚,持仓上限与日上限兜底)。
+  **关键背景**:引擎现状为 *"Authoritative entries/exits remain bar-gated (sealed 4H bars inside
+  process_frame)"* —— 接线是改 live 入场路径**架构**,非换数据源;本 Wave 唯一会真实亏钱的改动。
 
 - **EXEC-S shadow 积累中,门 N≥30**(2026-07-19 上线):`v2-shadow-exec` 对每个 S2
   would-enter 信号并排记录市价臂/挂单臂假想执行(`v2_shadow_orders`),周报
@@ -603,6 +629,18 @@ Surging Up/Down direction (sub_state unused); S2 counterfactual (needs tick-driv
 ---
 
 ## 🚨 Needs Human
+
+- **BUG:healthcheck 在 DB 级停顿时会一起哑掉(2026-07-19 实测)**。事故窗口内
+  `v2_ticks` 持久化被锁阻塞 3h20m,而 healthcheck 近 5 小时**只在 14:29 产生过日志**
+  (2 行)—— 它自己的探针 `SELECT max(timestamp) FROM v2_ticks` 正是
+  `pg_stat_activity` 里被卡 3h20m 的那条(pid 65)。**监控被它本该检测的同一把锁卡住**,
+  在最需要出声的 3 小时里完全静默;`ticks_stale` 告警直到阻塞被清除后才发出,
+  滞后约 3.5 小时。
+  这是 healthcheck 建成以来第一次真实事故,结论是**监控闭环未成立**。
+  方向(未实施,待裁决):探针需独立于被监控资源——例如给 healthcheck 连接设
+  `statement_timeout`(超时即视为"不可达"并告警,而不是无限等待)、或改用
+  `pg_stat_replication`/文件心跳等旁路信号判活。
+  影响面:任何"轮询 DB 判断 DB 健康"的规则都有同一盲区,不止 ticks_stale。
 
 - **备份清单修复(helios-platform repo,2026-07-12)**:platform-postgres-backup 的
   `POSTGRES_DB=helios,helixa,selene,tide,infisical`(infrastructure/docker-compose.yml:58)

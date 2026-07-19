@@ -8,6 +8,8 @@ import aiohttp
 import asyncpg
 import redis.asyncio as redis
 
+from sel_v2.strategies.s2_event_layer import S2EventLayer
+
 from sel_v2.runtime.staleness import enforcement_for, is_bar_stale, is_stale
 from sel_v2.strategies.db_writer import DBWriter
 
@@ -60,6 +62,11 @@ class PaperEngine:
         # self._engine and write the same v2_* rows).
         self._reprocess_lock = asyncio.Lock()
         self._last_tick_ts = None  # newest v2_ticks timestamp the tick loop has seen
+        # Wave S2G: the S2 event layer lives HERE, not on PaperStrategyEngine, which
+        # is rebuilt every replay cycle (_reprocess_inner). Cluster state and the
+        # daily entry cap must outlive that rebuild or they would reset — and
+        # re-emit — on every cycle.
+        self._s2_event_layer = S2EventLayer()
         # GL1 T0.4: last known fresh/stale reading per source, so v2_staleness_events
         # only logs transitions (not a per-cycle snapshot).
         self._staleness_state: dict[str, bool] = {}
@@ -177,6 +184,39 @@ class PaperEngine:
         if not rows:
             return None
         return np.array([r["timestamp"].timestamp() for r in rows], dtype=float)
+
+    async def _load_ticks_1s(self, df, lookback_days: int = 14):
+        """Build the 1s entry channel: (unix_seconds ndarray, z ndarray).
+
+        Uses the canonical aggregation and standardisation from sel_v2.data.tick_1s
+        — the same code the offline harness runs — because the wiring is accepted
+        on a ZERO diff between the engine's S2_EVENT set and the harness's
+        confirmed clusters, which two copies of this logic could not guarantee.
+
+        Returns None when there is no usable tick history; the engine then makes no
+        S2 entries at all (see the guard in _reprocess_inner), rather than silently
+        falling back to some other cadence.
+        """
+        import numpy as np
+
+        from sel_v2.data.tick_1s import LAST_PRICE_PER_SECOND_SQL, TIME_MAX, zscores_1s
+
+        last_bar = df["time"].iloc[-1]
+        cutoff = last_bar - timedelta(days=lookback_days)
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                LAST_PRICE_PER_SECOND_SQL, self._symbol, cutoff, TIME_MAX
+            )
+        if len(rows) < 2:
+            return None
+        secs = np.array([r["s"].timestamp() for r in rows], dtype="float64")
+        px = np.array([float(r["px"]) for r in rows], dtype="float64")
+        # Gap-free 1s grid, forward-filled: a second with no trade means price did
+        # not move, and the accumulator must see every second for its 7-day window
+        # to mean 7 days.
+        full = np.arange(secs[0], secs[-1] + 1.0, 1.0)
+        idx = np.searchsorted(secs, full, side="right") - 1
+        return full, zscores_1s(px[idx])
 
     async def _load_microstructure_series(self, df, lookback_days: int = 120):
         """Per-4H-bar microstructure features from real v2_ticks + v2_lob_snapshots,
@@ -366,6 +406,7 @@ class PaperEngine:
         except Exception:
             skip_tda = True
         engine = PaperStrategyEngine(
+            s2_event_layer=self._s2_event_layer,
             total_nav_usdt=float(
                 self._strategy_params.get("paper_total_nav", 100_000) or 100_000
             ),
@@ -383,6 +424,11 @@ class PaperEngine:
         ofi_series = self._ofi_proxy(df)
         # Real trade arrivals drive the Strategy-2 H1 Hawkes intensity.
         tick_times = await self._load_tick_times(df)
+        # Wave S2G: the 1s entry channel. Built from the SHARED aggregation +
+        # standardisation in sel_v2.data.tick_1s so the engine and the offline
+        # harness cannot drift — the wiring's acceptance criterion is a zero diff
+        # between their S2_EVENT sets.
+        ticks_1s = await self._load_ticks_1s(df)
         # Per-bar microstructure → Strategy-2 inverse-vocab + OFI persistence.
         micro = await self._load_microstructure_series(df)
         # Wave S2C Part 3: latest Binance-spot price for the S2 Step-5 divergence check.
@@ -391,12 +437,21 @@ class PaperEngine:
         # bar only when a source is too old to trust (process_frame applies it only to
         # the newest bar — see its docstring).
         staleness = await self._compute_staleness(df)
+        # Wave S2G guard: entry now comes solely from the 1s channel. If that feed
+        # is missing, S2 makes NO entries — which is safe but must never be mistaken
+        # for "no signals today". Say so loudly once per cycle.
+        if ticks_1s is None:
+            logger.warning(
+                "S2 1s channel unavailable — no S2 entries will be evaluated this "
+                "cycle (exits and S1 are unaffected)"
+            )
         summary = engine.process_frame(
             df,
             oi_series=oi_series,
             funding_series=funding_series,
             ofi_series=ofi_series,
             tick_times=tick_times,
+            ticks_1s=ticks_1s,
             micro=micro,
             staleness=staleness,
             cross_price=cross_price,
