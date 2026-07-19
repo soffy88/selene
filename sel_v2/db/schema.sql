@@ -337,6 +337,16 @@ CREATE TABLE IF NOT EXISTS v2_strategy_decision (
 -- (CREATE TABLE IF NOT EXISTS above is a no-op against an existing table).
 ALTER TABLE v2_strategy_decision ADD COLUMN IF NOT EXISTS decision_trail JSONB;
 
+-- Wave S2G: S2 decisions become event-driven (one row per confirmed CUSUM cluster)
+-- instead of one row per 4H bar. event_id ties a decision back to the S2_EVENT that
+-- produced it, including throttled events — THROTTLED_POSITION / THROTTLED_DAILY are
+-- recorded, not dropped, so "what did we pass up" stays answerable.
+-- NULL on every pre-S2G row and on all strategy_1 rows: S1 keeps its per-bar cadence
+-- and is untouched by this Wave.
+ALTER TABLE v2_strategy_decision ADD COLUMN IF NOT EXISTS event_id UUID;
+CREATE INDEX IF NOT EXISTS idx_v2_strategy_decision_event
+    ON v2_strategy_decision (event_id) WHERE event_id IS NOT NULL;
+
 -- Staleness state transitions (GL1 T0.4): one row per fresh<->stale flip per source,
 -- not a per-cycle snapshot (avoids spam; "staleness 事件显式落库"). Sources: ticks /
 -- funding_oi / bar_4h / lob. Judgment logic lives in sel_v2/runtime/staleness.py.

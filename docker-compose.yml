@@ -495,7 +495,16 @@ services:
     build:
       context: .
       dockerfile: sel_v2/Dockerfile
-    command: python -m sel_v2.offline.capture_monitor --serve
+    # Two weekly jobs share this container, an hour apart so they never contend
+    # for the DB: capture_monitor at Mon 00:30 UTC, fill_prob (Wave EXEC-S) at
+    # Mon 01:30. `wait -n` returns as soon as EITHER exits, and we then exit
+    # non-zero so restart:unless-stopped recreates the container — without it a
+    # dead scheduler would sit silently inside a "running" container.
+    command: >
+      bash -c "python -m sel_v2.offline.capture_monitor --serve &
+               python -m sel_v2.offline.fill_prob --serve &
+               python -m sel_v2.shadow.shadow_report --serve &
+               wait -n; exit 1"
     env_file: .env
     environment:
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
@@ -510,6 +519,23 @@ services:
   # v2_onchain_exchange_flows has zero state-machine impact per DATA_FOUNDATION_ROADMAP
   # §6. Re-add this service only after funding a real source (Glassnode/Nansen/
   # CryptoQuant) and implementing sel_v2/data/v2_onchain_collector.
+
+  # Wave EXEC-S: records what a limit arm WOULD have done beside the market arm
+  # actually taken. Shadow only — places no order, writes only v2_shadow_orders.
+  v2-shadow-exec:
+    build:
+      context: .
+      dockerfile: sel_v2/Dockerfile
+    command: python -m sel_v2.shadow.shadow_exec
+    env_file: .env
+    environment:
+      - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
+      - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
+      - SYMBOLS=BTC-USDT
+      - SHADOW_POLL_S=30
+    networks:
+      - helios-net
+    restart: unless-stopped
 
   v2-bar-aggregator:
     build:
