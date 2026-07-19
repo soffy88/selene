@@ -11,6 +11,11 @@ from datetime import datetime, timezone
 
 import pytest
 
+# sel_v2.observation_tools pulls in the private quant stack (oprim). Skip the
+# module outright when it is absent so CI reports an explicit skip instead of a
+# collection error that aborts the whole run.
+pytest.importorskip("oprim", reason="private quant stack (oprim) not installed")
+
 from sel_v2.observation_tools.base import (
     BarFeatures,
     ObservationResult,

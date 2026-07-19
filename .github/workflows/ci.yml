@@ -25,19 +25,50 @@ jobs:
       - name: Install private quant stack (required)
         # oprim / oskill are private wheels required by many production modules.
         # Set the PRIVATE_INDEX_URL repo secret to a private package index.
-        if: ${{ secrets.PRIVATE_INDEX_URL != '' }}
-        run: pip install --index-url "${{ secrets.PRIVATE_INDEX_URL }}" oprim oskill
+        # `secrets` is not an allowed context in a step-level `if:` — referencing it
+        # there is a workflow *validation* error, so GitHub failed the run before
+        # creating any job (0 jobs / 0s / no logs, every run since 6f773be added it).
+        # Hoist the secret into `env` and branch on that instead.
+        env:
+          PRIVATE_INDEX_URL: ${{ secrets.PRIVATE_INDEX_URL }}
+        if: ${{ env.PRIVATE_INDEX_URL != '' }}
+        run: pip install --index-url "$PRIVATE_INDEX_URL" oprim oskill
 
       - name: Lint (ruff, non-blocking)
         run: ruff check . || true
 
       - name: Run tests
-        run: pytest -q
+        # -rs prints every skip with its reason, so private-stack gaps stay
+        # visible in the log instead of hiding inside a "N skipped" count.
+        run: pytest -q -rs
 
   docker-build:
     runs-on: ubuntu-latest
+    # sel_v2/Dockerfile COPYs vendor/oprim + vendor/oskill, but vendor/ is
+    # gitignored (private wheels, not on a public index), so a bare runner can
+    # never satisfy the build — it failed with `"/vendor/oprim": not found` on
+    # every run. Gate the build on the private index instead of leaving the job
+    # permanently red, which only teaches people to ignore CI. Job-level env may
+    # read secrets; a step-level `if` may read env (but neither `if` may read
+    # secrets directly — that is what broke the whole workflow).
+    env:
+      PRIVATE_INDEX_URL: ${{ secrets.PRIVATE_INDEX_URL }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Vendor the private quant stack into the build context
+        # NOTE: unverified in CI — PRIVATE_INDEX_URL is not currently set, so
+        # this path has never executed. Reproduces the layout the Dockerfile
+        # expects (vendor/<pkg> as unpacked package dirs).
+        if: ${{ env.PRIVATE_INDEX_URL != '' }}
+        run: pip install --target vendor --index-url "$PRIVATE_INDEX_URL" oprim oskill
+
       - name: Build sel_v2 image
         # Smoke-build the primary image to catch Dockerfile/context regressions.
+        if: ${{ env.PRIVATE_INDEX_URL != '' }}
         run: docker build -f sel_v2/Dockerfile -t selene-sel-v2:ci .
+
+      - name: Report skipped smoke build
+        if: ${{ env.PRIVATE_INDEX_URL == '' }}
+        run: |
+          echo "::notice title=Docker smoke build skipped::PRIVATE_INDEX_URL is not set, so vendor/oprim and vendor/oskill cannot be fetched and sel_v2/Dockerfile cannot build. This job verified NOTHING."

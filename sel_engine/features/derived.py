@@ -1,4 +1,5 @@
 """Derived indicators: LV, OI_hurst, and orchestration of all derived features."""
+
 import logging
 from typing import Optional
 
@@ -29,7 +30,10 @@ def compute_LV(
     lv = depth_score * 0.5 + spread_score * 0.25
     Both inputs must be available; returns None otherwise.
     """
-    if any(v is None for v in (total_depth, total_depth_24h_mean, spread_bps, spread_bps_24h_mean)):
+    if any(
+        v is None
+        for v in (total_depth, total_depth_24h_mean, spread_bps, spread_bps_24h_mean)
+    ):
         return None
     if total_depth_24h_mean <= 0 or spread_bps_24h_mean <= 0:
         return None
@@ -52,10 +56,15 @@ def compute_hurst_rs(series: list[float]) -> Optional[float]:
     """
     if len(series) < 20:
         return None
+    # oprim is a REQUIRED dependency, so import it OUTSIDE the try: a missing or
+    # broken install must raise, not degrade every Hurst reading to None for the
+    # lifetime of the process. The try still guards numerical failures below.
+    # (`except (ValueError, Exception)` was redundant — ValueError ⊂ Exception.)
+    from oprim import hurst_exponent
+
     try:
-        from oprim import hurst_exponent
         return hurst_exponent(np.array(series, dtype=float), min_window=4)
-    except (ValueError, Exception):
+    except Exception:
         return None
 
 
@@ -160,7 +169,9 @@ def compute_all_derived(
     from .flow import compute_absorption_ratio
 
     return {
-        "LV": compute_LV(total_depth, total_depth_24h_mean, spread_bps, spread_bps_24h_mean),
+        "LV": compute_LV(
+            total_depth, total_depth_24h_mean, spread_bps, spread_bps_24h_mean
+        ),
         "absorption_ratio": compute_absorption_ratio(TF, delta_p_pct),
         "price_autocorr_12h": compute_autocorr(closes, 12),
         "price_autocorr_24h": compute_autocorr(closes, 24),

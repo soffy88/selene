@@ -6,6 +6,8 @@ import math
 from datetime import datetime, timezone
 
 import numpy as np
+import importlib.util
+
 import pytest
 
 from sel_engine.features.derived import compute_LV, compute_hurst_rs
@@ -24,6 +26,17 @@ from sel_engine.validator import FeatureValidator
 
 
 # ── compute_price_features ────────────────────────────────────────────────────
+
+
+# compute_autocorr/compute_hurst_rs delegate to oprim kernels and swallow the
+# missing import into `return None`, so the failure surfaces as
+# `assert None is not None`, which the root conftest hook cannot catch.
+# Applied per-test: sibling tests in these classes do not need oprim and must
+# keep running.
+_needs_oprim = pytest.mark.skipif(
+    importlib.util.find_spec("oprim") is None,
+    reason="private quant stack (oprim) not installed",
+)
 
 class TestComputePriceFeatures:
     def test_empty_input(self):
@@ -98,6 +111,7 @@ class TestComputeAutocorr:
         closes = [100.0] * 12  # need 13 for window=12
         assert compute_autocorr(closes, 12) is None
 
+    @_needs_oprim
     def test_ar1_positive_autocorr(self):
         # AR(1) log-return process with phi=0.85 → strong positive autocorr in returns
         rng = np.random.default_rng(123)
@@ -115,6 +129,7 @@ class TestComputeAutocorr:
         assert ac is not None
         assert ac > 0.5
 
+    @_needs_oprim
     def test_alternating_series_negative_autocorr(self):
         # Strict alternating up/down log-returns → negative autocorrelation
         p = 100.0
@@ -139,6 +154,7 @@ class TestHurstRS:
     def test_insufficient_data(self):
         assert compute_hurst_rs([1.0] * 10) is None
 
+    @_needs_oprim
     def test_trending_higher_than_mean_reverting(self):
         # Strong trend should produce higher H than mean-reverting series
         trend = list(np.arange(1, 101, dtype=float))
@@ -156,6 +172,7 @@ class TestHurstRS:
         assert H_mr is not None
         assert H_trend > H_mr
 
+    @_needs_oprim
     def test_mean_reverting_below_half(self):
         # Strongly alternating series → H < 0.5
         series = [(-1) ** i * float(i) for i in range(1, 101)]
@@ -163,6 +180,7 @@ class TestHurstRS:
         assert H is not None
         assert H < 0.5
 
+    @_needs_oprim
     def test_trending_series_above_half(self):
         # Strong trend → H > 0.5
         series = list(np.arange(1, 101, dtype=float))

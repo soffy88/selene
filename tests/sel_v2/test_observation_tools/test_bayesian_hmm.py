@@ -1,12 +1,18 @@
 """
 Tests for B1 BayesianHMM and B2 HMMBoundaryArbiter.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
 
 import numpy as np
 import pytest
+
+# sel_v2.observation_tools pulls in the private quant stack (oprim). Skip the
+# module outright when it is absent so CI reports an explicit skip instead of a
+# collection error that aborts the whole run.
+pytest.importorskip("oprim", reason="private quant stack (oprim) not installed")
 
 from sel_v2.observation_tools.base import BarFeatures, ObservationResult
 from sel_v2.observation_tools.bayesian_hmm import BayesianHMM, _GaussianHMM, MIN_BARS
@@ -30,6 +36,7 @@ def _feed(tool, rets):
 
 
 # ── _GaussianHMM unit tests ───────────────────────────────────────────────────
+
 
 class TestGaussianHMM:
     def test_fit_does_not_raise_on_small_input(self):
@@ -66,6 +73,7 @@ class TestGaussianHMM:
 
 
 # ── BayesianHMM (B1) ─────────────────────────────────────────────────────────
+
 
 class TestBayesianHMM:
     def test_warming_before_min_bars(self):
@@ -122,6 +130,7 @@ class TestBayesianHMM:
 
 
 # ── HMMBoundaryArbiter (B2) ───────────────────────────────────────────────────
+
 
 class TestHMMBoundaryArbiter:
     def test_warming_phase(self):

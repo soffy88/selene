@@ -44,11 +44,23 @@ tmp/
 .cache/
 
 # Docker volumes (if any)
-data/
-postgres-data/
-redis-data/
+# Root-anchored: a bare `data/` matches at ANY depth, so it silently swallowed the
+# sel_v2/data/ and services/data/ Python packages — 16 source files ran in
+# production for weeks without ever being committed, and only a CI run caught it.
+# Ignore data by ARTIFACT TYPE (below), never by directory name, so a directory
+# that mixes code and data can never eat source again.
+/data/
+/postgres-data/
+/redis-data/
 
-# Keep service Dockerfiles and requirements tracked (data/ above matches services/data/)
+# Data artifacts, wherever they land
+*.parquet
+*.sqlite
+analysis/data/
+
+# Belt-and-braces: these were negations working around the unanchored `data/`
+# rule above. Redundant now that it is root-anchored; kept so a future broad
+# ignore cannot silently drop them again.
 !services/**/Dockerfile
 !services/**/requirements.txt
 

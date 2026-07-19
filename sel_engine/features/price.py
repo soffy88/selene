@@ -1,4 +1,5 @@
 """Price layer feature computations: close, delta_p_pct, sigma_p_24h, autocorr, sigma_p_d2."""
+
 import logging
 from typing import Optional
 
@@ -34,14 +35,19 @@ def compute_autocorr(closes: list[float], window: int) -> Optional[float]:
     """Lag-1 autocorrelation of log returns over the most recent `window` bars."""
     if len(closes) < window + 1:
         return None
-    prices = np.array(closes[-(window + 1):], dtype=float)
+    prices = np.array(closes[-(window + 1) :], dtype=float)
     returns = np.diff(np.log(prices))
     if len(returns) < 2:
         return None
+    # oprim is a REQUIRED dependency, so import it OUTSIDE the try: a missing or
+    # broken install must raise, not degrade every autocorr feature to None for
+    # the lifetime of the process while the state machine silently consumes the
+    # gap. The try still guards genuine numerical failures below.
+    from oprim import pearson_spearman_corr
+
     try:
-        from oprim import pearson_spearman_corr
         result = pearson_spearman_corr(returns[:-1], returns[1:], min_samples=2)
-        val = result['pearson_r']
+        val = result["pearson_r"]
         if np.isnan(val):
             return None
         return float(val)
@@ -66,6 +72,7 @@ def compute_price_slope_6h(closes: list[float]) -> Optional[float]:
     if len(closes) < 7:
         return None
     from oprim import linear_slope
+
     window = np.array(closes[-7:], dtype=float)
     if float(window.mean()) == 0.0:
         return None

@@ -3,6 +3,12 @@
 from datetime import datetime, timedelta, timezone
 
 import numpy as np
+import pytest
+
+# sel_v2.observation_tools pulls in the private quant stack (oprim). Skip the
+# module outright when it is absent so CI reports an explicit skip instead of a
+# collection error that aborts the whole run.
+pytest.importorskip("oprim", reason="private quant stack (oprim) not installed")
 
 from sel_v2.observation_tools.base import BarFeatures
 from sel_v2.observation_tools.chan_tools import (

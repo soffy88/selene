@@ -19,5 +19,8 @@ ripser==0.6.15
 PyWavelets==1.9.0
 pydantic==2.13.4
 python-dotenv==1.2.2
+PyYAML==6.0.3
+# parquet engine for pandas read_parquet/to_parquet (sel_v2 replay + offline calib)
+pyarrow==22.0.0
 httpx==0.28.1
 ruff==0.9.6
