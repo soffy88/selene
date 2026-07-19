@@ -28,6 +28,18 @@ rounds (see memory `opt-pr-3`).
   guard or the `I_UNDERSTAND_LIVE_AUTO_EXEC` ack requirement.
   *(2026-07-10: wording amended by explicit user decision — original said "MUST stay
   NOTIFY_ONLY"; user instructed enabling paper order placement for the v4 chain.)*
+- **Never abandon a long-running task without ending it.** Either follow it to a
+  terminal state or terminate it explicitly — "I no longer need the result" is not
+  "it has stopped". *(2026-07-19: an abandoned 14M-row analysis query ran 5h24m,
+  queued the TimescaleDB compression policy behind it, and every writer behind
+  that — v2_ticks persistence stalled 3h20m. Collection never stopped and no data
+  was lost (zero gaps >2min), but the healthcheck's own probe
+  `SELECT max(timestamp) FROM v2_ticks` was stuck in the same queue, so the
+  monitoring went silent for the entire window and the stale alert only fired
+  AFTER the blockage was cleared. Second process rule this project has bought with
+  an incident.)* For heavy analysis: set `statement_timeout`, export once and
+  compare offline, and check `pg_stat_activity` for your own leftovers before
+  starting anything new.
 - Never weaken a risk gate to make a test pass. Gates fail closed.
 - Never treat a missing/None feature as a confirmed signal (three-state discipline).
 - Never silently smooth a *signal* in the sel_v2 path (state-machine dwell is OK).

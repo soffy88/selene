@@ -18,20 +18,13 @@ Run:  REPLAY_END='2026-07-19 08:00:00+00:00' python -m sel_v2.offline.s2g_engine
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from datetime import datetime, timezone
 
-import asyncpg
 import numpy as np
 
-from sel_v2.data.tick_1s import (
-    LAST_PRICE_PER_SECOND_SQL,
-    TIME_MAX,
-    TIME_MIN,
-    zscores_1s,
-)
+from sel_v2.data.tick_1s import zscores_1s
 from sel_v2.strategies.cusum_short import CUSUMShort
 from sel_v2.strategies.s2_event_layer import S2EventLayer
 
@@ -44,20 +37,20 @@ REPLAY_END = (
     else None
 )
 BAR_SECONDS = 4 * 3600  # the cadence the engine chunks by
+EXPORT = os.environ.get("S2G_EXPORT", "/tmp/s2g_1s.npz")
 
 
-def _dsn() -> str:
-    return os.environ["DB_URL"].replace("postgresql+asyncpg://", "postgresql://")
+def load_1s_from_export(path: str):
+    """Read the frozen window from the export produced by s2g_export_1s.
 
-
-async def load_1s(conn):
-    rows = await conn.fetch(
-        LAST_PRICE_PER_SECOND_SQL, SYMBOL, TIME_MIN, REPLAY_END or TIME_MAX
-    )
-    if len(rows) < 2:
-        return None, None
-    secs = np.array([r["s"].timestamp() for r in rows], dtype="float64")
-    px = np.array([float(r["px"]) for r in rows], dtype="float64")
+    Deliberately file-based: the comparison below walks 1.1M seconds twice, and
+    doing that while holding a database cursor is what stalled v2_ticks
+    persistence for 3h20m on 2026-07-19. The export is chunked and time-limited;
+    everything after it is offline, so that failure mode is structurally gone
+    rather than merely avoided.
+    """
+    d = np.load(path)
+    secs, px = d["secs"], d["px"]
     full = np.arange(secs[0], secs[-1] + 1.0, 1.0)
     idx = np.searchsorted(secs, full, side="right") - 1
     return full, zscores_1s(px[idx])
@@ -99,17 +92,9 @@ def engine_events(secs, zs) -> list:
     return out
 
 
-async def main() -> int:
-    conn = await asyncpg.connect(_dsn())
-    try:
-        secs, zs = await load_1s(conn)
-    finally:
-        await conn.close()
-    if secs is None:
-        logger.error("no tick data in the frozen window")
-        return 2
-
-    logger.info("frozen window: %d seconds, end=%s", len(secs), REPLAY_END)
+def main() -> int:
+    secs, zs = load_1s_from_export(EXPORT)
+    logger.info("frozen window from %s: %d seconds", EXPORT, len(secs))
     ref = harness_events(secs, zs)
     eng = engine_events(secs, zs)
 
@@ -142,4 +127,4 @@ if __name__ == "__main__":
         level=os.environ.get("LOG_LEVEL", "INFO"),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    raise SystemExit(asyncio.run(main()))
+    raise SystemExit(main())
