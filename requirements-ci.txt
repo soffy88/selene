@@ -19,5 +19,6 @@ ripser==0.6.15
 PyWavelets==1.9.0
 pydantic==2.13.4
 python-dotenv==1.2.2
+PyYAML==6.0.3
 httpx==0.28.1
 ruff==0.9.6
