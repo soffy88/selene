@@ -529,11 +529,14 @@ class DBWriter:
                     step_reached,
                     state_4h,
                     direction,
-                    json.dumps(trail, default=str) if trail is not None else None,
                     # Wave S2G: S2 rows carry their S2_EVENT id inside the trail;
                     # lift it into its own column without changing this method's
                     # row contract. None for S1 and for every pre-S2G row.
+                    # Placed BEFORE the trail json on purpose: a consumer asserts
+                    # on encoded[-1] meaning the trail, and appending after it
+                    # silently changed what that position referred to.
                     (trail or {}).get("event_id") if isinstance(trail, dict) else None,
+                    json.dumps(trail, default=str) if trail is not None else None,
                 )
                 for ts, strat, action, reason, step_reached, state_4h, direction, trail in rows
             ]
@@ -541,8 +544,8 @@ class DBWriter:
                 """
                 INSERT INTO v2_strategy_decision
                     (timestamp, strategy, action, reason, step_reached, state_4h,
-                     direction, decision_trail, event_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::uuid)
+                     direction, event_id, decision_trail)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8::uuid, $9::jsonb)
                 ON CONFLICT (timestamp, strategy) DO UPDATE SET
                     action = EXCLUDED.action, reason = EXCLUDED.reason,
                     step_reached = EXCLUDED.step_reached, state_4h = EXCLUDED.state_4h,
