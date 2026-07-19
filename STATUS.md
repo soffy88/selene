@@ -36,6 +36,20 @@ rounds (see memory `opt-pr-3`).
 
 ## 🔄 In Progress
 
+- **Wave S2G 下一工作单元(2026-07-19 钉死,到时不重议)** —— PR #9(base `wave/exec-s`,
+  CI 绿 1443 passed / 0 skipped)已交付:CUSUM 增量化(**回归整行 diff=0**,804×)、
+  1s 聚合规范 `sel_v2/data/tick_1s.py`(live/离线**共享同一实现**)、密度守卫(60s<10 抑制并计数)、
+  事件化 `s2_event_layer.py`(300s 簇 / 第2偏移确认)、节流(同向持仓 / 日上限4)、34 条测试含端到端链路。
+  **唯一任务**:`strategy_engine.py` 接线(1s 通道 + `v2_strategy_decision` 加 `event_id` 迁移 +
+  S1/出场路径隔离确认)→ Part 4 观测/周报 → Part 5 部署 + epoch reset(R2 授权文本在 S2G prompt 内,仍有效)。
+  ⚠️ **接线专属验收**(在 S2G prompt 验收之上追加):接线后、部署前,引擎在 **staging 态
+  (不重启生产容器)** 对同一冻结窗跑一次**引擎级回放对账** —— 引擎产出的 S2_EVENT 集合
+  必须与离线 harness 的簇确认集合 **diff=0**。离线已证的等价性**不能替接线层作证**,因为
+  `_maybe_open_s2`/`process_frame` 的状态流是本次唯一新变量。
+  部署后 24h 对账基线照旧:事件 ~64/天,**偏离 3× 停报**(不回滚,持仓上限与日上限兜底)。
+  **关键背景**:引擎现状为 *"Authoritative entries/exits remain bar-gated (sealed 4H bars inside
+  process_frame)"* —— 接线是改 live 入场路径**架构**,非换数据源;本 Wave 唯一会真实亏钱的改动。
+
 - **EXEC-S shadow 积累中,门 N≥30**(2026-07-19 上线):`v2-shadow-exec` 对每个 S2
   would-enter 信号并排记录市价臂/挂单臂假想执行(`v2_shadow_orders`),周报
   `sel_v2/reports/shadow_exec_weekly.md`(Mon 02:30);P_fill 首达表 `v2_fill_prob`
