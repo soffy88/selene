@@ -136,6 +136,36 @@ async def check_rules(pool, r):
                     )
                 )
 
+    # Rule 4c (Wave S2G): S2 entry is now event-driven off the 1s CUSUM channel.
+    # Both directions of failure are silent: a dead 1s feed produces zero events and
+    # looks like a quiet market, while a mis-wired one produces a firehose. S2G-0
+    # measured ~64 confirmed clusters/day on 13 days of ticks, so this is an
+    # order-of-magnitude guard, deliberately not a tuned band.
+    s2_events_24h = await pool.fetchval(
+        "SELECT count(DISTINCT event_id) FROM v2_strategy_decision "
+        "WHERE strategy='strategy_2' AND event_id IS NOT NULL "
+        "AND timestamp > now() - interval '24 hours'"
+    )
+    if s2_events_24h is not None:
+        if s2_events_24h < 5:
+            alerts.append(
+                (
+                    "WARNING",
+                    "s2_event_rate",
+                    f"only {s2_events_24h} S2 events in 24h (<5; S2G-0 baseline ~64/day) "
+                    "— check the 1s tick channel is feeding, not that the market is quiet",
+                )
+            )
+        elif s2_events_24h > 300:
+            alerts.append(
+                (
+                    "WARNING",
+                    "s2_event_rate",
+                    f"{s2_events_24h} S2 events in 24h (>300; S2G-0 baseline ~64/day) "
+                    "— event-ification may not be collapsing clusters as intended",
+                )
+            )
+
     # Rule 5: paper_engine container logs (not implemented via log scanning here, relying on last_bar_ts instead for simplicity)
     # A stuck paper_engine won't update last_bar_ts.
     last_paper_ts_raw = await r.get("v2:paper:last_bar_ts")
