@@ -122,8 +122,23 @@ def test_buffer_does_not_grow_without_bound():
 # ── the SQL carries the same rule ────────────────────────────────────────────
 
 
-def test_sql_orders_by_numeric_trade_id():
+def test_sql_breaks_ties_on_trade_id_numerically():
     """Guards the two ways this silently breaks: dropping the tie-break, or
-    comparing the text column lexicographically."""
-    assert "trade_id::bigint DESC" in LAST_PRICE_PER_SECOND_SQL
-    assert "ORDER BY timestamp DESC, trade_id" in LAST_PRICE_PER_SECOND_SQL
+    comparing the text column in a way that is not numerically ordered.
+
+    The implementation uses `length(trade_id) DESC, trade_id DESC` rather than
+    `trade_id::bigint DESC`. Both are numerically correct for digit strings — more
+    digits is a larger number, and within one length lexicographic IS numeric —
+    but the cast parses 14M strings inside an ordered aggregate and measured 3.6x
+    slower on a single day, which over the full window was the difference between
+    a working replay and one that never finished.
+    """
+    sql = LAST_PRICE_PER_SECOND_SQL
+    assert "trade_id" in sql, "the tie-break is gone entirely"
+    numeric_by_length = "length(trade_id) DESC, trade_id DESC" in sql
+    numeric_by_cast = "trade_id::bigint DESC" in sql
+    assert numeric_by_length or numeric_by_cast, (
+        "trade_id must be ordered numerically; a bare `trade_id DESC` is "
+        "lexicographic and inverts at a digit-count rollover"
+    )
+    assert "ORDER BY timestamp DESC" in sql, "seconds must still order by time first"
