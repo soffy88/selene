@@ -21,11 +21,9 @@ x-common-env: &common_env
   # not mainnet. Set ENVIRONMENT=production deliberately for a real deploy.
   ENVIRONMENT:          ${ENVIRONMENT:-development}
   DEBUG:                ${DEBUG:-false}
-  # PAPER(纯模拟撮合):用户拍板 2026-07-10("一定要让能开单")。零真实下单——PAPER 分支
-  # 不触任何 exchange adapter(submit_to_exchange 模拟路径,按 cw4:prices 定价成交),
-  # 写 orders 表 + order.lifecycle,风控门全程参与。🔒 Never 已同步修订:禁的是 live 模式
-  # (AUTO_EXEC/CONFIRM_THEN_EXEC)。写死不再 ${} 插值:.env:34 的 EXEC_MODE=NOTIFY_ONLY
-  # 已过时(受保护文件,待人工清理)。
+  # P0-1: literal PAPER. Do not interpolate ${EXEC_MODE} — a missing variable
+  # must not derive live. Unknown modes are rejected at process boot.
+  # LIMITED_LIVE/AUTO_EXEC require bound OOS/shadow/release artifacts.
   EXEC_MODE:            PAPER
   MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-OKX}
 
@@ -326,7 +324,9 @@ services:
   # ── Healthcheck ───────────────────────────────────────────────────────────
   selene-healthcheck:
     build: ./services/healthcheck
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       - HTTPS_PROXY=${HTTPS_PROXY:-http://helios-proxy:2080}
       - HTTP_PROXY=${HTTP_PROXY:-http://helios-proxy:2080}
@@ -349,7 +349,9 @@ services:
     # Binance WS 经 helios-proxy 不通,只有 OKX 经 10808 隧道可行)。不再自连 OKX WS。
     # 回滚:command 切回 `python -m sel_v2.data.v2_tick_collector`(旧文件保留)。
     command: python -m sel_v2.data.v2_ticks_md_adapter --loop 5
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
@@ -367,7 +369,9 @@ services:
     # 不再自打 /fapi/v1/depth。回滚:command 切回 `python -m sel_v2.data.v2_lob_collector`
     # (旧文件保留)。DB→DB,无 egress/代理。
     command: python -m sel_v2.data.v2_lob_md_adapter --loop 20
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
@@ -384,7 +388,9 @@ services:
     # 与 P4 trades 共用 iris 侧同一条 WS 连接)。不再自连 OKX WS。回滚:command 切回
     # `python -m sel_v2.data.v2_liquidation_collector`(旧文件保留)。
     command: python -m sel_v2.data.v2_liquidations_md_adapter --loop 15
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
@@ -400,7 +406,9 @@ services:
     # 采集层合并(方案 B):funding/OI 改由统一生产者 iris 采集,本服务转为 adapter 读 md:* 回填原表。
     # 回滚:command 切回 `python -m sel_v2.data.v2_derivatives_collector` 即恢复自采(旧文件保留)。
     command: python -m sel_v2.data.v2_derivatives_adapter
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       - HTTPS_PROXY=${HTTPS_PROXY:-http://helios-proxy:2080}
       - HTTP_PROXY=${HTTP_PROXY:-http://helios-proxy:2080}
@@ -420,7 +428,9 @@ services:
       context: .
       dockerfile: sel_v2/Dockerfile
     command: python -m sel_v2.data.v2_binance_ticker
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       - BINANCE_PROXY=${BINANCE_PROXY:-http://helios-proxy:2080}
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
@@ -441,7 +451,9 @@ services:
     # 回滚:command 切回 `python -m sel_v2.data.binance_backfill --loop 600 --years 0.05`
     # (旧文件保留;深史一次性回填也用它)。DB→DB, 无 egress/代理。
     command: python -m sel_v2.data.v2_bars_md_adapter --loop 600
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
@@ -460,7 +472,9 @@ services:
       context: .
       dockerfile: sel_v2/Dockerfile
     command: python -m sel_v2.evaluation.monthly_eval --serve
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - POSTGRES_HOST=platform-postgres
@@ -480,7 +494,9 @@ services:
       context: .
       dockerfile: sel_v2/Dockerfile
     command: python -m sel_v2.observation_tools.vpin_monitor --serve
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
@@ -496,7 +512,9 @@ services:
       context: .
       dockerfile: sel_v2/Dockerfile
     command: python -m sel_v2.offline.capture_monitor --serve
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       - NO_PROXY=localhost,127.0.0.1,platform-postgres,helios-redis,gateway
       - DB_URL=postgresql://selene_app:${SELENE_APP_PASSWORD}@platform-postgres:5432/selene
@@ -516,7 +534,9 @@ services:
       context: .
       dockerfile: sel_v2/Dockerfile
     command: python -m sel_v2.data.v2_bar_aggregator
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       - HTTPS_PROXY=${HTTPS_PROXY:-http://helios-proxy:2080}
       - HTTP_PROXY=${HTTP_PROXY:-http://helios-proxy:2080}
@@ -541,7 +561,9 @@ services:
       context: .
       dockerfile: sel_v2/Dockerfile
     command: python -m sel_v2.paper.paper_engine
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       - HTTPS_PROXY=${HTTPS_PROXY:-http://helios-proxy:2080}
       - HTTP_PROXY=${HTTP_PROXY:-http://helios-proxy:2080}

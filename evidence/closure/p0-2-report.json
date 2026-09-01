@@ -1,0 +1,43 @@
+{
+  "wave": "P0-2",
+  "baseline_sha": "24137634f777e7d993434faafc2d418e31f7b7b1",
+  "final_sha": null,
+  "status": "PARTIAL",
+  "generated_at": "2026-09-01T20:15:00Z",
+  "tests": [
+    {"name": "tests/unit/test_gateway_auth.py", "status": "PASS"}
+  ],
+  "runtime_checks": [
+    {
+      "name": "anonymous POST /api/v4/signals/{id}/confirm",
+      "status": "PASS",
+      "detail": "TestClient returns 401, never 2xx"
+    },
+    {
+      "name": "production assert_gateway_auth_ready subprocess",
+      "status": "PASS",
+      "detail": "missing secrets -> nonzero exit"
+    },
+    {
+      "name": "gateway container boot",
+      "status": "NOT_RUN"
+    }
+  ],
+  "artifacts": [
+    "shared/security/auth.py",
+    "shared/security/audit.py"
+  ],
+  "open_blockers": [
+    "Idempotency ledger is in-process memory (restart-durable ledger is P0-4)",
+    "Gateway container production-boot negative not run"
+  ],
+  "approvals": [],
+  "notes": [
+    "hmac.compare_digest used for key match",
+    "read/operator/admin roles",
+    "writes require request_id, actor, timestamp, reason",
+    "halt reset records old/new/actor/reason/git SHA",
+    "API keys redacted from /api/v4/config/{module}",
+    "query-string credentials rejected"
+  ]
+}

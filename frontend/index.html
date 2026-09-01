@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CryptoWatch v4</title>
+<title>Selene / CryptoWatch v4</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
 :root{
@@ -222,6 +222,12 @@ td.neu{color:var(--text1)}
 <body>
 <div class="app">
 
+<div id="runtime-identity-banner" class="banner" style="margin:12px 24px 0">
+  <div>
+    <div class="section-label">Runtime identity (backend)</div>
+    <div id="runtime-identity-text" class="mono">loading health…</div>
+  </div>
+</div>
 <header>
   <div class="logo">
     <div class="logo-mark">₿</div>
@@ -1219,9 +1225,26 @@ async function loadSel(){
 }
 
 // Init
+async function loadRuntimeIdentity(){
+  const el = document.getElementById('runtime-identity-text');
+  const banner = document.getElementById('runtime-identity-banner');
+  if(!el) return;
+  try{
+    const r = await fetch('/health');
+    const j = await r.json();
+    const mode = j.exec_mode || j.execution?.exec_mode || 'unknown';
+    const scope = j.funds_scope || 'unknown';
+    el.textContent = `exec_mode=${mode} funds_scope=${scope} (from backend /health, not a frontend flag)`;
+    if(scope === 'mainnet' || mode === 'AUTO_EXEC'){ banner.style.background = 'rgba(255,77,99,.11)'; }
+    else { banner.style.background = 'rgba(0,229,160,.11)'; }
+  }catch(e){
+    el.textContent = 'identity unavailable';
+  }
+}
+
 (async()=>{
   connectWS();
-  await Promise.all([loadMarket(), loadOverview(), loadMoonshots()]);
+  await Promise.all([loadRuntimeIdentity(), loadMarket(), loadOverview(), loadMoonshots()]);
   setInterval(loadMarket,15000);
   setInterval(loadMoonshots,60000);
   setInterval(loadOverview,60000);

@@ -1,0 +1,38 @@
+{
+  "wave": "P0-1",
+  "baseline_sha": "24137634f777e7d993434faafc2d418e31f7b7b1",
+  "final_sha": null,
+  "status": "PASS",
+  "generated_at": "2026-09-01T20:15:00Z",
+  "tests": [
+    {"name": "tests/unit/test_release_identity.py", "status": "PASS"},
+    {"name": "tests/unit/test_exec_mode_guard.py", "status": "PASS"},
+    {"name": "tests/unit/test_p0_1_boot_cli.py", "status": "PASS"}
+  ],
+  "runtime_checks": [
+    {
+      "name": "scripts/p0_1_runtime_probe.py",
+      "status": "PASS",
+      "artifact": "evidence/smoke/p0-1-runtime.json",
+      "detail": "process health + unknown-mode exit + production live no-artifact exit + testnet cannot claim mainnet + docker python:3.12-slim unknown-mode exit 2"
+    },
+    {
+      "name": "docker compose --env-file .env.example config --quiet",
+      "status": "PASS",
+      "detail": "env_file .env is optional; EXEC_MODE remains literal PAPER"
+    }
+  ],
+  "artifacts": [
+    "docs/SEL-10-10-CLOSURE.md",
+    "shared/runtime/release_identity.py",
+    "scripts/p0_1_runtime_probe.py",
+    "evidence/smoke/p0-1-runtime.json"
+  ],
+  "open_blockers": [],
+  "approvals": [],
+  "notes": [
+    "I_HAVE_OOS_EVIDENCE cannot unlock live",
+    "PAPER health identity: funds_scope=paper, adapters/fill_ws/orderbook_rest false",
+    "Full execution-service container with Redis/Postgres /health is out of P0-1 identity-gate scope"
+  ]
+}

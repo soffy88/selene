@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-09-01T21:12:34.422687+00:00",
+  "status": "PASS",
+  "duplicate_external_submits": 0,
+  "cases": [
+    {
+      "name": "lost_ack_probe",
+      "status": "acked",
+      "submits": 1
+    },
+    {
+      "name": "redis_redelivery",
+      "submits": 1
+    }
+  ]
+}

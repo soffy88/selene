@@ -1,0 +1,51 @@
+{
+  "wave": "FINAL",
+  "baseline_sha": "24137634f777e7d993434faafc2d418e31f7b7b1",
+  "branch": "closure/p0-safety",
+  "status": "OWNER_BLOCKED",
+  "generated_at": "2026-09-01T20:30:00Z",
+  "gates": {
+    "P0-1": "PASS",
+    "P0-2": "PASS",
+    "P0-3": "PARTIAL",
+    "P0-4": "PASS",
+    "P1-1": "PASS",
+    "P1-2": "PASS",
+    "P1-3": "BLOCKED",
+    "P1-4": "BLOCKED",
+    "P1-5": "OWNER_BLOCKED",
+    "P2-1": "PARTIAL",
+    "P2-2": "PARTIAL",
+    "P2-3": "BLOCKED",
+    "P2-4": "PASS",
+    "P2-5": "PASS",
+    "P3-1": "PARTIAL",
+    "P3-2": "PARTIAL",
+    "P3-3": "PASS"
+  },
+  "formal": {
+    "RESEARCH_READY": "YES",
+    "PAPER_READY": "YES",
+    "SHADOW_READY": "PARTIAL",
+    "LIMITED_LIVE_READY": "NO",
+    "AUTO_MAINNET_READY": "NO",
+    "PUBLIC_PRODUCT_READY": "PARTIAL"
+  },
+  "open_blockers": [
+    "P1-3 OOS closed trades < 100 (BLOCKED_INSUFFICIENT_DATA); no artifact with gate_verdict=PASS",
+    "P1-4 shadow has not run 30 days / 3 regimes",
+    "P1-5 PR #8/#9 merge window is owner-only",
+    "P2-1 full-repo 394 Ruff issues not cleared; required lint is scoped to new packages (0 errors)",
+    "P2-3 fresh compose with Helios postgres/redis not executed in this environment",
+    "P3-1 LICENSE is OWNER_BLOCKED",
+    "P3-2 existing index.html not fully replaced by a TS SPA; identity modules + banner added"
+  ],
+  "owner_blocked": [
+    "license",
+    "LIMITED_LIVE account/venue/symbol/capital",
+    "artifact TTL",
+    "risk policy approver",
+    "PR #8/#9 merge",
+    "historical OI source"
+  ]
+}

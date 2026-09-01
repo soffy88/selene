@@ -1,0 +1,34 @@
+{
+  "wave": "P0",
+  "baseline_sha": "24137634f777e7d993434faafc2d418e31f7b7b1",
+  "final_sha": null,
+  "status": "PARTIAL",
+  "branch": "closure/p0-safety",
+  "generated_at": "2026-09-01T00:00:00Z",
+  "formal_verdict": {
+    "RESEARCH_READY": "YES",
+    "PAPER_READY": "YES",
+    "SHADOW_READY": "PARTIAL",
+    "LIMITED_LIVE_READY": "NO",
+    "AUTO_MAINNET_READY": "NO",
+    "PUBLIC_PRODUCT_READY": "NO"
+  },
+  "tests": [],
+  "runtime_checks": [],
+  "artifacts": [],
+  "open_blockers": [
+    "P0-1 in progress at baseline: env-ack I_HAVE_OOS_EVIDENCE could unlock production live",
+    "P0-2 Gateway write routes open when GATEWAY_API_KEY is empty",
+    "P0-3 secret/supply-chain gates not installed",
+    "P0-4 PostgreSQL is not yet the sole order/side-effect authority"
+  ],
+  "approvals": [],
+  "owner_blocked": [
+    "open-source license",
+    "LIMITED_LIVE account/venue/symbol/capital cap",
+    "OOS/shadow artifact TTL",
+    "final risk-policy thresholds and approver",
+    "PR #8/#9 merge window",
+    "historical OI/microstructure data source"
+  ]
+}

@@ -20,9 +20,10 @@ from fastapi import (
     Query,
     Header,
     Depends,
+    Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from shared.db.redis_client import init_redis, get_redis, hgetall_json, get_json
 from shared.events.streams import (
@@ -97,6 +98,14 @@ async def _on_onchain(event: StreamEvent):
 async def lifespan(app: FastAPI):
     import os
 
+    from shared.security.auth import GatewayAuthError, assert_gateway_auth_ready
+
+    try:
+        assert_gateway_auth_ready(os.getenv("ENVIRONMENT", "development"))
+    except GatewayAuthError:
+        logger.critical("gateway boot refused: missing production auth secrets", exc_info=True)
+        raise SystemExit(1)
+
     redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
     init_redis(redis_url)
     logger.info("Gateway: Redis connected")
@@ -145,16 +154,75 @@ app.add_middleware(
 )
 
 
-# ── Auth for state-changing routes (item #21) ───────────────────────────────────
-# Enforced only when GATEWAY_API_KEY is set, so dev stays open but a deployment
-# locks down trade-affecting endpoints by setting the env var.
-GATEWAY_API_KEY = os.getenv("GATEWAY_API_KEY", "")
+@app.middleware("http")
+async def _production_read_auth(request: Request, call_next):
+    """Production GET /api/* requires a read-capable key. Writes are gated per-route."""
+    path = request.url.path
+    if path in {"/health", "/metrics", "/livez", "/readyz", "/docs", "/openapi.json", "/redoc"}:
+        return await call_next(request)
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    environment = os.getenv("ENVIRONMENT", "development")
+    if environment != "production" or request.method != "GET":
+        return await call_next(request)
+    if not path.startswith("/api"):
+        return await call_next(request)
+    from shared.security.auth import Role, authenticate, reject_query_secrets
+
+    try:
+        reject_query_secrets(request)
+        authenticate(
+            request.headers.get("X-API-Key", ""),
+            Role.READ,
+            environment=environment,
+        )
+    except HTTPException as exc:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    return await call_next(request)
 
 
-async def require_api_key(x_api_key: str = Header(default="")):
-    if GATEWAY_API_KEY and x_api_key != GATEWAY_API_KEY:
-        raise HTTPException(status_code=401, detail="invalid or missing X-API-Key")
-    return True
+# ── Auth (P0-2): production refuses to boot without secrets; writes are never anonymous.
+from shared.security.audit import get_ledger, record_halt_reset, record_write
+from shared.security.auth import IdempotentReplay, Role, require_role
+
+
+@app.exception_handler(IdempotentReplay)
+async def _idempotent_replay_handler(request, exc: IdempotentReplay):
+    stored = exc.stored
+    return JSONResponse(
+        stored.get("body"),
+        status_code=int(stored.get("status_code") or 200),
+        headers={"X-Idempotent-Replay": "1"},
+    )
+
+
+@app.middleware("http")
+async def _capture_write_idempotency(request, call_next):
+    response = await call_next(request)
+    ctx = getattr(request.state, "write_context", None)
+    if ctx is None or not (200 <= response.status_code < 300):
+        return response
+    body = b""
+    async for chunk in response.body_iterator:
+        body += chunk
+    try:
+        parsed = json.loads(body.decode("utf-8") or "null")
+    except Exception:
+        parsed = {"ok": True}
+    get_ledger().remember(
+        ctx.request_id,
+        status_code=response.status_code,
+        body=parsed,
+        path=ctx.path,
+        actor=ctx.actor,
+    )
+    record_write(
+        ctx=ctx,
+        git_sha=os.getenv("SELENE_GIT_SHA", "unknown"),
+        extra={"status_code": response.status_code},
+    )
+    headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+    return JSONResponse(parsed, status_code=response.status_code, headers=headers)
 
 
 try:
@@ -176,17 +244,46 @@ except ImportError as e:
 
 
 # ── Health ─────────────────────────────────────────────────────────────────────
+@app.get("/livez")
+async def livez():
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+async def readyz():
+    from shared.db.redis_client import health_check
+
+    redis_ok = await health_check()
+    return JSONResponse(
+        {"ready": redis_ok, "redis": redis_ok},
+        status_code=200 if redis_ok else 503,
+    )
+
+
 @app.get("/health")
 async def health():
     from shared.db.redis_client import health_check
 
     redis_ok = await health_check()
+    try:
+        from shared.runtime.release_identity import snapshot_identity
+
+        ident = snapshot_identity(
+            os.getenv("EXEC_MODE"),
+            os.getenv("ENVIRONMENT", "development"),
+        ).as_health()
+    except Exception:
+        ident = {
+            "exec_mode": os.getenv("EXEC_MODE", "PAPER"),
+            "funds_scope": "paper",
+        }
     return {
         "status": "ok" if redis_ok else "degraded",
         "version": "4.0.0",
         "redis": redis_ok,
         "ws_clients": ws_manager.count,
         "timestamp": datetime.utcnow().isoformat(),
+        **ident,
     }
 
 
@@ -311,7 +408,7 @@ async def pending_signals():
 
 
 @app.post(
-    "/api/v4/signals/{signal_id}/confirm", dependencies=[Depends(require_api_key)]
+    "/api/v4/signals/{signal_id}/confirm", dependencies=[Depends(require_role(Role.OPERATOR))]
 )
 async def confirm_signal(signal_id: str):
     r = get_redis()
@@ -324,7 +421,7 @@ async def confirm_signal(signal_id: str):
     return {"status": "confirmed", "id": signal_id}
 
 
-@app.post("/api/v4/signals/{signal_id}/reject", dependencies=[Depends(require_api_key)])
+@app.post("/api/v4/signals/{signal_id}/reject", dependencies=[Depends(require_role(Role.OPERATOR))])
 async def reject_signal(signal_id: str):
     r = get_redis()
     await r.hdel("cw4:signals:pending", signal_id)
@@ -468,7 +565,7 @@ async def funding_positions():
     return {"positions": list(positions.values()), "count": len(positions)}
 
 
-@app.post("/api/v4/funding/execute/{symbol}", dependencies=[Depends(require_api_key)])
+@app.post("/api/v4/funding/execute/{symbol}", dependencies=[Depends(require_role(Role.OPERATOR))])
 async def execute_funding_arb(symbol: str):
     r = get_redis()
     await r.publish(
@@ -620,7 +717,7 @@ async def monitor_report():
     return json.loads(raw)
 
 
-@app.post("/api/v4/monitor/trigger", dependencies=[Depends(require_api_key)])
+@app.post("/api/v4/monitor/trigger", dependencies=[Depends(require_role(Role.OPERATOR))])
 async def monitor_trigger(days: int = Query(1)):
     """手动触发立即生成简报"""
     import asyncio
@@ -758,20 +855,33 @@ async def circuit_breaker_status():
     }
 
 
-@app.post("/api/v4/risk/circuit-breaker/reset", dependencies=[Depends(require_api_key)])
-async def circuit_breaker_reset():
-    """手动解除熔断（同时清除 Redis + 写 PG 审计）"""
+@app.post("/api/v4/risk/circuit-breaker/reset", dependencies=[Depends(require_role(Role.ADMIN))])
+async def circuit_breaker_reset(request: Request):
+    """手动解除熔断（同时清除 Redis + 写 PG 审计）。Admin-only; records old/new/actor/reason/SHA."""
     import aiohttp
 
+    r = get_redis()
+    raw_state = await r.get("cw4:circuit_breaker:state")
+    old_state = (raw_state.decode() if isinstance(raw_state, bytes) else raw_state) or "CLOSED"
+    ctx = getattr(request.state, "write_context", None)
     try:
         async with aiohttp.ClientSession() as s:
             async with s.post(
                 "http://risk-service:8004/circuit-breaker/reset",
                 timeout=aiohttp.ClientTimeout(total=5),
-            ) as r:
-                return await r.json()
+            ) as resp:
+                payload = await resp.json()
     except Exception as e:
-        return {"error": str(e)}
+        payload = {"error": str(e)}
+    new_state = "CLOSED"
+    if ctx is not None:
+        record_halt_reset(
+            ctx=ctx,
+            old_state=old_state,
+            new_state=new_state,
+            git_sha=os.getenv("SELENE_GIT_SHA", "unknown"),
+        )
+    return payload
 
 
 @app.get("/api/v4/system/overview")
@@ -857,14 +967,21 @@ async def system_overview():
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
+_SECRET_NAME_PARTS = ("key", "secret", "token", "password", "passphrase", "credential")
+
+
+def _public_config_value(name: str, value: str) -> str:
+    lowered = name.lower()
+    if any(part in lowered for part in _SECRET_NAME_PARTS):
+        return "present" if (value or "").strip() else "absent"
+    return value
+
+
 @app.get("/api/v4/config/{module}")
 async def get_config(module: str):
-    import os
-    import re
-
     prefix = module.upper() + "_"
     cfg = {
-        k.replace(prefix, "").lower(): v
+        k.replace(prefix, "").lower(): _public_config_value(k, v)
         for k, v in os.environ.items()
         if k.startswith(prefix)
     }

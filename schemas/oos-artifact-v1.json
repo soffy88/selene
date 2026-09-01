@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "oos-artifact-v1",
+  "title": "Selene OOS artifact",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "artifact_id",
+    "generated_at",
+    "expires_at",
+    "strategy_commit",
+    "image_digest",
+    "strategy_config_digest",
+    "risk_policy_digest",
+    "data_manifest_digest",
+    "gate_verdict",
+    "artifact_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "oos-artifact-v1" },
+    "gate_verdict": { "enum": ["PASS", "FAIL"] }
+  }
+}

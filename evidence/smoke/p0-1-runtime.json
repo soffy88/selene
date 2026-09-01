@@ -1,0 +1,90 @@
+{
+  "cases": [
+    {
+      "expect": {
+        "adapters_enabled": false,
+        "exec_mode": "PAPER",
+        "fill_ws_enabled": false,
+        "funds_scope": "paper",
+        "orderbook_rest_enabled": false,
+        "status": "ok"
+      },
+      "name": "paper_production_health",
+      "result": {
+        "parsed": {
+          "adapters_enabled": false,
+          "environment": "production",
+          "exec_mode": "PAPER",
+          "exec_mode_raw": "PAPER",
+          "fill_ws_enabled": false,
+          "funds_scope": "paper",
+          "git_sha": "unknown",
+          "image_digest": "unknown",
+          "oos_artifact_id": null,
+          "orderbook_rest_enabled": false,
+          "release_id": null,
+          "shadow_artifact_id": null,
+          "status": "ok"
+        },
+        "returncode": 0,
+        "stderr": "<frozen runpy>:128: RuntimeWarning: 'shared.runtime.release_identity' found in sys.modules after import of package 'shared.runtime', but prior to execution of 'shared.runtime.release_identity'; this may result in unpredictable behaviour",
+        "stdout": "{\"adapters_enabled\": false, \"environment\": \"production\", \"exec_mode\": \"PAPER\", \"exec_mode_raw\": \"PAPER\", \"fill_ws_enabled\": false, \"funds_scope\": \"paper\", \"git_sha\": \"unknown\", \"image_digest\": \"unknown\", \"oos_artifact_id\": null, \"orderbook_rest_enabled\": false, \"release_id\": null, \"shadow_artifact_id\": null, \"status\": \"ok\"}"
+      },
+      "status": "PASS"
+    },
+    {
+      "match": "Unrecognized EXEC_MODE",
+      "name": "unknown_mode_exits",
+      "result": {
+        "parsed": {
+          "error": "Unrecognized EXEC_MODE='PAPPER'. Allowed: NOTIFY_ONLY, PAPER, SHADOW, LIMITED_LIVE, AUTO_EXEC. Deprecated alias CONFIRM_THEN_EXEC maps to LIMITED_LIVE. Refusing to start.",
+          "status": "fail"
+        },
+        "returncode": 2,
+        "stderr": "<frozen runpy>:128: RuntimeWarning: 'shared.runtime.release_identity' found in sys.modules after import of package 'shared.runtime', but prior to execution of 'shared.runtime.release_identity'; this may result in unpredictable behaviour\n{\"status\": \"fail\", \"error\": \"Unrecognized EXEC_MODE='PAPPER'. Allowed: NOTIFY_ONLY, PAPER, SHADOW, LIMITED_LIVE, AUTO_EXEC. Deprecated alias CONFIRM_THEN_EXEC maps to LIMITED_LIVE. Refusing to start.\"}",
+        "stdout": ""
+      },
+      "status": "PASS"
+    },
+    {
+      "match": "release manifest",
+      "name": "production_live_no_artifact_exits",
+      "result": {
+        "parsed": {
+          "error": "Missing release manifest path; production live boot is fail-closed.",
+          "status": "fail"
+        },
+        "returncode": 2,
+        "stderr": "<frozen runpy>:128: RuntimeWarning: 'shared.runtime.release_identity' found in sys.modules after import of package 'shared.runtime', but prior to execution of 'shared.runtime.release_identity'; this may result in unpredictable behaviour\n{\"status\": \"fail\", \"error\": \"Missing release manifest path; production live boot is fail-closed.\"}",
+        "stdout": ""
+      },
+      "status": "PASS"
+    },
+    {
+      "match": "FUNDS_SCOPE=mainnet",
+      "name": "testnet_cannot_claim_mainnet",
+      "result": {
+        "parsed": {
+          "error": "FUNDS_SCOPE=mainnet is forbidden when computed scope is testnet (EXEC_MODE=AUTO_EXEC ENVIRONMENT=development).",
+          "status": "fail"
+        },
+        "returncode": 2,
+        "stderr": "<frozen runpy>:128: RuntimeWarning: 'shared.runtime.release_identity' found in sys.modules after import of package 'shared.runtime', but prior to execution of 'shared.runtime.release_identity'; this may result in unpredictable behaviour\n{\"status\": \"fail\", \"error\": \"FUNDS_SCOPE=mainnet is forbidden when computed scope is testnet (EXEC_MODE=AUTO_EXEC ENVIRONMENT=development).\"}",
+        "stdout": ""
+      },
+      "status": "PASS"
+    },
+    {
+      "name": "docker_unknown_mode",
+      "returncode": 2,
+      "status": "PASS",
+      "stderr": "<frozen runpy>:128: RuntimeWarning: 'shared.runtime.release_identity' found in sys.modules after import of package 'shared.runtime', but prior to execution of 'shared.runtime.release_identity'; this may result in unpredictable behaviour\n{\"status\": \"fail\", \"error\": \"Unrecognized EXEC_MODE='PAPPER'. Allowed: NOTIFY_ONLY, PAPER, SHADOW, LIMITED_LIVE, AUTO_EXEC. Deprecated alias CONFIRM_THEN_EXEC maps to LIMITED_LIVE. Refusing to start.\"}\n",
+      "stdout": ""
+    }
+  ],
+  "generated_at": "2026-09-01T20:12:02.478191+00:00",
+  "probe": "p0-1-runtime",
+  "python": "/data/soffy/projects/selene/.venv/bin/python",
+  "root": "/data/soffy/projects/selene-closure",
+  "status": "PASS"
+}

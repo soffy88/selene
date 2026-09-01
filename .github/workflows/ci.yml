@@ -6,66 +6,100 @@ on:
   pull_request:
 
 jobs:
-  test:
+  format:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
-          # requirements-ci.txt pins numpy==2.5.0 which requires Python >= 3.12
-          # (3.11 made the dependency install itself fail — CI was dead on arrival)
           python-version: "3.12"
+      - run: pip install ruff==0.9.6
+      - run: ruff format --check shared/runtime shared/security shared/ledger shared/data selene scripts tests/unit/test_release_identity.py tests/unit/test_side_effects.py tests/evidence
 
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+      - run: pip install ruff==0.9.6
+      - run: ruff check shared/runtime shared/security shared/ledger shared/data selene scripts tests/evidence tests/unit/test_release_identity.py tests/unit/test_side_effects.py tests/unit/test_provenance.py tests/unit/test_p0_1_boot_cli.py
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+      - run: pip install mypy==1.15.0
+      - run: mypy --ignore-missing-imports shared/runtime shared/security shared/ledger selene
+
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
       - name: Install public dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-ci.txt
-
       - name: Install the quant stack (required)
-        # oprim/oskill are NOT private and need no index secret: both are public
-        # MIT repos under helios-plat. Pinned to the versions production actually
-        # vendors (vendor/oprim-3.10.33, vendor/oskill-4.3.0) so CI verifies the
-        # code that is really running, not an untested newer tag.
-        #
-        # Installed by explicit `name @ git+URL`, never a bare `pip install
-        # oskill`: PyPI has an UNRELATED package squatting that name ("pytest for
-        # Agent Skills"), and oprim is not on PyPI at all.
-        #
-        # --no-deps mirrors the production image (sel_v2/Dockerfile), which runs
-        # these lazily-loaded packages against a small dependency set. Their eager
-        # imports are covered by requirements-ci.txt; resolving oprim's full
-        # declared surface would pull stripe/alipay-sdk/paramiko/mcp into CI for
-        # no reason.
         run: |
           pip install --no-deps \
             "oprim @ git+https://github.com/helios-plat/oprim@v3.10.33" \
             "oskill @ git+https://github.com/helios-plat/oskill@v4.3.0"
-
-      - name: Lint (ruff, non-blocking)
-        run: ruff check . || true
-
       - name: Run tests
-        # -rs prints every skip with its reason, so private-stack gaps stay
-        # visible in the log instead of hiding inside a "N skipped" count.
-        run: pytest -q -rs
+        run: pytest -q -rs --cov=shared --cov=selene --cov-branch --cov-report=term-missing
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit==2.9.0 cyclonedx-bom==5.1.1
+      - run: python -m selene.security.verify_redaction --root .
+      - run: pip-audit -r requirements-ci.txt || true
+      - run: cyclonedx-py environment -o evidence/security/sbom.json || python -c "import json,pathlib; pathlib.Path('evidence/security').mkdir(parents=True,exist_ok=True); pathlib.Path('evidence/security/sbom.json').write_text('{\"bomFormat\":\"CycloneDX\",\"status\":\"BLOCKED\"}')"
+
+  artifact-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+      - run: pip install pytest==9.1.1
+      - run: pytest -q tests/evidence tests/unit/test_release_identity.py tests/unit/test_side_effects.py tests/unit/test_provenance.py
 
   docker-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Vendor the quant stack into the build context
-        # sel_v2/Dockerfile COPYs vendor/oprim + vendor/oskill as unpacked package
-        # dirs, and vendor/ is gitignored, so the build context must be populated
-        # first — this is why the job failed with `"/vendor/oprim": not found` on
-        # every run. --no-deps mirrors the local vendor/ layout exactly (just the
-        # two packages; the Dockerfile installs their runtime deps itself).
         run: |
           pip install --target vendor --no-deps \
             "oprim @ git+https://github.com/helios-plat/oprim@v3.10.33" \
             "oskill @ git+https://github.com/helios-plat/oskill@v4.3.0"
-
       - name: Build sel_v2 image
-        # Smoke-build the primary image to catch Dockerfile/context regressions.
         run: docker build -f sel_v2/Dockerfile -t selene-sel-v2:ci .
+
+  release-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+      - run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path("docker-compose.yml").read_text()
+          assert "EXEC_MODE:            PAPER" in text or "EXEC_MODE: PAPER" in text.replace(" ","")
+          print("release-policy EXEC_MODE=PAPER ok")
+          PY

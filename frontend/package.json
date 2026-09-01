@@ -1,0 +1,12 @@
+{
+  "name": "selene-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/identity.test.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  }
+}

@@ -9,6 +9,7 @@ from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from shared.db.connections import get_redis, get_pg, redis_health, pg_health
 from shared.events.streams import (
     STREAM_SIGNAL_SIZED,
@@ -31,6 +32,17 @@ from services.execution.adapters.base import (
     OrderResult,
 )
 from services.execution.routing.smart_router import SmartRouter
+from shared.runtime.release_identity import (
+    ExecMode,
+    ExecModeError,
+    ReleaseIdentity,
+    is_live_mode,
+    parse_exec_mode,
+    should_call_orderbook_rest,
+    should_init_exchange_adapters,
+    should_subscribe_fill_ws,
+    verify_boot,
+)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -38,7 +50,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
-EXEC_MODE = os.getenv("EXEC_MODE", "NOTIFY_ONLY")
+# Unset EXEC_MODE is PAPER (fail-closed default). Typos are rejected at boot, not coerced.
+EXEC_MODE = os.getenv("EXEC_MODE", "PAPER")
+_BOOT_IDENTITY: ReleaseIdentity | None = None
 PRIMARY_EXCHANGE = os.getenv("PRIMARY_EXCHANGE", "binance")
 MONITOR_INTERVAL = float(os.getenv("MONITOR_INTERVAL_S", "5"))
 MAX_SIGNAL_AGE_S = float(os.getenv("MAX_SIGNAL_AGE_S", "30"))  # quote-staleness guard
@@ -97,11 +111,29 @@ def _client_oid(order_id: str, kind: str = "O") -> str:
     return f"{h}{kind}"
 
 
+def _canonical_mode() -> ExecMode:
+    return parse_exec_mode(EXEC_MODE)
+
+
+def _live_venue_io_enabled() -> bool:
+    """True only for LIMITED_LIVE/AUTO_EXEC. PAPER/NOTIFY_ONLY/SHADOW never touch venues."""
+    return is_live_mode(EXEC_MODE)
+
+
 def _init_adapters():
     from services.execution.adapters.binance import BinanceAdapter
     from services.execution.adapters.okx import OKXAdapter
 
-    testnet = os.getenv("ENVIRONMENT", "development") != "production"
+    if not should_init_exchange_adapters(EXEC_MODE):
+        logger.info(
+            "EXEC_MODE=%s: exchange adapters not initialized (no fill WS, no orderbook REST)",
+            EXEC_MODE,
+        )
+        return
+
+    env = os.getenv("ENVIRONMENT", "development")
+    # Non-production live is testnet-only; production live is mainnet (already artifact-gated).
+    testnet = env != "production"
     bkey = os.getenv("BINANCE_API_KEY", "")
     bsec = os.getenv("BINANCE_API_SECRET", "")
     okey = os.getenv("OKX_API_KEY", "")
@@ -114,7 +146,9 @@ def _init_adapters():
         register_adapter("okx", OKXAdapter(okey, osec, opass, testnet))
         logger.info(f"OKX {'TESTNET' if testnet else 'LIVE'}")
     if not bkey and not okey:
-        logger.warning("No API keys — NOTIFY_ONLY forced")
+        raise ExecModeError(
+            f"EXEC_MODE={EXEC_MODE} requires venue API keys; refusing to start without adapters."
+        )
 
 
 async def _estimate_realized_vol(r, symbol: str) -> float:
@@ -247,7 +281,7 @@ async def process_scored_signal(data: dict):
     # PAPER/NOTIFY_ONLY 不触交易所 REST:route+get_orderbook 在交易所不可达时
     # 各带多次重试×长超时,会把 exec-worker 串行阻塞数分钟/信号(实测 OKX 断连
     # 时 BTCUSDT 信号卡 3 分钟)。纸面成交定价本就走 cw4:prices,与真实盘口无关。
-    if EXEC_MODE in LIVE_EXEC_MODES:
+    if _live_venue_io_enabled():
         try:
             plan = await _router.route(signal.symbol, side, allocated)
             adapter_name = (
@@ -260,7 +294,7 @@ async def process_scored_signal(data: dict):
         adapter_name = PRIMARY_EXCHANGE
     # ── 滑点估计(live:真实盘口 spread;非 live:默认 spread)──
     try:
-        if EXEC_MODE in LIVE_EXEC_MODES:
+        if should_call_orderbook_rest(EXEC_MODE):
             adp = get_adapter(adapter_name)
             book = await adp.get_orderbook(signal.symbol)
             bids = book.get("bids", [[0, 0]])
@@ -348,7 +382,7 @@ async def process_risk_approved(data: dict):
     if max_qty and max_qty < fsm.record.quantity:
         fsm.record.quantity = max_qty
     fsm.transition(OrderState.PENDING_ACK, note="risk_approved")
-    if EXEC_MODE == "CONFIRM_THEN_EXEC":
+    if _canonical_mode() is ExecMode.LIMITED_LIVE:
         await _pub(r, fsm, "pending_confirm")
         return
     await submit_to_exchange(fsm)
@@ -368,7 +402,7 @@ async def submit_to_exchange(fsm: OrderFSM):
     r = await get_redis()
     rec = fsm.record
 
-    if EXEC_MODE == "PAPER":
+    if _canonical_mode() in (ExecMode.PAPER, ExecMode.SHADOW):
         prices_raw = await r.hget("cw4:prices", rec.symbol)
         if prices_raw:
             import json as _json
@@ -402,13 +436,58 @@ async def submit_to_exchange(fsm: OrderFSM):
         _stats["failed"] += 1
         await _pub(r, fsm, "no_adapter")
         return
-    result = await adp.place_order(
-        rec.symbol,
-        rec.side,
-        rec.quantity,
-        rec.order_type,
-        rec.limit_price or rec.entry_price,
-        client_order_id=_client_oid(rec.id, "O"),
+    from shared.ledger.side_effects import SideEffectRecord, SideEffectStore
+
+    client_oid = _client_oid(rec.id, "O")
+    account = os.getenv("SELENE_ACCOUNT_ALLOWLIST", "default").split(",")[0]
+    venue = rec.exchange or PRIMARY_EXCHANGE
+    store = SideEffectStore()
+    prior = store.probe(venue, account, client_oid, "place")
+    if prior is not None and prior.status in {"acked", "submitted", "filled"}:
+        logger.warning("duplicate place suppressed for %s", client_oid)
+        return
+    store._write(
+        SideEffectRecord(
+            venue=venue,
+            account=account,
+            client_order_id=client_oid,
+            operation_kind="place",
+            status="intent",
+            payload={},
+        )
+    )
+    try:
+        result = await adp.place_order(
+            rec.symbol,
+            rec.side,
+            rec.quantity,
+            rec.order_type,
+            rec.limit_price or rec.entry_price,
+            client_order_id=client_oid,
+        )
+    except TimeoutError:
+        store._write(
+            SideEffectRecord(
+                venue=venue,
+                account=account,
+                client_order_id=client_oid,
+                operation_kind="place",
+                status="unknown",
+                payload={"error": "timeout"},
+            )
+        )
+        fsm.transition(OrderState.QUARANTINED, note="ack_lost")
+        await _persist_order(rec)
+        return
+    store._write(
+        SideEffectRecord(
+            venue=venue,
+            account=account,
+            client_order_id=client_oid,
+            operation_kind="place",
+            status="submitted" if getattr(result, "success", False) else "failed",
+            payload={"exchange_id": getattr(result, "exchange_id", "")},
+        )
     )
     if not result.success:
         fsm.transition(OrderState.FAILED, note=result.error)
@@ -530,7 +609,7 @@ async def reconcile_loop():
                         "clean (was deadman_heartbeat_stale)"
                     )
 
-            if EXEC_MODE == "PAPER":
+            if not _live_venue_io_enabled():
                 continue  # no live exchange to reconcile against
 
             # 1) recover missed fills on live, non-terminal orders
@@ -649,7 +728,7 @@ async def _close_position(fsm: OrderFSM, exit_price: float, reason: str):
     r = await get_redis()
     rec = fsm.record
 
-    if EXEC_MODE == "PAPER":
+    if not _live_venue_io_enabled():
         pnl = fsm.calc_realized_pnl(exit_price)
         fsm.transition(OrderState.CLOSED, note=reason)
         rec.close_reason = reason
@@ -876,7 +955,8 @@ async def _recover_monitoring_orders():
                 "quantity, limit_price, stop_price, take_profit, filled_price, filled_qty, "
                 "slippage_pct, fee_paid, state, exchange_id, kelly_fraction, risk_usd, "
                 "reject_reason, close_reason, realized_pnl, created_at, closed_at "
-                "FROM orders WHERE state='MONITORING'"
+                "FROM orders WHERE state IN "
+                "('OPEN','PARTIALLY_FILLED','MONITORING','CLOSING','SUBMITTING','PENDING_ACK','QUARANTINED')"
             )
         for row in rows:
             lp = float(row["limit_price"] or 0)
@@ -898,7 +978,7 @@ async def _recover_monitoring_orders():
                 filled_qty=float(row["filled_qty"] or 0),
                 slippage_pct=float(row["slippage_pct"] or 0),
                 fee_paid=float(row["fee_paid"] or 0),
-                state=OrderState.MONITORING,
+                state=OrderState(row["state"] or "MONITORING"),
                 exchange_id=row["exchange_id"] or "",
                 kelly_fraction=float(row["kelly_fraction"] or 0),
                 risk_usd=float(row["risk_usd"] or 0),
@@ -915,65 +995,40 @@ async def _recover_monitoring_orders():
             fsm = OrderFSM(rec)
             _orders[rec.id] = fsm
             _recent_orders.append(fsm)
-        logger.info(f"recovered {len(rows)} MONITORING orders from DB")
+        logger.info(f"recovered {len(rows)} in-flight orders from DB")
     except Exception as e:
         logger.error(f"DB order recovery failed: {e}")
 
 
-LIVE_EXEC_MODES = ("AUTO_EXEC", "CONFIRM_THEN_EXEC")
+def _assert_safe_exec_mode() -> ReleaseIdentity:
+    """Fail-closed boot: unknown modes die, production live requires bound artifacts.
 
-
-def _assert_safe_exec_mode():
-    """Fail-fast guard: refuse to place orders against a live (production) exchange unless an
-    operator has explicitly acknowledged it AND the strategy has out-of-sample evidence.
-
-    Both AUTO_EXEC and CONFIRM_THEN_EXEC reach mainnet (the latter after a manual
-    /orders/{id}/confirm), so both are gated (item #7). Two independent acks are required:
-
-      - I_UNDERSTAND_LIVE_AUTO_EXEC=yes  — operator understands this trades real money.
-      - I_HAVE_OOS_EVIDENCE=yes          — "guilty until proven innocent" (audit P0-5): the
-        deployed strategy has PASSED out-of-sample validation (run the real-strategy
-        backtest, enforce_oos_gate must pass). Without proven OOS evidence the system has no
-        business risking capital, so a green backtest verdict is now *binding* at the live
-        boundary, not a number nobody reads.
-
-    Defaults (NOTIFY_ONLY / development) require neither, so paper/observe stays frictionless."""
-    env = os.getenv("ENVIRONMENT", "development")
-    if EXEC_MODE in LIVE_EXEC_MODES and env == "production":
-        ack = os.getenv("I_UNDERSTAND_LIVE_AUTO_EXEC", "").lower() in (
-            "1",
-            "true",
-            "yes",
-        )
-        if not ack:
-            raise RuntimeError(
-                f"Refusing to start: EXEC_MODE={EXEC_MODE} with ENVIRONMENT=production. "
-                "This would place orders against real funds. "
-                "Set I_UNDERSTAND_LIVE_AUTO_EXEC=yes to override."
-            )
-        oos = os.getenv("I_HAVE_OOS_EVIDENCE", "").lower() in ("1", "true", "yes")
-        if not oos:
-            raise RuntimeError(
-                f"Refusing to start: EXEC_MODE={EXEC_MODE} with ENVIRONMENT=production but no "
-                "out-of-sample evidence asserted. The deployed strategy must PASS the real-strategy "
-                "backtest (backtest.v2_strategy_backtest.enforce_oos_gate) before risking capital — "
-                "guilty until proven innocent. Set I_HAVE_OOS_EVIDENCE=yes once it has."
-            )
+    I_HAVE_OOS_EVIDENCE cannot unlock live. CONFIRM_THEN_EXEC is LIMITED_LIVE.
+    Any verification failure raises ExecModeError; lifespan converts that to process exit.
+    """
+    global EXEC_MODE, _BOOT_IDENTITY
+    identity = verify_boot(EXEC_MODE, os.getenv("ENVIRONMENT", "development"))
+    EXEC_MODE = identity.exec_mode.value
+    _BOOT_IDENTITY = identity
+    return identity
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _assert_safe_exec_mode()
+    try:
+        identity = _assert_safe_exec_mode()
+    except ExecModeError:
+        logger.critical("execution boot refused by release identity gate", exc_info=True)
+        raise SystemExit(1)
     _init_adapters()
-    # 交易所 fill WS 只在 live 模式有意义:PAPER/NOTIFY_ONLY 不向交易所下单,
-    # 永远等不到回报,订阅只会无限重连刷错误日志(OKX 全局不可达,每 5-60s 一条)。
-    if EXEC_MODE in LIVE_EXEC_MODES:
+    # 交易所 fill WS 只在 live 模式有意义:PAPER/NOTIFY_ONLY/SHADOW 不向交易所下单。
+    if should_subscribe_fill_ws(identity.exec_mode):
         for name, adp in get_all_adapters().items():
             adp.on_fill(on_fill)
             asyncio.create_task(adp.subscribe_fills())
             logger.info(f"Fill subscription: {name}")
     else:
-        logger.info(f"EXEC_MODE={EXEC_MODE}: exchange fill subscription skipped")
+        logger.info(f"EXEC_MODE={identity.exec_mode.value}: exchange fill subscription skipped")
     await _recover_monitoring_orders()
     # run_forever:Redis 断连不再永久杀死消费/心跳任务(2026-07-12 事故;reconcile_loop
     # 写 deadman 心跳,它一死看门狗就 trip cw4:execution:halt——07-10 停单根因)
@@ -1026,15 +1081,43 @@ async def metrics():
 
 @app.get("/health")
 async def health():
-    return {
-        "status": "ok",
-        "service": "execution",
-        "exec_mode": EXEC_MODE,
-        "redis": await redis_health(),
-        "pg": await pg_health(),
-        "stats": _stats,
-        "active_orders": len([f for f in _orders.values() if not f.record.is_terminal]),
+    identity = _BOOT_IDENTITY
+    if identity is None:
+        try:
+            identity = verify_boot(EXEC_MODE, os.getenv("ENVIRONMENT", "development"))
+        except ExecModeError as exc:
+            return {"status": "fail", "service": "execution", "error": str(exc)}
+    payload = identity.as_health()
+    payload.update(
+        {
+            "status": "ok",
+            "service": "execution",
+            "redis": await redis_health(),
+            "pg": await pg_health(),
+            "stats": _stats,
+            "active_orders": len([f for f in _orders.values() if not f.record.is_terminal]),
+        }
+    )
+    return payload
+
+
+@app.get("/livez")
+async def livez():
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+async def readyz():
+    identity = _BOOT_IDENTITY
+    ready = identity is not None
+    body = {
+        "ready": ready,
+        "exec_mode": None if identity is None else identity.exec_mode.value,
+        "funds_scope": None if identity is None else identity.funds_scope,
+        "halt": False,
+        "adapters_enabled": False if identity is None else identity.adapters_enabled,
     }
+    return JSONResponse(body, status_code=200 if ready else 503)
 
 
 @app.get("/orders/recent")

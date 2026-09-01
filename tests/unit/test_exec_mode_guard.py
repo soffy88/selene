@@ -1,59 +1,115 @@
-"""Boot-guard tests for execution EXEC_MODE (optimization item #7).
+"""Boot-guard tests for execution EXEC_MODE (P0-1).
 
-CONFIRM_THEN_EXEC also reaches mainnet (after a manual confirm), so it must be
-gated like AUTO_EXEC when ENVIRONMENT=production without an explicit ack.
+Live production boot requires bound artifacts. I_HAVE_OOS_EVIDENCE cannot unlock
+live. CONFIRM_THEN_EXEC is a deprecated alias of LIMITED_LIVE.
 """
-import importlib
+from unittest.mock import patch
 
 import pytest
 
 import services.execution.main as m
+from shared.runtime.release_identity import ExecMode, ExecModeError
 
 
-def _run_guard(monkeypatch, exec_mode, env, ack=None, oos="yes"):
+def _run_guard(monkeypatch, exec_mode, env, **extra_env):
     monkeypatch.setattr(m, "EXEC_MODE", exec_mode)
     monkeypatch.setenv("ENVIRONMENT", env)
-    if ack is None:
-        monkeypatch.delenv("I_UNDERSTAND_LIVE_AUTO_EXEC", raising=False)
-    else:
-        monkeypatch.setenv("I_UNDERSTAND_LIVE_AUTO_EXEC", ack)
-    if oos is None:
-        monkeypatch.delenv("I_HAVE_OOS_EVIDENCE", raising=False)
-    else:
-        monkeypatch.setenv("I_HAVE_OOS_EVIDENCE", oos)
-    m._assert_safe_exec_mode()
+    for key in (
+        "I_UNDERSTAND_LIVE_AUTO_EXEC",
+        "I_HAVE_OOS_EVIDENCE",
+        "SELENE_RELEASE_MANIFEST",
+        "SELENE_OOS_ARTIFACT",
+        "SELENE_SHADOW_ARTIFACT",
+        "FUNDS_SCOPE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in extra_env.items():
+        if value is None:
+            monkeypatch.delenv(key, raising=False)
+        else:
+            monkeypatch.setenv(key, value)
+    return m._assert_safe_exec_mode()
 
 
-def test_confirm_then_exec_production_blocked(monkeypatch):
-    with pytest.raises(RuntimeError):
-        _run_guard(monkeypatch, "CONFIRM_THEN_EXEC", "production", ack=None)
+def test_unknown_mode_refuses(monkeypatch):
+    with pytest.raises(ExecModeError, match="Unrecognized EXEC_MODE"):
+        _run_guard(monkeypatch, "PAPPER", "development")
 
 
-def test_auto_exec_production_blocked(monkeypatch):
-    with pytest.raises(RuntimeError):
-        _run_guard(monkeypatch, "AUTO_EXEC", "production", ack=None)
+def test_notify_only_and_paper_production_allowed(monkeypatch):
+    ident = _run_guard(monkeypatch, "NOTIFY_ONLY", "production")
+    assert ident.exec_mode is ExecMode.NOTIFY_ONLY
+    ident = _run_guard(monkeypatch, "PAPER", "production")
+    assert ident.funds_scope == "paper"
+    assert ident.adapters_enabled is False
 
 
-def test_ack_overrides(monkeypatch):
-    # Both acks present (understands-live AND has-OOS-evidence) → live start allowed.
-    _run_guard(monkeypatch, "CONFIRM_THEN_EXEC", "production", ack="yes", oos="yes")  # no raise
-    _run_guard(monkeypatch, "AUTO_EXEC", "production", ack="yes", oos="yes")          # no raise
+def test_shadow_is_not_live(monkeypatch):
+    ident = _run_guard(monkeypatch, "SHADOW", "production")
+    assert ident.exec_mode is ExecMode.SHADOW
+    assert ident.adapters_enabled is False
+    assert ident.fill_ws_enabled is False
+    assert ident.orderbook_rest_enabled is False
 
 
-def test_live_blocked_without_oos_evidence(monkeypatch):
-    # Understands-live but NO out-of-sample evidence → still refused (guilty until proven innocent).
-    with pytest.raises(RuntimeError, match="out-of-sample"):
-        _run_guard(monkeypatch, "AUTO_EXEC", "production", ack="yes", oos=None)
+def test_confirm_then_exec_alias_is_limited_live(monkeypatch):
+    ident = _run_guard(monkeypatch, "CONFIRM_THEN_EXEC", "development")
+    assert ident.exec_mode is ExecMode.LIMITED_LIVE
+    assert ident.funds_scope == "testnet"
 
 
-def test_notify_only_production_allowed(monkeypatch):
-    _run_guard(monkeypatch, "NOTIFY_ONLY", "production", oos=None)  # no raise
+def test_production_live_blocked_without_artifacts(monkeypatch):
+    with pytest.raises(ExecModeError):
+        _run_guard(monkeypatch, "CONFIRM_THEN_EXEC", "production", I_HAVE_OOS_EVIDENCE="yes")
+    with pytest.raises(ExecModeError):
+        _run_guard(
+            monkeypatch,
+            "AUTO_EXEC",
+            "production",
+            I_UNDERSTAND_LIVE_AUTO_EXEC="yes",
+            I_HAVE_OOS_EVIDENCE="yes",
+        )
 
 
-def test_paper_production_allowed(monkeypatch):
-    _run_guard(monkeypatch, "PAPER", "production")  # no raise
+def test_oos_env_var_is_not_qualification(monkeypatch):
+    with pytest.raises(ExecModeError, match="release manifest|OOS artifact"):
+        _run_guard(
+            monkeypatch,
+            "AUTO_EXEC",
+            "production",
+            I_HAVE_OOS_EVIDENCE="yes",
+            I_UNDERSTAND_LIVE_AUTO_EXEC="yes",
+        )
 
 
-def test_live_mode_development_allowed(monkeypatch):
-    _run_guard(monkeypatch, "CONFIRM_THEN_EXEC", "development")  # no raise
-    _run_guard(monkeypatch, "AUTO_EXEC", "development")          # no raise
+def test_non_production_live_is_testnet(monkeypatch):
+    ident = _run_guard(monkeypatch, "AUTO_EXEC", "development")
+    assert ident.funds_scope == "testnet"
+    with pytest.raises(ExecModeError, match="FUNDS_SCOPE=mainnet is forbidden"):
+        _run_guard(monkeypatch, "AUTO_EXEC", "development", FUNDS_SCOPE="mainnet")
+
+
+def test_paper_init_skips_real_adapters(monkeypatch):
+    monkeypatch.setattr(m, "EXEC_MODE", "PAPER")
+    monkeypatch.setenv("BINANCE_API_KEY", "k")
+    monkeypatch.setenv("BINANCE_API_SECRET", "s")
+    monkeypatch.setenv("OKX_API_KEY", "k")
+    monkeypatch.setenv("OKX_API_SECRET", "s")
+    monkeypatch.setenv("OKX_PASSPHRASE", "p")
+    with patch("services.execution.adapters.binance.BinanceAdapter") as binance, patch(
+        "services.execution.adapters.okx.OKXAdapter"
+    ) as okx:
+        m._init_adapters()
+        binance.assert_not_called()
+        okx.assert_not_called()
+
+
+def test_paper_process_signal_skips_orderbook_rest(monkeypatch):
+    monkeypatch.setattr(m, "EXEC_MODE", "PAPER")
+    assert m._live_venue_io_enabled() is False
+    monkeypatch.setattr(m, "EXEC_MODE", "NOTIFY_ONLY")
+    assert m._live_venue_io_enabled() is False
+    monkeypatch.setattr(m, "EXEC_MODE", "SHADOW")
+    assert m._live_venue_io_enabled() is False
+    monkeypatch.setattr(m, "EXEC_MODE", "AUTO_EXEC")
+    assert m._live_venue_io_enabled() is True

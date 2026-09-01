@@ -25,6 +25,7 @@ class OrderState(str, Enum):
     CLOSED            = "CLOSED"
     CANCELLED         = "CANCELLED"
     FAILED            = "FAILED"
+    QUARANTINED       = "QUARANTINED"
 
 
 VALID_TRANSITIONS = {
@@ -39,9 +40,15 @@ VALID_TRANSITIONS = {
     OrderState.MONITORING:        {OrderState.CLOSING: "Exit triggered"},
     OrderState.CLOSING:           {OrderState.CLOSED: "Exit filled", OrderState.MONITORING: "Exit unfilled"},
     OrderState.CLOSED:    {}, OrderState.CANCELLED: {}, OrderState.FAILED: {},
+    OrderState.QUARANTINED: {},
+    OrderState.SUBMITTING: {OrderState.PENDING_ACK: "Sent", OrderState.FAILED: "API error", OrderState.QUARANTINED: "unsafe to retry"},
+    OrderState.PENDING_ACK: {OrderState.OPEN: "Confirmed", OrderState.FAILED: "Timeout", OrderState.QUARANTINED: "ack lost"},
+    OrderState.OPEN: {OrderState.PARTIALLY_FILLED: "Partial", OrderState.FILLED: "Full fill", OrderState.CANCELLED: "Cancelled", OrderState.QUARANTINED: "reconcile diverge"},
+    OrderState.PARTIALLY_FILLED: {OrderState.FILLED: "Complete", OrderState.CANCELLED: "Partial cancel", OrderState.MONITORING: "Accept partial", OrderState.QUARANTINED: "reconcile diverge"},
+    OrderState.MONITORING: {OrderState.CLOSING: "Exit triggered", OrderState.QUARANTINED: "reconcile diverge"},
 }
 
-TERMINAL_STATES = {OrderState.CLOSED, OrderState.CANCELLED, OrderState.FAILED}
+TERMINAL_STATES = {OrderState.CLOSED, OrderState.CANCELLED, OrderState.FAILED, OrderState.QUARANTINED}
 
 
 @dataclass
