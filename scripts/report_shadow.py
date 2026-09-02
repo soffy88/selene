@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from selene.qualification.shadow_epoch import write_status as write_shadow_status
 from selene.qualification.shadow_report import write_gap_report
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main() -> int:
     path = write_gap_report(ROOT)
+    write_shadow_status()
     payload = json.loads(path.read_text(encoding="utf-8"))
     print(
         json.dumps(

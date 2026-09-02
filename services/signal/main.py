@@ -49,7 +49,7 @@ from services.signal.weight_learner import (
     get_learner_status,
     read_dynamic_weights,
 )
-from shared.db.connections import get_pg, get_redis, redis_health
+from shared.db.connections import get_pg, get_redis, pg_health, redis_health
 from shared.events.streams import (
     CG_SIGNAL,
     STREAM_MARKET_CANDLES,
@@ -66,6 +66,7 @@ from shared.models.signal import (
     ScoredSignal,
     SignalType,
 )
+from shared.runtime.service_health import consume_ready, mark_consume, snapshot
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -803,6 +804,7 @@ async def consume_loop():
     logger.info("Signal service ready")
 
     while True:
+        mark_consume("signal")
         candle_results = await r.xreadgroup(
             CG,
             "signal-candles",
@@ -815,6 +817,7 @@ async def consume_loop():
                 try:
                     await _svc.handle_candle(decode(fields))
                     await r.xack(STREAM_MARKET_CANDLES, CG, msg_id)
+                    mark_consume("signal")
                 except Exception as e:
                     logger.error(f"candle: {e}", exc_info=True)
 
@@ -855,10 +858,10 @@ async def consume_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from shared.db.connections import get_pg
+    from shared.db.connections import wait_pg
 
     r = await get_redis()
-    pg = await get_pg()
+    pg = await wait_pg()
 
     # 把 redis 注入到 SignalService 实例
     _svc._redis = r
@@ -944,6 +947,25 @@ async def metrics():
     return PlainTextResponse(render_prometheus(out))
 
 
+@app.get("/livez")
+async def livez():
+    return {"status": "ok", "service": "signal"}
+
+
+@app.get("/readyz")
+async def readyz():
+    redis_ok = await redis_health()
+    pg_ok = await pg_health()
+    loop_ok = consume_ready("signal", max_age_s=60)
+    ready = redis_ok and pg_ok and loop_ok
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        {"ready": ready, "redis": redis_ok, "pg": pg_ok, "service": "signal", **snapshot("signal")},
+        status_code=200 if ready else 503,
+    )
+
+
 @app.get("/health")
 async def health():
     return {
@@ -952,6 +974,7 @@ async def health():
         "redis": await redis_health(),
         "symbols_tracked": len(_svc._detectors),
         "ts": datetime.utcnow().isoformat(),
+        **snapshot("signal"),
     }
 
 

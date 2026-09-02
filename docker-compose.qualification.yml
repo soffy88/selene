@@ -1,14 +1,50 @@
-# Isolated qualification stack. Does not join helios-net or any Helios service.
-# Ports: postgres 25432, redis 26379. Dummy password only. No real secrets.
+# Isolated qualification stack. No Helios network, images, databases, or secrets.
+# EXEC_MODE is literal PAPER. Scanner uses Redis fixtures, never venue private APIs.
 name: selene-qualification
+
+x-qual-env: &qual_env
+  EXEC_MODE: PAPER
+  ENVIRONMENT: development
+  LIMITED_LIVE: "false"
+  AUTO_MAINNET: "false"
+  LOG_LEVEL: INFO
+  PYTHONPATH: /app
+  REDIS_URL: redis://qual-redis:6379/0
+  TIMESCALE_URL: postgresql://selene:qualpass@qual-postgres:5432/selene
+  SCANNER_SOURCE: fixture
+  CORE_SYMBOLS: BTCUSDT
+  CANDLE_INTERVAL: 1h
+  FEED_INTERVAL_S: "5"
+  SCAN_INTERVAL_S: "20"
+  RAW_REFRESH_S: "10"
+  SEED_BARS: "250"
+  MIN_WIN_PROBABILITY: "0.52"
+  MIN_DATA_QUALITY: "0.5"
+  SIGNAL_COOLDOWN_SECS: "30"
+  INITIAL_CAPITAL: "10000"
+  PRIMARY_EXCHANGE: paper
+  SELENE_LEDGER_PATH: /tmp/selene-ledger.sqlite
+
+x-qual-app: &qual_app
+  build:
+    context: .
+    dockerfile: infra/qualification/Dockerfile
+  volumes:
+    - .:/app:ro
+  restart: unless-stopped
 
 networks:
   selene-qual-net:
     driver: bridge
 
+volumes:
+  qual_pg:
+  qual_redis:
+
 services:
   qual-postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: selene
       POSTGRES_PASSWORD: qualpass
@@ -27,6 +63,7 @@ services:
 
   qual-redis:
     image: redis:7-alpine
+    restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports: ["26379:6379"]
     networks: [selene-qual-net]
@@ -38,6 +75,149 @@ services:
       timeout: 3s
       retries: 20
 
-volumes:
-  qual_pg:
-  qual_redis:
+  deterministic-fixture:
+    <<: *qual_app
+    command: python -m services.qualification_fixture.main
+    environment:
+      <<: *qual_env
+      SERVICE_NAME: deterministic-fixture
+      SERVICE_PORT: "8090"
+    ports: ["28090:8090"]
+    networks: [selene-qual-net]
+    depends_on:
+      qual-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8090/readyz"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  scanner:
+    <<: *qual_app
+    command: python -m services.scanner.main
+    environment:
+      <<: *qual_env
+      SERVICE_NAME: market-scanner
+      SERVICE_PORT: "8001"
+    ports: ["28001:8001"]
+    networks: [selene-qual-net]
+    depends_on:
+      qual-redis:
+        condition: service_healthy
+      deterministic-fixture:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8001/readyz"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+  signal:
+    <<: *qual_app
+    command: python -m services.signal.main
+    environment:
+      <<: *qual_env
+      SERVICE_NAME: signal-service
+      SERVICE_PORT: "8002"
+    ports: ["28002:8002"]
+    networks: [selene-qual-net]
+    depends_on:
+      qual-postgres:
+        condition: service_healthy
+      qual-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8002/readyz"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  portfolio:
+    <<: *qual_app
+    command: python -m services.portfolio.main
+    environment:
+      <<: *qual_env
+      SERVICE_NAME: portfolio-service
+      SERVICE_PORT: "8003"
+    ports: ["28003:8003"]
+    networks: [selene-qual-net]
+    depends_on:
+      qual-postgres:
+        condition: service_healthy
+      qual-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8003/readyz"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  risk:
+    <<: *qual_app
+    command: python -m services.risk.main
+    environment:
+      <<: *qual_env
+      SERVICE_NAME: risk-service
+      SERVICE_PORT: "8004"
+      MAX_LEVERAGE: "3.0"
+    ports: ["28004:8004"]
+    networks: [selene-qual-net]
+    depends_on:
+      qual-postgres:
+        condition: service_healthy
+      qual-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8004/readyz"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  execution:
+    <<: *qual_app
+    command: python -m services.execution.main
+    environment:
+      <<: *qual_env
+      SERVICE_NAME: execution-service
+      SERVICE_PORT: "8005"
+      MAX_SIGNAL_AGE_S: "120"
+    ports: ["28005:8005"]
+    networks: [selene-qual-net]
+    depends_on:
+      qual-postgres:
+        condition: service_healthy
+      qual-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8005/readyz"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  gateway:
+    <<: *qual_app
+    command: uvicorn services.gateway.main:app --host 0.0.0.0 --port 5000
+    environment:
+      <<: *qual_env
+      SERVICE_NAME: gateway
+      SERVICE_PORT: "5000"
+    ports: ["25000:5000"]
+    networks: [selene-qual-net]
+    depends_on:
+      qual-redis:
+        condition: service_healthy
+      execution:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5000/readyz"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 15s

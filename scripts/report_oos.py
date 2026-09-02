@@ -5,12 +5,14 @@ import json
 from pathlib import Path
 
 from selene.qualification.oos_report import write_gap_report
+from selene.qualification.oos_status import write_oos_status
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> int:
     path = write_gap_report(ROOT)
+    write_oos_status(ROOT)
     payload = json.loads(path.read_text(encoding="utf-8"))
     print(
         json.dumps(

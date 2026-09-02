@@ -35,6 +35,7 @@ from shared.events.streams import (
     StreamEvent,
     consume,
 )
+from shared.runtime.service_health import consume_ready, mark_consume, snapshot
 from shared.security.audit import get_ledger, record_halt_reset, record_write
 from shared.security.auth import (
     GatewayAuthError,
@@ -82,14 +83,17 @@ ws_manager = WSManager()
 
 # ── Stream consumers (push to WebSocket clients) ──────────────────────────────
 async def _on_signal(event: StreamEvent):
+    mark_consume("gateway")
     await ws_manager.broadcast({"type": "signal", "data": event.data})
 
 
 async def _on_order(event: StreamEvent):
+    mark_consume("gateway")
     await ws_manager.broadcast({"type": "order", "data": event.data})
 
 
 async def _on_portfolio(event: StreamEvent):
+    mark_consume("gateway")
     await ws_manager.broadcast({"type": "portfolio", "data": event.data})
 
 
@@ -243,9 +247,15 @@ async def readyz():
     from shared.db.redis_client import health_check
 
     redis_ok = await health_check()
+    loop_ok = (
+        consume_ready("gw-orders", max_age_s=120)
+        or consume_ready("gw-signals", max_age_s=120)
+        or consume_ready("gateway", max_age_s=120)
+    )
+    ready = redis_ok and (loop_ok or snapshot("gateway")["consume_alive"] is False)
     return JSONResponse(
-        {"ready": redis_ok, "redis": redis_ok},
-        status_code=200 if redis_ok else 503,
+        {"ready": ready, "redis": redis_ok, "service": "gateway", **snapshot("gateway")},
+        status_code=200 if ready else 503,
     )
 
 

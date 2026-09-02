@@ -70,6 +70,29 @@ async def get_pg() -> asyncpg.Pool:
     return _pg_pool
 
 
+async def wait_pg(timeout_s: float = 90.0) -> asyncpg.Pool:
+    """Retry Postgres until it accepts connections. Qualification compose races
+    pg_isready vs asyncpg; production boots should also survive a slow replica.
+    """
+    import asyncio
+    import time
+
+    deadline = time.time() + timeout_s
+    last: Exception | None = None
+    global _pg_pool
+    while time.time() < deadline:
+        try:
+            _pg_pool = None
+            return await get_pg()
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            logger.warning("waiting for postgres: %s", exc)
+            await asyncio.sleep(2)
+    if last is not None:
+        raise last
+    raise RuntimeError("postgres unavailable")
+
+
 async def pg_health() -> bool:
     try:
         pool = await get_pg()

@@ -86,26 +86,24 @@ jobs:
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: "3.12"
-      - run: pip install pytest==9.1.1
+      - run: pip install pytest==9.1.1 redis==8.0.1
       - name: In-process PAPER chain and gap reports
         env:
           PYTHONPATH: .
           EXEC_MODE: PAPER
         run: |
-          pytest -q tests/unit/test_qualification_chain.py tests/unit/test_qualification_faults.py tests/unit/test_oos_gap_report.py tests/unit/test_shadow_gap_report.py
+          pytest -q tests/unit/test_qualification_chain.py tests/unit/test_qualification_faults.py tests/unit/test_oos_gap_report.py tests/unit/test_shadow_gap_report.py tests/unit/test_oos_status.py tests/unit/test_shadow_epoch.py tests/unit/test_qualification_fixture_client.py
           python scripts/report_oos.py
           python scripts/report_shadow.py
-      - name: Isolated compose smoke (postgres+redis only; PARTIAL is not PASS)
+      - name: Isolated compose config + full-chain smoke and container faults
         env:
           PYTHONPATH: .
           EXEC_MODE: PAPER
         run: |
-          docker compose -f docker-compose.qualification.yml up -d
-          python scripts/wait_qualification.py --timeout 90
-          python scripts/qualification_smoke.py
-          python scripts/qualification_faults.py
+          docker compose -f docker-compose.qualification.yml config --quiet
+          python scripts/run_qualification_stack.py
       - if: always()
-        run: docker compose -f docker-compose.qualification.yml down -v
+        run: docker compose -f docker-compose.qualification.yml --project-name selene-qualification down -v
 
   docker-build:
     runs-on: ubuntu-latest

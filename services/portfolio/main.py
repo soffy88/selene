@@ -36,6 +36,7 @@ from shared.models.portfolio import (
     PositionStatus,
 )
 from shared.models.signal import ScoredSignal
+from shared.runtime.service_health import consume_ready, mark_consume, snapshot
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -282,6 +283,7 @@ async def consume_loop():
     logger.info("Portfolio service ready")
 
     while True:
+        mark_consume("portfolio")
         # 消费 signal.scored → 计算仓位大小 → 写入 signal.sized（独立流防重复下单）
         sig_results = await r.xreadgroup(
             CG_PORTFOLIO,
@@ -479,20 +481,23 @@ async def _recover_portfolio():
             # equity curve shows history immediately (idempotent; past days only —
             # today's live MTM point is added by state_publisher's snapshot).
             async with pool.acquire() as conn:
-                await conn.execute(
-                    "INSERT INTO portfolio_snapshots (time, total_equity, daily_pnl) "
-                    "SELECT (d + interval '23:59:59'), "
-                    "  $1::numeric + COALESCE((SELECT SUM(realized_pnl) FROM orders o "
-                    "    WHERE o.state='CLOSED' AND o.created_at < d + interval '1 day'),0), "
-                    "  COALESCE((SELECT SUM(realized_pnl) FROM orders o "
-                    "    WHERE o.state='CLOSED' AND o.created_at >= d "
-                    "      AND o.created_at < d + interval '1 day'),0) "
-                    "FROM generate_series("
-                    "  (SELECT MIN(created_at)::date FROM orders WHERE state='CLOSED'), "
-                    "  CURRENT_DATE - 1, interval '1 day') d "
-                    "ON CONFLICT (time) DO NOTHING",
-                    INITIAL_CAPITAL,
-                )
+                first_closed = await conn.fetchval("SELECT MIN(created_at) FROM orders WHERE state='CLOSED'")
+                if first_closed is not None:
+                    await conn.execute(
+                        "INSERT INTO portfolio_snapshots (time, total_equity, daily_pnl) "
+                        "SELECT (d + interval '23:59:59'), "
+                        "  $1::numeric + COALESCE((SELECT SUM(realized_pnl) FROM orders o "
+                        "    WHERE o.state='CLOSED' AND o.created_at < d + interval '1 day'),0), "
+                        "  COALESCE((SELECT SUM(realized_pnl) FROM orders o "
+                        "    WHERE o.state='CLOSED' AND o.created_at >= d "
+                        "      AND o.created_at < d + interval '1 day'),0) "
+                        "FROM generate_series("
+                        "  $2::date, "
+                        "  CURRENT_DATE - 1, interval '1 day') d "
+                        "ON CONFLICT (time) DO NOTHING",
+                        INITIAL_CAPITAL,
+                        first_closed.date() if hasattr(first_closed, "date") else first_closed,
+                    )
 
             _recovered.set()
             return
@@ -557,6 +562,31 @@ async def metrics():
     return PlainTextResponse(render_prometheus(out))
 
 
+@app.get("/livez")
+async def livez():
+    return {"status": "ok", "service": "portfolio"}
+
+
+@app.get("/readyz")
+async def readyz():
+    from fastapi.responses import JSONResponse
+
+    redis_ok = await redis_health()
+    recovered = _recovered.is_set()
+    loop_ok = consume_ready("portfolio", max_age_s=60)
+    ready = redis_ok and recovered and loop_ok
+    return JSONResponse(
+        {
+            "ready": ready,
+            "redis": redis_ok,
+            "recovered": recovered,
+            "service": "portfolio",
+            **snapshot("portfolio"),
+        },
+        status_code=200 if ready else 503,
+    )
+
+
 @app.get("/health")
 async def health():
     return {
@@ -566,6 +596,7 @@ async def health():
         "equity": _engine._equity,
         "positions": len(_engine._positions),
         "daily_pnl": _engine._daily_pnl,
+        **snapshot("portfolio"),
     }
 
 

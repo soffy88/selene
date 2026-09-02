@@ -94,6 +94,8 @@ async def consume(
     Runs forever — call as asyncio.create_task().
     Acknowledges messages after successful handler execution.
     """
+    from shared.runtime.service_health import mark_consume
+
     r = get_redis()
     await ensure_consumer_group(stream, group)
 
@@ -117,6 +119,7 @@ async def consume(
     logger.info(f"Consumer '{consumer}' listening on '{stream}' (group='{group}')")
     while True:
         try:
+            mark_consume(consumer)
             results = await r.xreadgroup(group, consumer, {stream: ">"}, count=batch_size, block=block_ms)
             if not results:
                 continue
@@ -143,7 +146,11 @@ async def consume(
             # (don't log a traceback or sleep 1s, which would drop the next block window).
             continue
         except Exception as e:
-            logger.error(f"Stream consumer error: {e}", exc_info=True)
+            if "NOGROUP" in str(e):
+                logger.warning("consumer group missing on %s; recreating", stream)
+                await ensure_consumer_group(stream, group)
+            else:
+                logger.error(f"Stream consumer error: {e}", exc_info=True)
             await asyncio.sleep(1)
 
 

@@ -29,7 +29,7 @@ from services.risk.portfolio.var_engine import (
     DrawdownController,
     calc_historical_var,
 )
-from shared.db.connections import get_pg, get_redis, redis_health
+from shared.db.connections import get_pg, get_redis, pg_health, redis_health
 from shared.events.streams import (
     STREAM_RISK_APPROVED,
     STREAM_RISK_CHECK,
@@ -38,6 +38,7 @@ from shared.events.streams import (
     encode,
     run_forever,
 )
+from shared.runtime.service_health import consume_ready, mark_consume, snapshot
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -485,6 +486,7 @@ async def consume_loop():
     logger.info("Risk service ready (HARD GATE MODE)")
 
     while True:
+        mark_consume("risk")
         results = await r.xreadgroup(
             CG_RISK,
             "risk-worker",
@@ -631,8 +633,10 @@ async def portfolio_state_listener():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _cb
+    from shared.db.connections import wait_pg
+
     r = await get_redis()
-    pg = await get_pg()
+    pg = await wait_pg()
 
     # 初始化持久化熔断器
     _cb = PersistentCircuitBreaker(r, pg)
@@ -687,6 +691,25 @@ async def metrics():
     return PlainTextResponse(render_prometheus(out))
 
 
+@app.get("/livez")
+async def livez():
+    return {"status": "ok", "service": "risk"}
+
+
+@app.get("/readyz")
+async def readyz():
+    from fastapi.responses import JSONResponse
+
+    redis_ok = await redis_health()
+    pg_ok = await pg_health()
+    loop_ok = consume_ready("risk", max_age_s=60)
+    ready = redis_ok and pg_ok and loop_ok
+    return JSONResponse(
+        {"ready": ready, "redis": redis_ok, "pg": pg_ok, "service": "risk", **snapshot("risk")},
+        status_code=200 if ready else 503,
+    )
+
+
 @app.get("/health")
 async def health():
     return {
@@ -698,6 +721,7 @@ async def health():
         "new_trades": _dd_controller.level.new_trades_allowed and not _circuit_broken,
         "daily_pnl": _daily_pnl,
         "ts": datetime.utcnow().isoformat(),
+        **snapshot("risk"),
     }
 
 

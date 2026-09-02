@@ -49,6 +49,7 @@ from shared.runtime.release_identity import (
     should_subscribe_fill_ws,
     verify_boot,
 )
+from shared.runtime.service_health import consume_ready, mark_consume, snapshot
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -321,6 +322,7 @@ async def process_scored_signal(data: dict):
         return
     fsm.transition(OrderState.ROUTING)
     fsm.transition(OrderState.SUBMITTING)
+    await _persist_order(rec)
     await r.xadd(
         STREAM_RISK_CHECK,
         encode(
@@ -351,7 +353,7 @@ async def process_risk_approved(data: dict):
     approved = data.get("approved", False)
     reason = data.get("reason", "")
     max_qty = data.get("max_quantity")
-    fsm = _pending_risk.pop(order_id, None)
+    fsm = _pending_risk.pop(order_id, None) or _orders.get(order_id)
     if not fsm:
         return
     r = await get_redis()
@@ -386,11 +388,17 @@ async def submit_to_exchange(fsm: OrderFSM):
     rec = fsm.record
 
     if _canonical_mode() in (ExecMode.PAPER, ExecMode.SHADOW):
+        client_oid = _client_oid(rec.id, "O")
+        nx = await r.set(f"qual:side_effect:paper:{client_oid}:place", "1", nx=True)
+        if not nx:
+            logger.warning("PAPER duplicate place suppressed for %s", client_oid)
+            return
         prices_raw = await r.hget("cw4:prices", rec.symbol)
         if prices_raw:
             import json as _json
 
-            _p = _json.loads(prices_raw)
+            raw_p = prices_raw.decode() if isinstance(prices_raw, bytes) else prices_raw
+            _p = _json.loads(raw_p)
             fill_price = float(_p.get("price", rec.limit_price or rec.entry_price) if isinstance(_p, dict) else _p)
         else:
             fill_price = rec.limit_price or rec.entry_price
@@ -400,6 +408,21 @@ async def submit_to_exchange(fsm: OrderFSM):
         fsm.on_fill(rec.quantity, fill_price, fill_price * rec.quantity * 0.0005)
         fsm.transition(OrderState.MONITORING)
         _stats["filled"] += 1
+        try:
+            pool = await get_pg()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO side_effects
+                        (venue, account, client_order_id, operation_kind, status, payload_json)
+                    VALUES ('paper', 'qual', $1, 'place', 'acked', $2::jsonb)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    client_oid,
+                    json.dumps({"exchange_id": rec.exchange_id, "price": fill_price}),
+                )
+        except Exception as exc:
+            logger.warning("paper side_effect persist failed: %s", exc)
         await _pub(r, fsm, "filled_immediately")
         await _audit(fsm, "ORDER_FILLED")
         await _persist_order(rec)
@@ -774,12 +797,14 @@ async def _cancel_protective_stop(adp, rec):
 
 
 async def _pub(r, fsm: OrderFSM, event: str):
+    payload = {**fsm.to_dict(), "event": event}
     await r.xadd(
         STREAM_ORDER_LIFECYCLE,
-        encode({**fsm.to_dict(), "event": event}),
+        encode(payload),
         maxlen=100000,
         approximate=True,
     )
+    await r.hset("cw4:orders:recent", fsm.record.id, json.dumps(fsm.to_dict()))
 
 
 async def _audit(fsm: OrderFSM, event_type: str):
@@ -863,6 +888,7 @@ async def consume_loop():
                 raise
     logger.info(f"Execution service ready (EXEC_MODE={EXEC_MODE})")
     while True:
+        mark_consume("execution")
         for stream, worker, handler in [
             (STREAM_SIGNAL_SIZED, "exec-worker", process_scored_signal),
             (STREAM_RISK_APPROVED, "exec-risk", process_risk_approved),
@@ -1039,13 +1065,19 @@ async def livez():
 @app.get("/readyz")
 async def readyz():
     identity = _BOOT_IDENTITY
-    ready = identity is not None
+    redis_ok = await redis_health()
+    pg_ok = await pg_health()
+    loop_ok = consume_ready("execution", max_age_s=60)
+    ready = identity is not None and redis_ok and pg_ok and loop_ok
     body = {
         "ready": ready,
         "exec_mode": None if identity is None else identity.exec_mode.value,
         "funds_scope": None if identity is None else identity.funds_scope,
         "halt": False,
         "adapters_enabled": False if identity is None else identity.adapters_enabled,
+        "redis": redis_ok,
+        "pg": pg_ok,
+        **snapshot("execution"),
     }
     return JSONResponse(body, status_code=200 if ready else 503)
 

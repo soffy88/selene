@@ -1,0 +1,3666 @@
+{
+  "generated_at": "2026-09-02T05:23:44.416609+00:00",
+  "status": "PASS",
+  "docker": true,
+  "containers": [
+    {
+      "Command": "\"python -m services.\u2026\"",
+      "CreatedAt": "2026-09-02 05:08:19 +0000 UTC",
+      "Engine": "",
+      "ExitCode": 0,
+      "Health": "healthy",
+      "ID": "2d01259ce89f",
+      "Image": "selene-qualification-deterministic-fixture",
+      "Labels": "com.docker.compose.depends_on=qual-redis:service_healthy:false,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=e97294d72821d4b6364d747d6a698988e1a44b51601c5182d2c2a8ccde9632e7,com.docker.compose.image=sha256:8f9a6e4154b45f14a086d159405f98718984728624acaa3cb2bca0f92b59ee04,com.docker.compose.oneoff=False,com.docker.compose.replace=deterministic-fixture-1,com.docker.compose.service=deterministic-fixture,com.docker.compose.container-number=1",
+      "LocalVolumes": "0",
+      "Mounts": "/data/soffy/pr\u2026",
+      "Name": "selene-qualification-deterministic-fixture-1",
+      "Names": "selene-qualification-deterministic-fixture-1",
+      "Networks": "selene-qualification_selene-qual-net",
+      "Ports": "0.0.0.0:28090->8090/tcp, [::]:28090->8090/tcp",
+      "Project": "selene-qualification",
+      "Publishers": [
+        {
+          "URL": "0.0.0.0",
+          "TargetPort": 8090,
+          "PublishedPort": 28090,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "::",
+          "TargetPort": 8090,
+          "PublishedPort": 28090,
+          "Protocol": "tcp"
+        }
+      ],
+      "RunningFor": "17 minutes ago",
+      "Service": "deterministic-fixture",
+      "Size": "0B",
+      "State": "running",
+      "Status": "Up 16 minutes (healthy)"
+    },
+    {
+      "Command": "\"python -m services.\u2026\"",
+      "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+      "Engine": "",
+      "ExitCode": 0,
+      "Health": "healthy",
+      "ID": "202e8f8a4bf3",
+      "Image": "selene-qualification-execution",
+      "Labels": "com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.image=sha256:96cb37fd2b79e8068a7cd866ce5974d69e610d28a3d2ebf9673ba7b61b9e5a9e,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.config-hash=673f1a2ba7eb4c7f484b581c39fea14acfd85ddbc5f4ee263df862d52bb15031,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=execution-1,com.docker.compose.service=execution,com.docker.compose.version=5.5.0",
+      "LocalVolumes": "0",
+      "Mounts": "/data/soffy/pr\u2026",
+      "Name": "selene-qualification-execution-1",
+      "Names": "selene-qualification-execution-1",
+      "Networks": "selene-qualification_selene-qual-net",
+      "Ports": "0.0.0.0:28005->8005/tcp, [::]:28005->8005/tcp",
+      "Project": "selene-qualification",
+      "Publishers": [
+        {
+          "URL": "0.0.0.0",
+          "TargetPort": 8005,
+          "PublishedPort": 28005,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "::",
+          "TargetPort": 8005,
+          "PublishedPort": 28005,
+          "Protocol": "tcp"
+        }
+      ],
+      "RunningFor": "17 minutes ago",
+      "Service": "execution",
+      "Size": "0B",
+      "State": "running",
+      "Status": "Up 33 seconds (healthy)"
+    },
+    {
+      "Command": "\"uvicorn services.ga\u2026\"",
+      "CreatedAt": "2026-09-02 05:08:55 +0000 UTC",
+      "Engine": "",
+      "ExitCode": 0,
+      "Health": "healthy",
+      "ID": "d891e0ae4c14",
+      "Image": "selene-qualification-gateway",
+      "Labels": "com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.service=gateway,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=ee9de148cf62bce4e291f165664888662a742aebc4ed23fba2b9845d1ab3865e,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=gateway-1,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,execution:service_started:false,com.docker.compose.image=sha256:a33a6266b4ccf7fc0a5d2239bc954404c1563220f666e46d8c1840022522e2fc",
+      "LocalVolumes": "0",
+      "Mounts": "/data/soffy/pr\u2026",
+      "Name": "selene-qualification-gateway-1",
+      "Names": "selene-qualification-gateway-1",
+      "Networks": "selene-qualification_selene-qual-net",
+      "Ports": "0.0.0.0:25000->5000/tcp, [::]:25000->5000/tcp",
+      "Project": "selene-qualification",
+      "Publishers": [
+        {
+          "URL": "0.0.0.0",
+          "TargetPort": 5000,
+          "PublishedPort": 25000,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "::",
+          "TargetPort": 5000,
+          "PublishedPort": 25000,
+          "Protocol": "tcp"
+        }
+      ],
+      "RunningFor": "17 minutes ago",
+      "Service": "gateway",
+      "Size": "0B",
+      "State": "running",
+      "Status": "Up 3 minutes (healthy)"
+    },
+    {
+      "Command": "\"python -m services.\u2026\"",
+      "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+      "Engine": "",
+      "ExitCode": 0,
+      "Health": "healthy",
+      "ID": "63464c8085d1",
+      "Image": "selene-qualification-portfolio",
+      "Labels": "com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=portfolio,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=0ecb468ff8be1907f726e0ba1fc2ddde6b67d9dbe425cdb5ff1d10306a1a9067,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,qual-postgres:service_healthy:false,com.docker.compose.image=sha256:2d04b0e02be58ff9f86d2a167a4ba72f5c5af4355a8eb062b8ec7df4637d062a,com.docker.compose.replace=portfolio-1,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification",
+      "LocalVolumes": "0",
+      "Mounts": "/data/soffy/pr\u2026",
+      "Name": "selene-qualification-portfolio-1",
+      "Names": "selene-qualification-portfolio-1",
+      "Networks": "selene-qualification_selene-qual-net",
+      "Ports": "0.0.0.0:28003->8003/tcp, [::]:28003->8003/tcp",
+      "Project": "selene-qualification",
+      "Publishers": [
+        {
+          "URL": "0.0.0.0",
+          "TargetPort": 8003,
+          "PublishedPort": 28003,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "::",
+          "TargetPort": 8003,
+          "PublishedPort": 28003,
+          "Protocol": "tcp"
+        }
+      ],
+      "RunningFor": "17 minutes ago",
+      "Service": "portfolio",
+      "Size": "0B",
+      "State": "running",
+      "Status": "Up 16 minutes (healthy)"
+    },
+    {
+      "Command": "\"docker-entrypoint.s\u2026\"",
+      "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+      "Engine": "",
+      "ExitCode": 0,
+      "Health": "unhealthy",
+      "ID": "821e7863f0d4",
+      "Image": "postgres:16-alpine",
+      "Labels": "com.docker.compose.image=sha256:0fc5c901ec0a3c55ce70b99b040daeb89d5b35b61febbced1b4b24dbc3153ec8,com.docker.compose.oneoff=False,com.docker.compose.replace=qual-postgres-1,com.docker.compose.service=qual-postgres,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=59a6f20ae2782f1d781189652e54321b19672ea60d66c5615762afac2c896576,com.docker.compose.container-number=1,com.docker.compose.depends_on=,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure",
+      "LocalVolumes": "1",
+      "Mounts": "/data/soffy/pr\u2026,/data/soffy/pr\u2026,selene-qualifi\u2026",
+      "Name": "selene-qualification-qual-postgres-1",
+      "Names": "selene-qualification-qual-postgres-1",
+      "Networks": "selene-qualification_selene-qual-net",
+      "Ports": "0.0.0.0:25432->5432/tcp, [::]:25432->5432/tcp",
+      "Project": "selene-qualification",
+      "Publishers": [
+        {
+          "URL": "0.0.0.0",
+          "TargetPort": 5432,
+          "PublishedPort": 25432,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "::",
+          "TargetPort": 5432,
+          "PublishedPort": 25432,
+          "Protocol": "tcp"
+        }
+      ],
+      "RunningFor": "22 minutes ago",
+      "Service": "qual-postgres",
+      "Size": "0B",
+      "State": "running",
+      "Status": "Up About a minute (unhealthy)"
+    },
+    {
+      "Command": "\"docker-entrypoint.s\u2026\"",
+      "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+      "Engine": "",
+      "ExitCode": 0,
+      "Health": "healthy",
+      "ID": "90083f0017d5",
+      "Image": "redis:7-alpine",
+      "Labels": "com.docker.compose.config-hash=658e9c2087cf54661074759ee1e9809e3789c79d0acca215f5c3b93eddeb503d,com.docker.compose.container-number=1,com.docker.compose.depends_on=,com.docker.compose.oneoff=False,com.docker.compose.replace=qual-redis-1,com.docker.compose.service=qual-redis,com.docker.compose.version=5.5.0,com.docker.compose.image=sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure",
+      "LocalVolumes": "1",
+      "Mounts": "selene-qualifi\u2026",
+      "Name": "selene-qualification-qual-redis-1",
+      "Names": "selene-qualification-qual-redis-1",
+      "Networks": "selene-qualification_selene-qual-net",
+      "Ports": "0.0.0.0:26379->6379/tcp, [::]:26379->6379/tcp",
+      "Project": "selene-qualification",
+      "Publishers": [
+        {
+          "URL": "0.0.0.0",
+          "TargetPort": 6379,
+          "PublishedPort": 26379,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "::",
+          "TargetPort": 6379,
+          "PublishedPort": 26379,
+          "Protocol": "tcp"
+        }
+      ],
+      "RunningFor": "22 minutes ago",
+      "Service": "qual-redis",
+      "Size": "0B",
+      "State": "running",
+      "Status": "Up 2 minutes (healthy)"
+    },
+    {
+      "Command": "\"python -m services.\u2026\"",
+      "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+      "Engine": "",
+      "ExitCode": 0,
+      "Health": "healthy",
+      "ID": "d8833460ebc3",
+      "Image": "selene-qualification-risk",
+      "Labels": "com.docker.compose.config-hash=4f65f1d141721e7ab8fd181b8bb2a7dee63e609cf1c8fba8543fb42b01c56cdc,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.image=sha256:9b9806089aa2fbd9cf675214a8b575b93990638607323da972d3e9dd223b8733,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=risk-1,com.docker.compose.container-number=1,com.docker.compose.service=risk,com.docker.compose.version=5.5.0",
+      "LocalVolumes": "0",
+      "Mounts": "/data/soffy/pr\u2026",
+      "Name": "selene-qualification-risk-1",
+      "Names": "selene-qualification-risk-1",
+      "Networks": "selene-qualification_selene-qual-net",
+      "Ports": "0.0.0.0:28004->8004/tcp, [::]:28004->8004/tcp",
+      "Project": "selene-qualification",
+      "Publishers": [
+        {
+          "URL": "0.0.0.0",
+          "TargetPort": 8004,
+          "PublishedPort": 28004,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "::",
+          "TargetPort": 8004,
+          "PublishedPort": 28004,
+          "Protocol": "tcp"
+        }
+      ],
+      "RunningFor": "17 minutes ago",
+      "Service": "risk",
+      "Size": "0B",
+      "State": "running",
+      "Status": "Up 58 seconds (healthy)"
+    },
+    {
+      "Command": "\"python -m services.\u2026\"",
+      "CreatedAt": "2026-09-02 05:08:44 +0000 UTC",
+      "Engine": "",
+      "ExitCode": 0,
+      "Health": "healthy",
+      "ID": "4740526a8d7d",
+      "Image": "selene-qualification-scanner",
+      "Labels": "com.docker.compose.config-hash=73c59e53fb8c6f294a6e0db8a3633718593d32047736f2c814b6430f3965836c,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,deterministic-fixture:service_healthy:false,com.docker.compose.image=sha256:2c7f91a69fe5c9ac663a48240039f33ca85165a5cc6355b807d5faf56f1a9eb9,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=scanner-1,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.service=scanner,com.docker.compose.version=5.5.0",
+      "LocalVolumes": "0",
+      "Mounts": "/data/soffy/pr\u2026",
+      "Name": "selene-qualification-scanner-1",
+      "Names": "selene-qualification-scanner-1",
+      "Networks": "selene-qualification_selene-qual-net",
+      "Ports": "0.0.0.0:28001->8001/tcp, [::]:28001->8001/tcp",
+      "Project": "selene-qualification",
+      "Publishers": [
+        {
+          "URL": "0.0.0.0",
+          "TargetPort": 8001,
+          "PublishedPort": 28001,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "::",
+          "TargetPort": 8001,
+          "PublishedPort": 28001,
+          "Protocol": "tcp"
+        }
+      ],
+      "RunningFor": "17 minutes ago",
+      "Service": "scanner",
+      "Size": "0B",
+      "State": "running",
+      "Status": "Up 16 minutes (healthy)"
+    },
+    {
+      "Command": "\"python -m services.\u2026\"",
+      "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+      "Engine": "",
+      "ExitCode": 0,
+      "Health": "healthy",
+      "ID": "c464beb0c072",
+      "Image": "selene-qualification-signal",
+      "Labels": "com.docker.compose.config-hash=72e02acc6570a651353d3ffe611bfb7a228bb087f428c4942b598b0d90feb850,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=signal-1,com.docker.compose.version=5.5.0,com.docker.compose.image=sha256:4ac0d8f9badd53532bb45e5f1e203699bb723932189e41e002f163e7fc94c834,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.service=signal",
+      "LocalVolumes": "0",
+      "Mounts": "/data/soffy/pr\u2026",
+      "Name": "selene-qualification-signal-1",
+      "Names": "selene-qualification-signal-1",
+      "Networks": "selene-qualification_selene-qual-net",
+      "Ports": "0.0.0.0:28002->8002/tcp, [::]:28002->8002/tcp",
+      "Project": "selene-qualification",
+      "Publishers": [
+        {
+          "URL": "0.0.0.0",
+          "TargetPort": 8002,
+          "PublishedPort": 28002,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "::",
+          "TargetPort": 8002,
+          "PublishedPort": 28002,
+          "Protocol": "tcp"
+        }
+      ],
+      "RunningFor": "17 minutes ago",
+      "Service": "signal",
+      "Size": "0B",
+      "State": "running",
+      "Status": "Up 16 minutes (healthy)"
+    }
+  ],
+  "cases": [
+    {
+      "name": "restart_redis",
+      "service": "qual-redis",
+      "restart_returncode": 0,
+      "readiness_went_red": false,
+      "recovered": true,
+      "before": [
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:19 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "2d01259ce89f",
+          "Image": "selene-qualification-deterministic-fixture",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.image=sha256:8f9a6e4154b45f14a086d159405f98718984728624acaa3cb2bca0f92b59ee04,com.docker.compose.oneoff=False,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=deterministic-fixture-1,com.docker.compose.version=5.5.0,com.docker.compose.depends_on=qual-redis:service_healthy:false,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.service=deterministic-fixture,com.docker.compose.config-hash=e97294d72821d4b6364d747d6a698988e1a44b51601c5182d2c2a8ccde9632e7",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-deterministic-fixture-1",
+          "Names": "selene-qualification-deterministic-fixture-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28090->8090/tcp, [::]:28090->8090/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "15 minutes ago",
+          "Service": "deterministic-fixture",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 14 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "202e8f8a4bf3",
+          "Image": "selene-qualification-execution",
+          "Labels": "com.docker.compose.config-hash=673f1a2ba7eb4c7f484b581c39fea14acfd85ddbc5f4ee263df862d52bb15031,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=execution,com.docker.compose.container-number=1,com.docker.compose.image=sha256:96cb37fd2b79e8068a7cd866ce5974d69e610d28a3d2ebf9673ba7b61b9e5a9e,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=execution-1,com.docker.compose.version=5.5.0",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-execution-1",
+          "Names": "selene-qualification-execution-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28005->8005/tcp, [::]:28005->8005/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "15 minutes ago",
+          "Service": "execution",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 8 minutes (healthy)"
+        },
+        {
+          "Command": "\"uvicorn services.ga\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:55 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d891e0ae4c14",
+          "Image": "selene-qualification-gateway",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,execution:service_started:false,com.docker.compose.image=sha256:a33a6266b4ccf7fc0a5d2239bc954404c1563220f666e46d8c1840022522e2fc,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=gateway-1,com.docker.compose.service=gateway,com.docker.compose.config-hash=ee9de148cf62bce4e291f165664888662a742aebc4ed23fba2b9845d1ab3865e,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-gateway-1",
+          "Names": "selene-qualification-gateway-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25000->5000/tcp, [::]:25000->5000/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "14 minutes ago",
+          "Service": "gateway",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 35 seconds (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "63464c8085d1",
+          "Image": "selene-qualification-portfolio",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.image=sha256:2d04b0e02be58ff9f86d2a167a4ba72f5c5af4355a8eb062b8ec7df4637d062a,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=portfolio-1,com.docker.compose.service=portfolio,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=0ecb468ff8be1907f726e0ba1fc2ddde6b67d9dbe425cdb5ff1d10306a1a9067,com.docker.compose.depends_on=qual-redis:service_healthy:false,qual-postgres:service_healthy:false,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-portfolio-1",
+          "Names": "selene-qualification-portfolio-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28003->8003/tcp, [::]:28003->8003/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "15 minutes ago",
+          "Service": "portfolio",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 14 minutes (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "821e7863f0d4",
+          "Image": "postgres:16-alpine",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.image=sha256:0fc5c901ec0a3c55ce70b99b040daeb89d5b35b61febbced1b4b24dbc3153ec8,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=qual-postgres-1,com.docker.compose.service=qual-postgres,com.docker.compose.config-hash=59a6f20ae2782f1d781189652e54321b19672ea60d66c5615762afac2c896576,com.docker.compose.depends_on=,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0",
+          "LocalVolumes": "1",
+          "Mounts": "/data/soffy/pr\u2026,/data/soffy/pr\u2026,selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-postgres-1",
+          "Names": "selene-qualification-qual-postgres-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25432->5432/tcp, [::]:25432->5432/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "20 minutes ago",
+          "Service": "qual-postgres",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 10 minutes (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "90083f0017d5",
+          "Image": "redis:7-alpine",
+          "Labels": "com.docker.compose.service=qual-redis,com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=658e9c2087cf54661074759ee1e9809e3789c79d0acca215f5c3b93eddeb503d,com.docker.compose.depends_on=,com.docker.compose.image=sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=qual-redis-1",
+          "LocalVolumes": "1",
+          "Mounts": "selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-redis-1",
+          "Names": "selene-qualification-qual-redis-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:26379->6379/tcp, [::]:26379->6379/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "20 minutes ago",
+          "Service": "qual-redis",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 11 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d8833460ebc3",
+          "Image": "selene-qualification-risk",
+          "Labels": "com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=risk-1,com.docker.compose.service=risk,com.docker.compose.config-hash=4f65f1d141721e7ab8fd181b8bb2a7dee63e609cf1c8fba8543fb42b01c56cdc,com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.version=5.5.0,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.image=sha256:9b9806089aa2fbd9cf675214a8b575b93990638607323da972d3e9dd223b8733,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-risk-1",
+          "Names": "selene-qualification-risk-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28004->8004/tcp, [::]:28004->8004/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "15 minutes ago",
+          "Service": "risk",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 9 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:44 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "4740526a8d7d",
+          "Image": "selene-qualification-scanner",
+          "Labels": "com.docker.compose.oneoff=False,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=scanner-1,com.docker.compose.container-number=1,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.service=scanner,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=73c59e53fb8c6f294a6e0db8a3633718593d32047736f2c814b6430f3965836c,com.docker.compose.depends_on=qual-redis:service_healthy:false,deterministic-fixture:service_healthy:false,com.docker.compose.image=sha256:2c7f91a69fe5c9ac663a48240039f33ca85165a5cc6355b807d5faf56f1a9eb9",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-scanner-1",
+          "Names": "selene-qualification-scanner-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28001->8001/tcp, [::]:28001->8001/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "15 minutes ago",
+          "Service": "scanner",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 14 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "c464beb0c072",
+          "Image": "selene-qualification-signal",
+          "Labels": "com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.image=sha256:4ac0d8f9badd53532bb45e5f1e203699bb723932189e41e002f163e7fc94c834,com.docker.compose.oneoff=False,com.docker.compose.replace=signal-1,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=signal,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=72e02acc6570a651353d3ffe611bfb7a228bb087f428c4942b598b0d90feb850,com.docker.compose.container-number=1",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-signal-1",
+          "Names": "selene-qualification-signal-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28002->8002/tcp, [::]:28002->8002/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "15 minutes ago",
+          "Service": "signal",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 14 minutes (healthy)"
+        }
+      ],
+      "after": [
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:19 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "2d01259ce89f",
+          "Image": "selene-qualification-deterministic-fixture",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,com.docker.compose.image=sha256:8f9a6e4154b45f14a086d159405f98718984728624acaa3cb2bca0f92b59ee04,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.config-hash=e97294d72821d4b6364d747d6a698988e1a44b51601c5182d2c2a8ccde9632e7,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=deterministic-fixture-1,com.docker.compose.service=deterministic-fixture,com.docker.compose.version=5.5.0",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-deterministic-fixture-1",
+          "Names": "selene-qualification-deterministic-fixture-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28090->8090/tcp, [::]:28090->8090/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "deterministic-fixture",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "202e8f8a4bf3",
+          "Image": "selene-qualification-execution",
+          "Labels": "com.docker.compose.config-hash=673f1a2ba7eb4c7f484b581c39fea14acfd85ddbc5f4ee263df862d52bb15031,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.image=sha256:96cb37fd2b79e8068a7cd866ce5974d69e610d28a3d2ebf9673ba7b61b9e5a9e,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.replace=execution-1,com.docker.compose.service=execution",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-execution-1",
+          "Names": "selene-qualification-execution-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28005->8005/tcp, [::]:28005->8005/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "execution",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 9 minutes (healthy)"
+        },
+        {
+          "Command": "\"uvicorn services.ga\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:55 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d891e0ae4c14",
+          "Image": "selene-qualification-gateway",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,execution:service_started:false,com.docker.compose.image=sha256:a33a6266b4ccf7fc0a5d2239bc954404c1563220f666e46d8c1840022522e2fc,com.docker.compose.replace=gateway-1,com.docker.compose.service=gateway,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=ee9de148cf62bce4e291f165664888662a742aebc4ed23fba2b9845d1ab3865e,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-gateway-1",
+          "Names": "selene-qualification-gateway-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25000->5000/tcp, [::]:25000->5000/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "15 minutes ago",
+          "Service": "gateway",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up About a minute (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "63464c8085d1",
+          "Image": "selene-qualification-portfolio",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=portfolio-1,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=0ecb468ff8be1907f726e0ba1fc2ddde6b67d9dbe425cdb5ff1d10306a1a9067,com.docker.compose.depends_on=qual-redis:service_healthy:false,qual-postgres:service_healthy:false,com.docker.compose.image=sha256:2d04b0e02be58ff9f86d2a167a4ba72f5c5af4355a8eb062b8ec7df4637d062a,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=portfolio",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-portfolio-1",
+          "Names": "selene-qualification-portfolio-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28003->8003/tcp, [::]:28003->8003/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "portfolio",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "821e7863f0d4",
+          "Image": "postgres:16-alpine",
+          "Labels": "com.docker.compose.replace=qual-postgres-1,com.docker.compose.service=qual-postgres,com.docker.compose.depends_on=,com.docker.compose.image=sha256:0fc5c901ec0a3c55ce70b99b040daeb89d5b35b61febbced1b4b24dbc3153ec8,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=59a6f20ae2782f1d781189652e54321b19672ea60d66c5615762afac2c896576,com.docker.compose.container-number=1,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure",
+          "LocalVolumes": "1",
+          "Mounts": "/data/soffy/pr\u2026,/data/soffy/pr\u2026,selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-postgres-1",
+          "Names": "selene-qualification-qual-postgres-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25432->5432/tcp, [::]:25432->5432/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "20 minutes ago",
+          "Service": "qual-postgres",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 11 minutes (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "90083f0017d5",
+          "Image": "redis:7-alpine",
+          "Labels": "com.docker.compose.depends_on=,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=qual-redis,com.docker.compose.container-number=1,com.docker.compose.image=sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=qual-redis-1,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=658e9c2087cf54661074759ee1e9809e3789c79d0acca215f5c3b93eddeb503d",
+          "LocalVolumes": "1",
+          "Mounts": "selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-redis-1",
+          "Names": "selene-qualification-qual-redis-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:26379->6379/tcp, [::]:26379->6379/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "20 minutes ago",
+          "Service": "qual-redis",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 34 seconds (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d8833460ebc3",
+          "Image": "selene-qualification-risk",
+          "Labels": "com.docker.compose.replace=risk-1,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=4f65f1d141721e7ab8fd181b8bb2a7dee63e609cf1c8fba8543fb42b01c56cdc,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=risk,com.docker.compose.image=sha256:9b9806089aa2fbd9cf675214a8b575b93990638607323da972d3e9dd223b8733,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-risk-1",
+          "Names": "selene-qualification-risk-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28004->8004/tcp, [::]:28004->8004/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "risk",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 10 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:44 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "4740526a8d7d",
+          "Image": "selene-qualification-scanner",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,deterministic-fixture:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.service=scanner,com.docker.compose.version=5.5.0,com.docker.compose.image=sha256:2c7f91a69fe5c9ac663a48240039f33ca85165a5cc6355b807d5faf56f1a9eb9,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=scanner-1,com.docker.compose.config-hash=73c59e53fb8c6f294a6e0db8a3633718593d32047736f2c814b6430f3965836c",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-scanner-1",
+          "Names": "selene-qualification-scanner-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28001->8001/tcp, [::]:28001->8001/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "15 minutes ago",
+          "Service": "scanner",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 14 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "c464beb0c072",
+          "Image": "selene-qualification-signal",
+          "Labels": "com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.image=sha256:4ac0d8f9badd53532bb45e5f1e203699bb723932189e41e002f163e7fc94c834,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.service=signal,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=72e02acc6570a651353d3ffe611bfb7a228bb087f428c4942b598b0d90feb850,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=signal-1,com.docker.compose.container-number=1",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-signal-1",
+          "Names": "selene-qualification-signal-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28002->8002/tcp, [::]:28002->8002/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "signal",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        }
+      ],
+      "at": "2026-09-02T05:24:30.899166+00:00"
+    },
+    {
+      "name": "restart_postgres",
+      "service": "qual-postgres",
+      "restart_returncode": 0,
+      "readiness_went_red": true,
+      "recovered": true,
+      "before": [
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:19 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "2d01259ce89f",
+          "Image": "selene-qualification-deterministic-fixture",
+          "Labels": "com.docker.compose.project=selene-qualification,com.docker.compose.version=5.5.0,com.docker.compose.depends_on=qual-redis:service_healthy:false,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=deterministic-fixture-1,com.docker.compose.service=deterministic-fixture,com.docker.compose.config-hash=e97294d72821d4b6364d747d6a698988e1a44b51601c5182d2c2a8ccde9632e7,com.docker.compose.container-number=1,com.docker.compose.image=sha256:8f9a6e4154b45f14a086d159405f98718984728624acaa3cb2bca0f92b59ee04,com.docker.compose.oneoff=False",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-deterministic-fixture-1",
+          "Names": "selene-qualification-deterministic-fixture-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28090->8090/tcp, [::]:28090->8090/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "deterministic-fixture",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "202e8f8a4bf3",
+          "Image": "selene-qualification-execution",
+          "Labels": "com.docker.compose.image=sha256:96cb37fd2b79e8068a7cd866ce5974d69e610d28a3d2ebf9673ba7b61b9e5a9e,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=673f1a2ba7eb4c7f484b581c39fea14acfd85ddbc5f4ee263df862d52bb15031,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=execution-1,com.docker.compose.service=execution,com.docker.compose.container-number=1",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-execution-1",
+          "Names": "selene-qualification-execution-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28005->8005/tcp, [::]:28005->8005/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "execution",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 9 minutes (healthy)"
+        },
+        {
+          "Command": "\"uvicorn services.ga\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:55 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d891e0ae4c14",
+          "Image": "selene-qualification-gateway",
+          "Labels": "com.docker.compose.replace=gateway-1,com.docker.compose.service=gateway,com.docker.compose.config-hash=ee9de148cf62bce4e291f165664888662a742aebc4ed23fba2b9845d1ab3865e,com.docker.compose.depends_on=qual-redis:service_healthy:false,execution:service_started:false,com.docker.compose.image=sha256:a33a6266b4ccf7fc0a5d2239bc954404c1563220f666e46d8c1840022522e2fc,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-gateway-1",
+          "Names": "selene-qualification-gateway-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25000->5000/tcp, [::]:25000->5000/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "15 minutes ago",
+          "Service": "gateway",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up About a minute (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "63464c8085d1",
+          "Image": "selene-qualification-portfolio",
+          "Labels": "com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=portfolio-1,com.docker.compose.service=portfolio,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=0ecb468ff8be1907f726e0ba1fc2ddde6b67d9dbe425cdb5ff1d10306a1a9067,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,qual-postgres:service_healthy:false,com.docker.compose.image=sha256:2d04b0e02be58ff9f86d2a167a4ba72f5c5af4355a8eb062b8ec7df4637d062a,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-portfolio-1",
+          "Names": "selene-qualification-portfolio-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28003->8003/tcp, [::]:28003->8003/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "portfolio",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "821e7863f0d4",
+          "Image": "postgres:16-alpine",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=qual-postgres-1,com.docker.compose.service=qual-postgres,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=59a6f20ae2782f1d781189652e54321b19672ea60d66c5615762afac2c896576,com.docker.compose.depends_on=,com.docker.compose.image=sha256:0fc5c901ec0a3c55ce70b99b040daeb89d5b35b61febbced1b4b24dbc3153ec8,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml",
+          "LocalVolumes": "1",
+          "Mounts": "/data/soffy/pr\u2026,/data/soffy/pr\u2026,selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-postgres-1",
+          "Names": "selene-qualification-qual-postgres-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25432->5432/tcp, [::]:25432->5432/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "20 minutes ago",
+          "Service": "qual-postgres",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 11 minutes (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "90083f0017d5",
+          "Image": "redis:7-alpine",
+          "Labels": "com.docker.compose.image=sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7,com.docker.compose.project=selene-qualification,com.docker.compose.replace=qual-redis-1,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=658e9c2087cf54661074759ee1e9809e3789c79d0acca215f5c3b93eddeb503d,com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=qual-redis,com.docker.compose.depends_on=",
+          "LocalVolumes": "1",
+          "Mounts": "selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-redis-1",
+          "Names": "selene-qualification-qual-redis-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:26379->6379/tcp, [::]:26379->6379/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "20 minutes ago",
+          "Service": "qual-redis",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 35 seconds (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d8833460ebc3",
+          "Image": "selene-qualification-risk",
+          "Labels": "com.docker.compose.replace=risk-1,com.docker.compose.service=risk,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=4f65f1d141721e7ab8fd181b8bb2a7dee63e609cf1c8fba8543fb42b01c56cdc,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.image=sha256:9b9806089aa2fbd9cf675214a8b575b93990638607323da972d3e9dd223b8733,com.docker.compose.oneoff=False,com.docker.compose.container-number=1,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-risk-1",
+          "Names": "selene-qualification-risk-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28004->8004/tcp, [::]:28004->8004/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "risk",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 10 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:44 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "4740526a8d7d",
+          "Image": "selene-qualification-scanner",
+          "Labels": "com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=scanner-1,com.docker.compose.service=scanner,com.docker.compose.depends_on=qual-redis:service_healthy:false,deterministic-fixture:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=73c59e53fb8c6f294a6e0db8a3633718593d32047736f2c814b6430f3965836c,com.docker.compose.container-number=1,com.docker.compose.image=sha256:2c7f91a69fe5c9ac663a48240039f33ca85165a5cc6355b807d5faf56f1a9eb9,com.docker.compose.project=selene-qualification",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-scanner-1",
+          "Names": "selene-qualification-scanner-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28001->8001/tcp, [::]:28001->8001/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "15 minutes ago",
+          "Service": "scanner",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 14 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "c464beb0c072",
+          "Image": "selene-qualification-signal",
+          "Labels": "com.docker.compose.config-hash=72e02acc6570a651353d3ffe611bfb7a228bb087f428c4942b598b0d90feb850,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.image=sha256:4ac0d8f9badd53532bb45e5f1e203699bb723932189e41e002f163e7fc94c834,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=signal,com.docker.compose.version=5.5.0,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=signal-1",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-signal-1",
+          "Names": "selene-qualification-signal-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28002->8002/tcp, [::]:28002->8002/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "signal",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        }
+      ],
+      "after": [
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:19 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "2d01259ce89f",
+          "Image": "selene-qualification-deterministic-fixture",
+          "Labels": "com.docker.compose.project=selene-qualification,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=e97294d72821d4b6364d747d6a698988e1a44b51601c5182d2c2a8ccde9632e7,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=deterministic-fixture-1,com.docker.compose.service=deterministic-fixture,com.docker.compose.image=sha256:8f9a6e4154b45f14a086d159405f98718984728624acaa3cb2bca0f92b59ee04,com.docker.compose.oneoff=False",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-deterministic-fixture-1",
+          "Names": "selene-qualification-deterministic-fixture-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28090->8090/tcp, [::]:28090->8090/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "deterministic-fixture",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "202e8f8a4bf3",
+          "Image": "selene-qualification-execution",
+          "Labels": "com.docker.compose.config-hash=673f1a2ba7eb4c7f484b581c39fea14acfd85ddbc5f4ee263df862d52bb15031,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.image=sha256:96cb37fd2b79e8068a7cd866ce5974d69e610d28a3d2ebf9673ba7b61b9e5a9e,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=execution-1,com.docker.compose.version=5.5.0,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.service=execution",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-execution-1",
+          "Names": "selene-qualification-execution-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28005->8005/tcp, [::]:28005->8005/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "execution",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 9 minutes (healthy)"
+        },
+        {
+          "Command": "\"uvicorn services.ga\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:55 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d891e0ae4c14",
+          "Image": "selene-qualification-gateway",
+          "Labels": "com.docker.compose.depends_on=qual-redis:service_healthy:false,execution:service_started:false,com.docker.compose.image=sha256:a33a6266b4ccf7fc0a5d2239bc954404c1563220f666e46d8c1840022522e2fc,com.docker.compose.project=selene-qualification,com.docker.compose.service=gateway,com.docker.compose.config-hash=ee9de148cf62bce4e291f165664888662a742aebc4ed23fba2b9845d1ab3865e,com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=gateway-1,com.docker.compose.version=5.5.0",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-gateway-1",
+          "Names": "selene-qualification-gateway-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25000->5000/tcp, [::]:25000->5000/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "15 minutes ago",
+          "Service": "gateway",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up About a minute (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "63464c8085d1",
+          "Image": "selene-qualification-portfolio",
+          "Labels": "com.docker.compose.config-hash=0ecb468ff8be1907f726e0ba1fc2ddde6b67d9dbe425cdb5ff1d10306a1a9067,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,qual-postgres:service_healthy:false,com.docker.compose.image=sha256:2d04b0e02be58ff9f86d2a167a4ba72f5c5af4355a8eb062b8ec7df4637d062a,com.docker.compose.replace=portfolio-1,com.docker.compose.service=portfolio,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-portfolio-1",
+          "Names": "selene-qualification-portfolio-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28003->8003/tcp, [::]:28003->8003/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "portfolio",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "821e7863f0d4",
+          "Image": "postgres:16-alpine",
+          "Labels": "com.docker.compose.config-hash=59a6f20ae2782f1d781189652e54321b19672ea60d66c5615762afac2c896576,com.docker.compose.depends_on=,com.docker.compose.image=sha256:0fc5c901ec0a3c55ce70b99b040daeb89d5b35b61febbced1b4b24dbc3153ec8,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=qual-postgres-1,com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=qual-postgres",
+          "LocalVolumes": "1",
+          "Mounts": "/data/soffy/pr\u2026,/data/soffy/pr\u2026,selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-postgres-1",
+          "Names": "selene-qualification-qual-postgres-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25432->5432/tcp, [::]:25432->5432/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "20 minutes ago",
+          "Service": "qual-postgres",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 7 seconds (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "90083f0017d5",
+          "Image": "redis:7-alpine",
+          "Labels": "com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.replace=qual-redis-1,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=658e9c2087cf54661074759ee1e9809e3789c79d0acca215f5c3b93eddeb503d,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=qual-redis,com.docker.compose.container-number=1,com.docker.compose.depends_on=,com.docker.compose.image=sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7",
+          "LocalVolumes": "1",
+          "Mounts": "selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-redis-1",
+          "Names": "selene-qualification-qual-redis-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:26379->6379/tcp, [::]:26379->6379/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "20 minutes ago",
+          "Service": "qual-redis",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 50 seconds (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d8833460ebc3",
+          "Image": "selene-qualification-risk",
+          "Labels": "com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.image=sha256:9b9806089aa2fbd9cf675214a8b575b93990638607323da972d3e9dd223b8733,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.replace=risk-1,com.docker.compose.service=risk,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=4f65f1d141721e7ab8fd181b8bb2a7dee63e609cf1c8fba8543fb42b01c56cdc,com.docker.compose.container-number=1,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-risk-1",
+          "Names": "selene-qualification-risk-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28004->8004/tcp, [::]:28004->8004/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "risk",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 10 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:44 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "4740526a8d7d",
+          "Image": "selene-qualification-scanner",
+          "Labels": "com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.service=scanner,com.docker.compose.config-hash=73c59e53fb8c6f294a6e0db8a3633718593d32047736f2c814b6430f3965836c,com.docker.compose.container-number=1,com.docker.compose.image=sha256:2c7f91a69fe5c9ac663a48240039f33ca85165a5cc6355b807d5faf56f1a9eb9,com.docker.compose.oneoff=False,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=scanner-1,com.docker.compose.version=5.5.0,com.docker.compose.depends_on=qual-redis:service_healthy:false,deterministic-fixture:service_healthy:false,com.docker.compose.project=selene-qualification",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-scanner-1",
+          "Names": "selene-qualification-scanner-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28001->8001/tcp, [::]:28001->8001/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "scanner",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "c464beb0c072",
+          "Image": "selene-qualification-signal",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.image=sha256:4ac0d8f9badd53532bb45e5f1e203699bb723932189e41e002f163e7fc94c834,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=signal-1,com.docker.compose.service=signal,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=72e02acc6570a651353d3ffe611bfb7a228bb087f428c4942b598b0d90feb850",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-signal-1",
+          "Names": "selene-qualification-signal-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28002->8002/tcp, [::]:28002->8002/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "signal",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        }
+      ],
+      "at": "2026-09-02T05:24:47.019520+00:00"
+    },
+    {
+      "name": "restart_execution",
+      "service": "execution",
+      "restart_returncode": 0,
+      "readiness_went_red": true,
+      "recovered": true,
+      "before": [
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:19 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "2d01259ce89f",
+          "Image": "selene-qualification-deterministic-fixture",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.image=sha256:8f9a6e4154b45f14a086d159405f98718984728624acaa3cb2bca0f92b59ee04,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.depends_on=qual-redis:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=deterministic-fixture-1,com.docker.compose.service=deterministic-fixture,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=e97294d72821d4b6364d747d6a698988e1a44b51601c5182d2c2a8ccde9632e7",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-deterministic-fixture-1",
+          "Names": "selene-qualification-deterministic-fixture-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28090->8090/tcp, [::]:28090->8090/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "deterministic-fixture",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "202e8f8a4bf3",
+          "Image": "selene-qualification-execution",
+          "Labels": "com.docker.compose.version=5.5.0,com.docker.compose.config-hash=673f1a2ba7eb4c7f484b581c39fea14acfd85ddbc5f4ee263df862d52bb15031,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.image=sha256:96cb37fd2b79e8068a7cd866ce5974d69e610d28a3d2ebf9673ba7b61b9e5a9e,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=execution,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=execution-1",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-execution-1",
+          "Names": "selene-qualification-execution-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28005->8005/tcp, [::]:28005->8005/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "execution",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 9 minutes (healthy)"
+        },
+        {
+          "Command": "\"uvicorn services.ga\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:55 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d891e0ae4c14",
+          "Image": "selene-qualification-gateway",
+          "Labels": "com.docker.compose.replace=gateway-1,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=ee9de148cf62bce4e291f165664888662a742aebc4ed23fba2b9845d1ab3865e,com.docker.compose.image=sha256:a33a6266b4ccf7fc0a5d2239bc954404c1563220f666e46d8c1840022522e2fc,com.docker.compose.oneoff=False,com.docker.compose.service=gateway,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,execution:service_started:false,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-gateway-1",
+          "Names": "selene-qualification-gateway-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25000->5000/tcp, [::]:25000->5000/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "15 minutes ago",
+          "Service": "gateway",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up About a minute (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "63464c8085d1",
+          "Image": "selene-qualification-portfolio",
+          "Labels": "com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=portfolio-1,com.docker.compose.service=portfolio,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=0ecb468ff8be1907f726e0ba1fc2ddde6b67d9dbe425cdb5ff1d10306a1a9067,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,qual-postgres:service_healthy:false,com.docker.compose.image=sha256:2d04b0e02be58ff9f86d2a167a4ba72f5c5af4355a8eb062b8ec7df4637d062a,com.docker.compose.oneoff=False",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-portfolio-1",
+          "Names": "selene-qualification-portfolio-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28003->8003/tcp, [::]:28003->8003/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "portfolio",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "821e7863f0d4",
+          "Image": "postgres:16-alpine",
+          "Labels": "com.docker.compose.depends_on=,com.docker.compose.image=sha256:0fc5c901ec0a3c55ce70b99b040daeb89d5b35b61febbced1b4b24dbc3153ec8,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=qual-postgres-1,com.docker.compose.service=qual-postgres,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=59a6f20ae2782f1d781189652e54321b19672ea60d66c5615762afac2c896576,com.docker.compose.container-number=1,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure",
+          "LocalVolumes": "1",
+          "Mounts": "/data/soffy/pr\u2026,/data/soffy/pr\u2026,selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-postgres-1",
+          "Names": "selene-qualification-qual-postgres-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25432->5432/tcp, [::]:25432->5432/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "20 minutes ago",
+          "Service": "qual-postgres",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 7 seconds (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "90083f0017d5",
+          "Image": "redis:7-alpine",
+          "Labels": "com.docker.compose.replace=qual-redis-1,com.docker.compose.service=qual-redis,com.docker.compose.image=sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=658e9c2087cf54661074759ee1e9809e3789c79d0acca215f5c3b93eddeb503d,com.docker.compose.container-number=1,com.docker.compose.depends_on=,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml",
+          "LocalVolumes": "1",
+          "Mounts": "selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-redis-1",
+          "Names": "selene-qualification-qual-redis-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:26379->6379/tcp, [::]:26379->6379/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "20 minutes ago",
+          "Service": "qual-redis",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 51 seconds (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d8833460ebc3",
+          "Image": "selene-qualification-risk",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=risk-1,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=4f65f1d141721e7ab8fd181b8bb2a7dee63e609cf1c8fba8543fb42b01c56cdc,com.docker.compose.image=sha256:9b9806089aa2fbd9cf675214a8b575b93990638607323da972d3e9dd223b8733,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.service=risk",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-risk-1",
+          "Names": "selene-qualification-risk-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28004->8004/tcp, [::]:28004->8004/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "risk",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 10 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:44 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "4740526a8d7d",
+          "Image": "selene-qualification-scanner",
+          "Labels": "com.docker.compose.depends_on=qual-redis:service_healthy:false,deterministic-fixture:service_healthy:false,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=scanner-1,com.docker.compose.service=scanner,com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.image=sha256:2c7f91a69fe5c9ac663a48240039f33ca85165a5cc6355b807d5faf56f1a9eb9,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.config-hash=73c59e53fb8c6f294a6e0db8a3633718593d32047736f2c814b6430f3965836c",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-scanner-1",
+          "Names": "selene-qualification-scanner-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28001->8001/tcp, [::]:28001->8001/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "scanner",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "c464beb0c072",
+          "Image": "selene-qualification-signal",
+          "Labels": "com.docker.compose.image=sha256:4ac0d8f9badd53532bb45e5f1e203699bb723932189e41e002f163e7fc94c834,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=signal-1,com.docker.compose.service=signal,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=72e02acc6570a651353d3ffe611bfb7a228bb087f428c4942b598b0d90feb850,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.project=selene-qualification,com.docker.compose.container-number=1",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-signal-1",
+          "Names": "selene-qualification-signal-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28002->8002/tcp, [::]:28002->8002/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "signal",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        }
+      ],
+      "after": [
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:19 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "2d01259ce89f",
+          "Image": "selene-qualification-deterministic-fixture",
+          "Labels": "com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.image=sha256:8f9a6e4154b45f14a086d159405f98718984728624acaa3cb2bca0f92b59ee04,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=deterministic-fixture,com.docker.compose.config-hash=e97294d72821d4b6364d747d6a698988e1a44b51601c5182d2c2a8ccde9632e7,com.docker.compose.depends_on=qual-redis:service_healthy:false,com.docker.compose.replace=deterministic-fixture-1",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-deterministic-fixture-1",
+          "Names": "selene-qualification-deterministic-fixture-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28090->8090/tcp, [::]:28090->8090/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "deterministic-fixture",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "202e8f8a4bf3",
+          "Image": "selene-qualification-execution",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.image=sha256:96cb37fd2b79e8068a7cd866ce5974d69e610d28a3d2ebf9673ba7b61b9e5a9e,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.service=execution,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=673f1a2ba7eb4c7f484b581c39fea14acfd85ddbc5f4ee263df862d52bb15031,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=execution-1",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-execution-1",
+          "Names": "selene-qualification-execution-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28005->8005/tcp, [::]:28005->8005/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "execution",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 13 seconds (healthy)"
+        },
+        {
+          "Command": "\"uvicorn services.ga\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:55 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d891e0ae4c14",
+          "Image": "selene-qualification-gateway",
+          "Labels": "com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=gateway-1,com.docker.compose.service=gateway,com.docker.compose.config-hash=ee9de148cf62bce4e291f165664888662a742aebc4ed23fba2b9845d1ab3865e,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,execution:service_started:false,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0,com.docker.compose.image=sha256:a33a6266b4ccf7fc0a5d2239bc954404c1563220f666e46d8c1840022522e2fc",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-gateway-1",
+          "Names": "selene-qualification-gateway-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25000->5000/tcp, [::]:25000->5000/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "gateway",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up About a minute (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "63464c8085d1",
+          "Image": "selene-qualification-portfolio",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.image=sha256:2d04b0e02be58ff9f86d2a167a4ba72f5c5af4355a8eb062b8ec7df4637d062a,com.docker.compose.oneoff=False,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=portfolio,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=0ecb468ff8be1907f726e0ba1fc2ddde6b67d9dbe425cdb5ff1d10306a1a9067,com.docker.compose.depends_on=qual-redis:service_healthy:false,qual-postgres:service_healthy:false,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=portfolio-1",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-portfolio-1",
+          "Names": "selene-qualification-portfolio-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28003->8003/tcp, [::]:28003->8003/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "portfolio",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "821e7863f0d4",
+          "Image": "postgres:16-alpine",
+          "Labels": "com.docker.compose.config-hash=59a6f20ae2782f1d781189652e54321b19672ea60d66c5615762afac2c896576,com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.service=qual-postgres,com.docker.compose.version=5.5.0,com.docker.compose.depends_on=,com.docker.compose.image=sha256:0fc5c901ec0a3c55ce70b99b040daeb89d5b35b61febbced1b4b24dbc3153ec8,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=qual-postgres-1",
+          "LocalVolumes": "1",
+          "Mounts": "/data/soffy/pr\u2026,/data/soffy/pr\u2026,selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-postgres-1",
+          "Names": "selene-qualification-qual-postgres-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25432->5432/tcp, [::]:25432->5432/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "21 minutes ago",
+          "Service": "qual-postgres",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 23 seconds (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "90083f0017d5",
+          "Image": "redis:7-alpine",
+          "Labels": "com.docker.compose.replace=qual-redis-1,com.docker.compose.config-hash=658e9c2087cf54661074759ee1e9809e3789c79d0acca215f5c3b93eddeb503d,com.docker.compose.depends_on=,com.docker.compose.image=sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=qual-redis,com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml",
+          "LocalVolumes": "1",
+          "Mounts": "selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-redis-1",
+          "Names": "selene-qualification-qual-redis-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:26379->6379/tcp, [::]:26379->6379/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "21 minutes ago",
+          "Service": "qual-redis",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up About a minute (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d8833460ebc3",
+          "Image": "selene-qualification-risk",
+          "Labels": "com.docker.compose.service=risk,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=4f65f1d141721e7ab8fd181b8bb2a7dee63e609cf1c8fba8543fb42b01c56cdc,com.docker.compose.container-number=1,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.image=sha256:9b9806089aa2fbd9cf675214a8b575b93990638607323da972d3e9dd223b8733,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=risk-1",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-risk-1",
+          "Names": "selene-qualification-risk-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28004->8004/tcp, [::]:28004->8004/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "risk",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 10 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:44 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "4740526a8d7d",
+          "Image": "selene-qualification-scanner",
+          "Labels": "com.docker.compose.replace=scanner-1,com.docker.compose.image=sha256:2c7f91a69fe5c9ac663a48240039f33ca85165a5cc6355b807d5faf56f1a9eb9,com.docker.compose.oneoff=False,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=scanner,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=73c59e53fb8c6f294a6e0db8a3633718593d32047736f2c814b6430f3965836c,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,deterministic-fixture:service_healthy:false,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-scanner-1",
+          "Names": "selene-qualification-scanner-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28001->8001/tcp, [::]:28001->8001/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "scanner",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "c464beb0c072",
+          "Image": "selene-qualification-signal",
+          "Labels": "com.docker.compose.config-hash=72e02acc6570a651353d3ffe611bfb7a228bb087f428c4942b598b0d90feb850,com.docker.compose.container-number=1,com.docker.compose.image=sha256:4ac0d8f9badd53532bb45e5f1e203699bb723932189e41e002f163e7fc94c834,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=signal-1,com.docker.compose.version=5.5.0,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.service=signal",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-signal-1",
+          "Names": "selene-qualification-signal-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28002->8002/tcp, [::]:28002->8002/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "signal",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        }
+      ],
+      "at": "2026-09-02T05:25:03.104106+00:00"
+    },
+    {
+      "name": "restart_risk",
+      "service": "risk",
+      "restart_returncode": 0,
+      "readiness_went_red": true,
+      "recovered": true,
+      "before": [
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:19 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "2d01259ce89f",
+          "Image": "selene-qualification-deterministic-fixture",
+          "Labels": "com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=deterministic-fixture,com.docker.compose.config-hash=e97294d72821d4b6364d747d6a698988e1a44b51601c5182d2c2a8ccde9632e7,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,com.docker.compose.project=selene-qualification,com.docker.compose.replace=deterministic-fixture-1,com.docker.compose.version=5.5.0,com.docker.compose.image=sha256:8f9a6e4154b45f14a086d159405f98718984728624acaa3cb2bca0f92b59ee04,com.docker.compose.oneoff=False",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-deterministic-fixture-1",
+          "Names": "selene-qualification-deterministic-fixture-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28090->8090/tcp, [::]:28090->8090/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "deterministic-fixture",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "202e8f8a4bf3",
+          "Image": "selene-qualification-execution",
+          "Labels": "com.docker.compose.config-hash=673f1a2ba7eb4c7f484b581c39fea14acfd85ddbc5f4ee263df862d52bb15031,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=execution-1,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.image=sha256:96cb37fd2b79e8068a7cd866ce5974d69e610d28a3d2ebf9673ba7b61b9e5a9e,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.service=execution,com.docker.compose.version=5.5.0",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-execution-1",
+          "Names": "selene-qualification-execution-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28005->8005/tcp, [::]:28005->8005/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "execution",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 14 seconds (healthy)"
+        },
+        {
+          "Command": "\"uvicorn services.ga\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:55 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d891e0ae4c14",
+          "Image": "selene-qualification-gateway",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,execution:service_started:false,com.docker.compose.image=sha256:a33a6266b4ccf7fc0a5d2239bc954404c1563220f666e46d8c1840022522e2fc,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=gateway-1,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=ee9de148cf62bce4e291f165664888662a742aebc4ed23fba2b9845d1ab3865e,com.docker.compose.project=selene-qualification,com.docker.compose.service=gateway",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-gateway-1",
+          "Names": "selene-qualification-gateway-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25000->5000/tcp, [::]:25000->5000/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "gateway",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up About a minute (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "63464c8085d1",
+          "Image": "selene-qualification-portfolio",
+          "Labels": "com.docker.compose.config-hash=0ecb468ff8be1907f726e0ba1fc2ddde6b67d9dbe425cdb5ff1d10306a1a9067,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,qual-postgres:service_healthy:false,com.docker.compose.image=sha256:2d04b0e02be58ff9f86d2a167a4ba72f5c5af4355a8eb062b8ec7df4637d062a,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0,com.docker.compose.oneoff=False,com.docker.compose.replace=portfolio-1,com.docker.compose.service=portfolio",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-portfolio-1",
+          "Names": "selene-qualification-portfolio-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28003->8003/tcp, [::]:28003->8003/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "portfolio",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "821e7863f0d4",
+          "Image": "postgres:16-alpine",
+          "Labels": "com.docker.compose.depends_on=,com.docker.compose.replace=qual-postgres-1,com.docker.compose.service=qual-postgres,com.docker.compose.container-number=1,com.docker.compose.image=sha256:0fc5c901ec0a3c55ce70b99b040daeb89d5b35b61febbced1b4b24dbc3153ec8,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=59a6f20ae2782f1d781189652e54321b19672ea60d66c5615762afac2c896576",
+          "LocalVolumes": "1",
+          "Mounts": "/data/soffy/pr\u2026,/data/soffy/pr\u2026,selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-postgres-1",
+          "Names": "selene-qualification-qual-postgres-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25432->5432/tcp, [::]:25432->5432/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "21 minutes ago",
+          "Service": "qual-postgres",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 24 seconds (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "90083f0017d5",
+          "Image": "redis:7-alpine",
+          "Labels": "com.docker.compose.config-hash=658e9c2087cf54661074759ee1e9809e3789c79d0acca215f5c3b93eddeb503d,com.docker.compose.container-number=1,com.docker.compose.depends_on=,com.docker.compose.image=sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=qual-redis-1,com.docker.compose.service=qual-redis,com.docker.compose.version=5.5.0",
+          "LocalVolumes": "1",
+          "Mounts": "selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-redis-1",
+          "Names": "selene-qualification-qual-redis-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:26379->6379/tcp, [::]:26379->6379/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "21 minutes ago",
+          "Service": "qual-redis",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up About a minute (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d8833460ebc3",
+          "Image": "selene-qualification-risk",
+          "Labels": "com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=4f65f1d141721e7ab8fd181b8bb2a7dee63e609cf1c8fba8543fb42b01c56cdc,com.docker.compose.container-number=1,com.docker.compose.image=sha256:9b9806089aa2fbd9cf675214a8b575b93990638607323da972d3e9dd223b8733,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=risk-1,com.docker.compose.service=risk,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.oneoff=False",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-risk-1",
+          "Names": "selene-qualification-risk-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28004->8004/tcp, [::]:28004->8004/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "risk",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 10 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:44 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "4740526a8d7d",
+          "Image": "selene-qualification-scanner",
+          "Labels": "com.docker.compose.config-hash=73c59e53fb8c6f294a6e0db8a3633718593d32047736f2c814b6430f3965836c,com.docker.compose.container-number=1,com.docker.compose.image=sha256:2c7f91a69fe5c9ac663a48240039f33ca85165a5cc6355b807d5faf56f1a9eb9,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.version=5.5.0,com.docker.compose.depends_on=qual-redis:service_healthy:false,deterministic-fixture:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=scanner-1,com.docker.compose.service=scanner",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-scanner-1",
+          "Names": "selene-qualification-scanner-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28001->8001/tcp, [::]:28001->8001/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "scanner",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "c464beb0c072",
+          "Image": "selene-qualification-signal",
+          "Labels": "com.docker.compose.image=sha256:4ac0d8f9badd53532bb45e5f1e203699bb723932189e41e002f163e7fc94c834,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=signal-1,com.docker.compose.service=signal,com.docker.compose.config-hash=72e02acc6570a651353d3ffe611bfb7a228bb087f428c4942b598b0d90feb850,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-signal-1",
+          "Names": "selene-qualification-signal-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28002->8002/tcp, [::]:28002->8002/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "signal",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        }
+      ],
+      "after": [
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:19 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "2d01259ce89f",
+          "Image": "selene-qualification-deterministic-fixture",
+          "Labels": "com.docker.compose.image=sha256:8f9a6e4154b45f14a086d159405f98718984728624acaa3cb2bca0f92b59ee04,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.version=5.5.0,com.docker.compose.depends_on=qual-redis:service_healthy:false,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=deterministic-fixture-1,com.docker.compose.service=deterministic-fixture,com.docker.compose.config-hash=e97294d72821d4b6364d747d6a698988e1a44b51601c5182d2c2a8ccde9632e7,com.docker.compose.container-number=1",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-deterministic-fixture-1",
+          "Names": "selene-qualification-deterministic-fixture-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28090->8090/tcp, [::]:28090->8090/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "17 minutes ago",
+          "Service": "deterministic-fixture",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 16 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "202e8f8a4bf3",
+          "Image": "selene-qualification-execution",
+          "Labels": "com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=execution-1,com.docker.compose.service=execution,com.docker.compose.config-hash=673f1a2ba7eb4c7f484b581c39fea14acfd85ddbc5f4ee263df862d52bb15031,com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.image=sha256:96cb37fd2b79e8068a7cd866ce5974d69e610d28a3d2ebf9673ba7b61b9e5a9e,com.docker.compose.project=selene-qualification",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-execution-1",
+          "Names": "selene-qualification-execution-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28005->8005/tcp, [::]:28005->8005/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "execution",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 32 seconds (healthy)"
+        },
+        {
+          "Command": "\"uvicorn services.ga\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:55 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d891e0ae4c14",
+          "Image": "selene-qualification-gateway",
+          "Labels": "com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=gateway-1,com.docker.compose.service=gateway,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=ee9de148cf62bce4e291f165664888662a742aebc4ed23fba2b9845d1ab3865e,com.docker.compose.depends_on=qual-redis:service_healthy:false,execution:service_started:false,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.container-number=1,com.docker.compose.image=sha256:a33a6266b4ccf7fc0a5d2239bc954404c1563220f666e46d8c1840022522e2fc",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-gateway-1",
+          "Names": "selene-qualification-gateway-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25000->5000/tcp, [::]:25000->5000/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "gateway",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 2 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "63464c8085d1",
+          "Image": "selene-qualification-portfolio",
+          "Labels": "com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,qual-postgres:service_healthy:false,com.docker.compose.image=sha256:2d04b0e02be58ff9f86d2a167a4ba72f5c5af4355a8eb062b8ec7df4637d062a,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=portfolio-1,com.docker.compose.service=portfolio,com.docker.compose.config-hash=0ecb468ff8be1907f726e0ba1fc2ddde6b67d9dbe425cdb5ff1d10306a1a9067",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-portfolio-1",
+          "Names": "selene-qualification-portfolio-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28003->8003/tcp, [::]:28003->8003/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "portfolio",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "821e7863f0d4",
+          "Image": "postgres:16-alpine",
+          "Labels": "com.docker.compose.service=qual-postgres,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=qual-postgres-1,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=59a6f20ae2782f1d781189652e54321b19672ea60d66c5615762afac2c896576,com.docker.compose.container-number=1,com.docker.compose.depends_on=,com.docker.compose.image=sha256:0fc5c901ec0a3c55ce70b99b040daeb89d5b35b61febbced1b4b24dbc3153ec8,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml",
+          "LocalVolumes": "1",
+          "Mounts": "/data/soffy/pr\u2026,/data/soffy/pr\u2026,selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-postgres-1",
+          "Names": "selene-qualification-qual-postgres-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25432->5432/tcp, [::]:25432->5432/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "21 minutes ago",
+          "Service": "qual-postgres",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 42 seconds (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "90083f0017d5",
+          "Image": "redis:7-alpine",
+          "Labels": "com.docker.compose.config-hash=658e9c2087cf54661074759ee1e9809e3789c79d0acca215f5c3b93eddeb503d,com.docker.compose.depends_on=,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=qual-redis,com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.image=sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.replace=qual-redis-1",
+          "LocalVolumes": "1",
+          "Mounts": "selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-redis-1",
+          "Names": "selene-qualification-qual-redis-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:26379->6379/tcp, [::]:26379->6379/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "21 minutes ago",
+          "Service": "qual-redis",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up About a minute (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "starting",
+          "ID": "d8833460ebc3",
+          "Image": "selene-qualification-risk",
+          "Labels": "com.docker.compose.image=sha256:9b9806089aa2fbd9cf675214a8b575b93990638607323da972d3e9dd223b8733,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=risk-1,com.docker.compose.config-hash=4f65f1d141721e7ab8fd181b8bb2a7dee63e609cf1c8fba8543fb42b01c56cdc,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.service=risk,com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-risk-1",
+          "Names": "selene-qualification-risk-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28004->8004/tcp, [::]:28004->8004/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "risk",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 5 seconds (health: starting)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:44 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "4740526a8d7d",
+          "Image": "selene-qualification-scanner",
+          "Labels": "com.docker.compose.oneoff=False,com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=scanner-1,com.docker.compose.service=scanner,com.docker.compose.config-hash=73c59e53fb8c6f294a6e0db8a3633718593d32047736f2c814b6430f3965836c,com.docker.compose.depends_on=qual-redis:service_healthy:false,deterministic-fixture:service_healthy:false,com.docker.compose.image=sha256:2c7f91a69fe5c9ac663a48240039f33ca85165a5cc6355b807d5faf56f1a9eb9",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-scanner-1",
+          "Names": "selene-qualification-scanner-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28001->8001/tcp, [::]:28001->8001/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "scanner",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 15 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "c464beb0c072",
+          "Image": "selene-qualification-signal",
+          "Labels": "com.docker.compose.config-hash=72e02acc6570a651353d3ffe611bfb7a228bb087f428c4942b598b0d90feb850,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.version=5.5.0,com.docker.compose.image=sha256:4ac0d8f9badd53532bb45e5f1e203699bb723932189e41e002f163e7fc94c834,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=signal-1,com.docker.compose.service=signal",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-signal-1",
+          "Names": "selene-qualification-signal-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28002->8002/tcp, [::]:28002->8002/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "signal",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 16 minutes (healthy)"
+        }
+      ],
+      "at": "2026-09-02T05:25:21.969484+00:00"
+    },
+    {
+      "service": "execution",
+      "restart_returncode": 0,
+      "readiness_went_red": true,
+      "recovered": true,
+      "before": [
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:19 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "2d01259ce89f",
+          "Image": "selene-qualification-deterministic-fixture",
+          "Labels": "com.docker.compose.depends_on=qual-redis:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=deterministic-fixture,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=e97294d72821d4b6364d747d6a698988e1a44b51601c5182d2c2a8ccde9632e7,com.docker.compose.container-number=1,com.docker.compose.image=sha256:8f9a6e4154b45f14a086d159405f98718984728624acaa3cb2bca0f92b59ee04,com.docker.compose.replace=deterministic-fixture-1",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-deterministic-fixture-1",
+          "Names": "selene-qualification-deterministic-fixture-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28090->8090/tcp, [::]:28090->8090/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "17 minutes ago",
+          "Service": "deterministic-fixture",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 16 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "202e8f8a4bf3",
+          "Image": "selene-qualification-execution",
+          "Labels": "com.docker.compose.image=sha256:96cb37fd2b79e8068a7cd866ce5974d69e610d28a3d2ebf9673ba7b61b9e5a9e,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.config-hash=673f1a2ba7eb4c7f484b581c39fea14acfd85ddbc5f4ee263df862d52bb15031,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.replace=execution-1,com.docker.compose.service=execution,com.docker.compose.version=5.5.0",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-execution-1",
+          "Names": "selene-qualification-execution-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28005->8005/tcp, [::]:28005->8005/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "17 minutes ago",
+          "Service": "execution",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 49 seconds (healthy)"
+        },
+        {
+          "Command": "\"uvicorn services.ga\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:55 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d891e0ae4c14",
+          "Image": "selene-qualification-gateway",
+          "Labels": "com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=gateway,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=ee9de148cf62bce4e291f165664888662a742aebc4ed23fba2b9845d1ab3865e,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,execution:service_started:false,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=gateway-1,com.docker.compose.image=sha256:a33a6266b4ccf7fc0a5d2239bc954404c1563220f666e46d8c1840022522e2fc",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-gateway-1",
+          "Names": "selene-qualification-gateway-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25000->5000/tcp, [::]:25000->5000/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "gateway",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 2 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "63464c8085d1",
+          "Image": "selene-qualification-portfolio",
+          "Labels": "com.docker.compose.depends_on=qual-redis:service_healthy:false,qual-postgres:service_healthy:false,com.docker.compose.image=sha256:2d04b0e02be58ff9f86d2a167a4ba72f5c5af4355a8eb062b8ec7df4637d062a,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=0ecb468ff8be1907f726e0ba1fc2ddde6b67d9dbe425cdb5ff1d10306a1a9067,com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=portfolio-1,com.docker.compose.service=portfolio",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-portfolio-1",
+          "Names": "selene-qualification-portfolio-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28003->8003/tcp, [::]:28003->8003/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "17 minutes ago",
+          "Service": "portfolio",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 16 minutes (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "821e7863f0d4",
+          "Image": "postgres:16-alpine",
+          "Labels": "com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=qual-postgres,com.docker.compose.config-hash=59a6f20ae2782f1d781189652e54321b19672ea60d66c5615762afac2c896576,com.docker.compose.depends_on=,com.docker.compose.oneoff=False,com.docker.compose.replace=qual-postgres-1,com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.image=sha256:0fc5c901ec0a3c55ce70b99b040daeb89d5b35b61febbced1b4b24dbc3153ec8,com.docker.compose.project=selene-qualification",
+          "LocalVolumes": "1",
+          "Mounts": "/data/soffy/pr\u2026,selene-qualifi\u2026,/data/soffy/pr\u2026",
+          "Name": "selene-qualification-qual-postgres-1",
+          "Names": "selene-qualification-qual-postgres-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25432->5432/tcp, [::]:25432->5432/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "21 minutes ago",
+          "Service": "qual-postgres",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 59 seconds (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "90083f0017d5",
+          "Image": "redis:7-alpine",
+          "Labels": "com.docker.compose.config-hash=658e9c2087cf54661074759ee1e9809e3789c79d0acca215f5c3b93eddeb503d,com.docker.compose.depends_on=,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=qual-redis-1,com.docker.compose.service=qual-redis,com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.image=sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7,com.docker.compose.oneoff=False,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure",
+          "LocalVolumes": "1",
+          "Mounts": "selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-redis-1",
+          "Names": "selene-qualification-qual-redis-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:26379->6379/tcp, [::]:26379->6379/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "21 minutes ago",
+          "Service": "qual-redis",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up About a minute (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "starting",
+          "ID": "d8833460ebc3",
+          "Image": "selene-qualification-risk",
+          "Labels": "com.docker.compose.config-hash=4f65f1d141721e7ab8fd181b8bb2a7dee63e609cf1c8fba8543fb42b01c56cdc,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.service=risk,com.docker.compose.version=5.5.0,com.docker.compose.image=sha256:9b9806089aa2fbd9cf675214a8b575b93990638607323da972d3e9dd223b8733,com.docker.compose.oneoff=False,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=risk-1",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-risk-1",
+          "Names": "selene-qualification-risk-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28004->8004/tcp, [::]:28004->8004/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "17 minutes ago",
+          "Service": "risk",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 22 seconds (health: starting)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:44 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "4740526a8d7d",
+          "Image": "selene-qualification-scanner",
+          "Labels": "com.docker.compose.project=selene-qualification,com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.image=sha256:2c7f91a69fe5c9ac663a48240039f33ca85165a5cc6355b807d5faf56f1a9eb9,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=scanner-1,com.docker.compose.service=scanner,com.docker.compose.config-hash=73c59e53fb8c6f294a6e0db8a3633718593d32047736f2c814b6430f3965836c,com.docker.compose.depends_on=qual-redis:service_healthy:false,deterministic-fixture:service_healthy:false,com.docker.compose.oneoff=False",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-scanner-1",
+          "Names": "selene-qualification-scanner-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28001->8001/tcp, [::]:28001->8001/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "scanner",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 16 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "c464beb0c072",
+          "Image": "selene-qualification-signal",
+          "Labels": "com.docker.compose.version=5.5.0,com.docker.compose.config-hash=72e02acc6570a651353d3ffe611bfb7a228bb087f428c4942b598b0d90feb850,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.project=selene-qualification,com.docker.compose.replace=signal-1,com.docker.compose.container-number=1,com.docker.compose.image=sha256:4ac0d8f9badd53532bb45e5f1e203699bb723932189e41e002f163e7fc94c834,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=signal",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-signal-1",
+          "Names": "selene-qualification-signal-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28002->8002/tcp, [::]:28002->8002/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "17 minutes ago",
+          "Service": "signal",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 16 minutes (healthy)"
+        }
+      ],
+      "after": [
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:19 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "2d01259ce89f",
+          "Image": "selene-qualification-deterministic-fixture",
+          "Labels": "com.docker.compose.config-hash=e97294d72821d4b6364d747d6a698988e1a44b51601c5182d2c2a8ccde9632e7,com.docker.compose.depends_on=qual-redis:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.image=sha256:8f9a6e4154b45f14a086d159405f98718984728624acaa3cb2bca0f92b59ee04,com.docker.compose.project=selene-qualification,com.docker.compose.replace=deterministic-fixture-1,com.docker.compose.service=deterministic-fixture",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-deterministic-fixture-1",
+          "Names": "selene-qualification-deterministic-fixture-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28090->8090/tcp, [::]:28090->8090/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8090,
+              "PublishedPort": 28090,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "17 minutes ago",
+          "Service": "deterministic-fixture",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 16 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "starting",
+          "ID": "202e8f8a4bf3",
+          "Image": "selene-qualification-execution",
+          "Labels": "com.docker.compose.oneoff=False,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=execution,com.docker.compose.config-hash=673f1a2ba7eb4c7f484b581c39fea14acfd85ddbc5f4ee263df862d52bb15031,com.docker.compose.container-number=1,com.docker.compose.image=sha256:96cb37fd2b79e8068a7cd866ce5974d69e610d28a3d2ebf9673ba7b61b9e5a9e,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=execution-1,com.docker.compose.version=5.5.0,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-execution-1",
+          "Names": "selene-qualification-execution-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28005->8005/tcp, [::]:28005->8005/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8005,
+              "PublishedPort": 28005,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "17 minutes ago",
+          "Service": "execution",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 9 seconds (health: starting)"
+        },
+        {
+          "Command": "\"uvicorn services.ga\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:55 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d891e0ae4c14",
+          "Image": "selene-qualification-gateway",
+          "Labels": "com.docker.compose.config-hash=ee9de148cf62bce4e291f165664888662a742aebc4ed23fba2b9845d1ab3865e,com.docker.compose.container-number=1,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.service=gateway,com.docker.compose.version=5.5.0,com.docker.compose.depends_on=qual-redis:service_healthy:false,execution:service_started:false,com.docker.compose.image=sha256:a33a6266b4ccf7fc0a5d2239bc954404c1563220f666e46d8c1840022522e2fc,com.docker.compose.oneoff=False,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=gateway-1",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-gateway-1",
+          "Names": "selene-qualification-gateway-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25000->5000/tcp, [::]:25000->5000/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5000,
+              "PublishedPort": 25000,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "16 minutes ago",
+          "Service": "gateway",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 2 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "63464c8085d1",
+          "Image": "selene-qualification-portfolio",
+          "Labels": "com.docker.compose.depends_on=qual-redis:service_healthy:false,qual-postgres:service_healthy:false,com.docker.compose.image=sha256:2d04b0e02be58ff9f86d2a167a4ba72f5c5af4355a8eb062b8ec7df4637d062a,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=0ecb468ff8be1907f726e0ba1fc2ddde6b67d9dbe425cdb5ff1d10306a1a9067,com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.replace=portfolio-1,com.docker.compose.service=portfolio",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-portfolio-1",
+          "Names": "selene-qualification-portfolio-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28003->8003/tcp, [::]:28003->8003/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8003,
+              "PublishedPort": 28003,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "17 minutes ago",
+          "Service": "portfolio",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 16 minutes (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "821e7863f0d4",
+          "Image": "postgres:16-alpine",
+          "Labels": "com.docker.compose.image=sha256:0fc5c901ec0a3c55ce70b99b040daeb89d5b35b61febbced1b4b24dbc3153ec8,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=qual-postgres-1,com.docker.compose.service=qual-postgres,com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.version=5.5.0,com.docker.compose.config-hash=59a6f20ae2782f1d781189652e54321b19672ea60d66c5615762afac2c896576,com.docker.compose.depends_on=",
+          "LocalVolumes": "1",
+          "Mounts": "/data/soffy/pr\u2026,/data/soffy/pr\u2026,selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-postgres-1",
+          "Names": "selene-qualification-qual-postgres-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:25432->5432/tcp, [::]:25432->5432/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 5432,
+              "PublishedPort": 25432,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "22 minutes ago",
+          "Service": "qual-postgres",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up About a minute (healthy)"
+        },
+        {
+          "Command": "\"docker-entrypoint.s\u2026\"",
+          "CreatedAt": "2026-09-02 05:03:49 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "90083f0017d5",
+          "Image": "redis:7-alpine",
+          "Labels": "com.docker.compose.version=5.5.0,com.docker.compose.container-number=1,com.docker.compose.image=sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7,com.docker.compose.project=selene-qualification,com.docker.compose.replace=qual-redis-1,com.docker.compose.config-hash=658e9c2087cf54661074759ee1e9809e3789c79d0acca215f5c3b93eddeb503d,com.docker.compose.depends_on=,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.service=qual-redis",
+          "LocalVolumes": "1",
+          "Mounts": "selene-qualifi\u2026",
+          "Name": "selene-qualification-qual-redis-1",
+          "Names": "selene-qualification-qual-redis-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:26379->6379/tcp, [::]:26379->6379/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 6379,
+              "PublishedPort": 26379,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "22 minutes ago",
+          "Service": "qual-redis",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up About a minute (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "d8833460ebc3",
+          "Image": "selene-qualification-risk",
+          "Labels": "com.docker.compose.version=5.5.0,com.docker.compose.config-hash=4f65f1d141721e7ab8fd181b8bb2a7dee63e609cf1c8fba8543fb42b01c56cdc,com.docker.compose.image=sha256:9b9806089aa2fbd9cf675214a8b575b93990638607323da972d3e9dd223b8733,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.replace=risk-1,com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.service=risk",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-risk-1",
+          "Names": "selene-qualification-risk-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28004->8004/tcp, [::]:28004->8004/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8004,
+              "PublishedPort": 28004,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "17 minutes ago",
+          "Service": "risk",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 35 seconds (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:44 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "4740526a8d7d",
+          "Image": "selene-qualification-scanner",
+          "Labels": "com.docker.compose.container-number=1,com.docker.compose.depends_on=qual-redis:service_healthy:false,deterministic-fixture:service_healthy:false,com.docker.compose.image=sha256:2c7f91a69fe5c9ac663a48240039f33ca85165a5cc6355b807d5faf56f1a9eb9,com.docker.compose.project=selene-qualification,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.config-hash=73c59e53fb8c6f294a6e0db8a3633718593d32047736f2c814b6430f3965836c,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.replace=scanner-1,com.docker.compose.service=scanner,com.docker.compose.version=5.5.0",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-scanner-1",
+          "Names": "selene-qualification-scanner-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28001->8001/tcp, [::]:28001->8001/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8001,
+              "PublishedPort": 28001,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "17 minutes ago",
+          "Service": "scanner",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 16 minutes (healthy)"
+        },
+        {
+          "Command": "\"python -m services.\u2026\"",
+          "CreatedAt": "2026-09-02 05:08:25 +0000 UTC",
+          "Engine": "",
+          "ExitCode": 0,
+          "Health": "healthy",
+          "ID": "c464beb0c072",
+          "Image": "selene-qualification-signal",
+          "Labels": "com.docker.compose.config-hash=72e02acc6570a651353d3ffe611bfb7a228bb087f428c4942b598b0d90feb850,com.docker.compose.container-number=1,com.docker.compose.image=sha256:4ac0d8f9badd53532bb45e5f1e203699bb723932189e41e002f163e7fc94c834,com.docker.compose.oneoff=False,com.docker.compose.project=selene-qualification,com.docker.compose.project.config_files=/data/soffy/projects/selene-closure/docker-compose.qualification.yml,com.docker.compose.project.working_dir=/data/soffy/projects/selene-closure,com.docker.compose.version=5.5.0,com.docker.compose.depends_on=qual-postgres:service_healthy:false,qual-redis:service_healthy:false,com.docker.compose.replace=signal-1,com.docker.compose.service=signal",
+          "LocalVolumes": "0",
+          "Mounts": "/data/soffy/pr\u2026",
+          "Name": "selene-qualification-signal-1",
+          "Names": "selene-qualification-signal-1",
+          "Networks": "selene-qualification_selene-qual-net",
+          "Ports": "0.0.0.0:28002->8002/tcp, [::]:28002->8002/tcp",
+          "Project": "selene-qualification",
+          "Publishers": [
+            {
+              "URL": "0.0.0.0",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            },
+            {
+              "URL": "::",
+              "TargetPort": 8002,
+              "PublishedPort": 28002,
+              "Protocol": "tcp"
+            }
+          ],
+          "RunningFor": "17 minutes ago",
+          "Service": "signal",
+          "Size": "0B",
+          "State": "running",
+          "Status": "Up 16 minutes (healthy)"
+        }
+      ],
+      "at": "2026-09-02T05:25:51.574746+00:00",
+      "name": "restart_execution_after_intent"
+    },
+    {
+      "name": "replay_same_redis_message",
+      "count": 2,
+      "at": "2026-09-02T05:25:51.575855+00:00"
+    },
+    {
+      "name": "out_of_order_and_duplicate_fills",
+      "at": "2026-09-02T05:25:51.576964+00:00"
+    },
+    {
+      "name": "short_disconnect",
+      "execution_ready_during_redis_pause": 0,
+      "recovered": true,
+      "at": "2026-09-02T05:26:13.370182+00:00"
+    }
+  ],
+  "redis_restart_recovery": true,
+  "postgres_restart_recovery": true,
+  "execution_restart_recovery": true,
+  "risk_restart_recovery": true,
+  "readiness_fail_closed": true,
+  "ledger_gaps": 0,
+  "duplicate_side_effects": 0,
+  "exec_mode": "PAPER",
+  "recoveries": {
+    "restart_redis": true,
+    "restart_postgres": true,
+    "restart_execution": true,
+    "restart_risk": true,
+    "restart_execution_after_intent": true,
+    "replay_same_redis_message": null,
+    "out_of_order_and_duplicate_fills": null,
+    "short_disconnect": true
+  }
+}

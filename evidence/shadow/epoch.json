@@ -1,0 +1,20 @@
+{
+  "config_digest": "sha256:298c87c6900f2cee4206e94ca5117e1fd8abe40cb4780a0b949df180295c5465",
+  "days": [],
+  "days_run": 0,
+  "duplicate_intents": 0,
+  "epoch_id": "b01d3e06-a4ee-4a39-ad71-3350afa05b4f",
+  "event_count": 0,
+  "gate_verdict": "BLOCKED",
+  "ledger_gaps": 0,
+  "observed_live_start": null,
+  "reconciliation_diff": 0,
+  "regimes": [],
+  "shadow_only": true,
+  "stale_actions": 0,
+  "started_at": "2026-09-02T05:12:58Z",
+  "starting_sha": "934b98d6933d7402f49e732abee154e4555ee001",
+  "status": "open",
+  "touched_live_api": false,
+  "updated_at": "2026-09-02T05:12:58Z"
+}

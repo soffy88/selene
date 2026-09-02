@@ -1,0 +1,42 @@
+{
+  "generated_at": "2026-09-02T05:13:06.139564+00:00",
+  "status": "OWNER_BLOCKED",
+  "merged": false,
+  "force_push": false,
+  "shared_head": true,
+  "shared_branch": true,
+  "ruff_format": "FAIL",
+  "ruff_check": "FAIL",
+  "pytest": "PASS",
+  "rebase_result": "already_contains_main",
+  "rebase_conflicts": [],
+  "pr": 8,
+  "head": {
+    "number": 8,
+    "url": "https://github.com/soffy88/selene/pull/8",
+    "title": "[DO NOT MERGE until gate review] Wave EXEC-S:S2 \u6302\u5355\u6267\u884c shadow \u5c42",
+    "headRefName": "feat/selene-md-adapter",
+    "headRefOid": "b0f8cb7c711ab4dae2622b19c0df31c5f8432d56",
+    "baseRefName": "main",
+    "baseRefOid": "24137634f777e7d993434faafc2d418e31f7b7b1",
+    "isolated_rebase_branch": "closure/pr8-rebase-main",
+    "rebase_onto": "origin/main",
+    "rebase_result": "already_contains_main",
+    "rebased_head": "b0f8cb7c711ab4dae2622b19c0df31c5f8432d56",
+    "local_ci": {
+      "ruff_format": "FAIL",
+      "ruff_format_files": 229,
+      "ruff_check": "FAIL",
+      "ruff_check_errors": 391,
+      "pytest": "PASS",
+      "pytest_summary": "1449 passed"
+    }
+  },
+  "isolated_worktree": "/data/soffy/projects/selene-pr8-rebase",
+  "failed_gates": [
+    "OWNER_MERGE_WINDOW",
+    "SHARED_HEAD",
+    "RUFF_FORMAT",
+    "RUFF_CHECK"
+  ]
+}

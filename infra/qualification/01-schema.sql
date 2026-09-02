@@ -122,3 +122,27 @@ CREATE TABLE IF NOT EXISTS risk_state (
     payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id         BIGSERIAL PRIMARY KEY,
+    event_type TEXT,
+    entity_id  TEXT,
+    payload    JSONB,
+    service    TEXT,
+    time       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+    time              TIMESTAMPTZ   NOT NULL PRIMARY KEY,
+    total_equity      DECIMAL(20,2) NOT NULL,
+    available_capital DECIMAL(20,2),
+    total_exposure    DECIMAL(20,2),
+    leverage          DECIMAL(6,3),
+    var_95            DECIMAL(20,2),
+    cvar_95           DECIMAL(20,2),
+    current_drawdown  DECIMAL(6,4),
+    max_drawdown      DECIMAL(6,4),
+    drawdown_level    VARCHAR(10),
+    daily_pnl         DECIMAL(20,8),
+    strategy_alloc    JSONB
+);

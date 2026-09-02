@@ -1,0 +1,15 @@
+{
+  "I_HAVE_OOS_EVIDENCE": false,
+  "generated_at": "2026-09-02T05:12:58Z",
+  "historical_oi_source": "OWNER_BLOCKED",
+  "missing_trades": 100,
+  "n_backfill_excluded": 0,
+  "n_trades": 0,
+  "observed_live_range": {
+    "end": null,
+    "start": null
+  },
+  "regimes": [],
+  "required_trades": 100,
+  "verdict": "BLOCKED_INSUFFICIENT_DATA"
+}

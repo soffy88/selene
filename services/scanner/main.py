@@ -36,6 +36,7 @@ import aiohttp
 
 from shared.db.redis_client import get_redis, publish
 from shared.events.streams import STREAM_MARKET_CANDLES, STREAM_MARKET_RAW
+from shared.runtime.service_health import consume_ready, mark_consume, snapshot
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("market-scanner")
@@ -261,7 +262,7 @@ class _SymbolState:
 
 
 class MarketScanner:
-    def __init__(self, client: BinanceScanClient) -> None:
+    def __init__(self, client) -> None:
         self._c = client
         self._states: dict[str, _SymbolState] = {}
         self._prev_volumes: dict[str, float] = {}
@@ -393,11 +394,13 @@ class MarketScanner:
                 },
             )
             st.last_open_time = k["open_time"]
+            mark_consume("scanner")
             logger.info("candle %s open_time=%s close=%s", symbol, k["open_time"], k["close"])
 
         if time.monotonic() - st.last_raw_pub >= RAW_REFRESH_S:
             await self._publish_raw(symbol, st)
             st.last_raw_pub = time.monotonic()
+        mark_consume("scanner")
 
     # ── 循环 ────────────────────────────────────────────────────────────────
     async def discovery_loop(self) -> None:
@@ -418,23 +421,60 @@ class MarketScanner:
             await asyncio.sleep(FEED_INTERVAL_S)
 
 
+async def _health_http() -> None:
+    from aiohttp import web
+
+    async def livez(_request):
+        return web.json_response({"status": "ok", "service": "market-scanner"})
+
+    async def readyz(_request):
+        from shared.db.redis_client import health_check
+
+        redis_ok = await health_check()
+        ready = redis_ok and consume_ready("scanner", max_age_s=90)
+        return web.json_response(
+            {"ready": ready, "redis": redis_ok, "service": "market-scanner", **snapshot("scanner")},
+            status=200 if ready else 503,
+        )
+
+    app = web.Application()
+    app.router.add_get("/livez", livez)
+    app.router.add_get("/readyz", readyz)
+    app.router.add_get("/health", livez)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("SERVICE_PORT", "8001"))
+    await web.TCPSite(runner, "0.0.0.0", port).start()
+    logger.info("market-scanner health on %s", port)
+
+
+def _build_client(session: aiohttp.ClientSession):
+    source = (os.environ.get("SCANNER_SOURCE") or "").strip().lower()
+    if source in {"fixture", "redis", "qualification"}:
+        from services.scanner.fixture_client import FixtureScanClient
+
+        logger.info("SCANNER_SOURCE=%s: using FixtureScanClient (no venue HTTP)", source)
+        return FixtureScanClient()
+    return BinanceScanClient(session)
+
+
 async def main() -> None:
     from shared.db.redis_client import init_redis
 
     init_redis(os.environ.get("REDIS_URL", "redis://helios-redis:6379/3"))
     timeout = aiohttp.ClientTimeout(total=float(os.environ.get("SCANNER_TIMEOUT_S", "20")))
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        scanner = MarketScanner(BinanceScanClient(session))
+        scanner = MarketScanner(_build_client(session))
         logger.info(
-            "market-scanner start: core=%s top_n=%d min_qvol=%.0f min_chg=%.1f%% proxy=%s",
+            "market-scanner start: core=%s top_n=%d min_qvol=%.0f min_chg=%.1f%% proxy=%s source=%s",
             CORE_SYMBOLS,
             TOP_N,
             MIN_QUOTE_VOLUME_USD,
             MIN_24H_CHANGE_PCT,
             PROXY,
+            os.environ.get("SCANNER_SOURCE", "binance"),
         )
-        # 启动即扫一轮让 watchlist 立即有发现币;失败只降级(核心币照喂),
-        # 不 crash-loop —— discovery_loop 5 分钟后自然重试。
+        await _health_http()
         try:
             await scanner.scan_once()
         except Exception as e:  # noqa: BLE001
