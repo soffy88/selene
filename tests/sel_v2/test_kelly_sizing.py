@@ -1,13 +1,13 @@
 """Tests for sel_v2.strategies.kelly_sizing (v2.1 §7.1)."""
+
+from datetime import datetime, timedelta, timezone
+
 import pytest
-from datetime import datetime, timezone, timedelta
 
 from sel_v2.strategies.kelly_sizing import (
-    KellySizer,
-    KellyPhase,
-    ClosedTrade,
     _FIXED_BASE_SIZE,
-    _MIN_TRADES_FOR_SWITCH,
+    KellyPhase,
+    KellySizer,
 )
 
 _NOW = datetime(2025, 6, 1, tzinfo=timezone.utc)
@@ -22,6 +22,7 @@ def _add_trades(sizer: KellySizer, n: int, pnl_pct: float = 0.02) -> None:
 
 
 # ── Phase 0/1: fixed size ──────────────────────────────────────────────────────
+
 
 def test_phase0_returns_fixed_size_strategy1():
     s = KellySizer(strategy="strategy_1", phase=KellyPhase.PHASE_0)
@@ -60,6 +61,7 @@ def test_phase1_computes_kelly_diagnostic():
 
 # ── Phase 2: quarter Kelly ─────────────────────────────────────────────────────
 
+
 def test_phase2_applies_quarter_kelly_cap():
     s = KellySizer(strategy="strategy_1", phase=KellyPhase.PHASE_2)
     # 80% win rate, R=3 → f* = (0.8*3 - 0.2) / 3 = (2.4 - 0.2) / 3 ≈ 0.733
@@ -85,6 +87,7 @@ def test_phase2_negative_edge_falls_back_to_fixed():
 
 # ── Phase switch readiness ─────────────────────────────────────────────────────
 
+
 def test_not_ready_for_phase2_below_30():
     s = KellySizer(strategy="strategy_1")
     _add_trades(s, 29)
@@ -98,6 +101,7 @@ def test_ready_for_phase2_at_30():
 
 
 # ── Rolling window eviction ────────────────────────────────────────────────────
+
 
 def test_rolling_window_evicts_old_trades():
     s = KellySizer(strategy="strategy_2")  # 30-day window

@@ -9,10 +9,12 @@ Covers:
 - Graceful failure (DB error → False, never raises)
 - No-connection guard (returns False immediately)
 """
+
 import json
-import pytest
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
+
+import pytest
 
 from sel_v2.strategies.db_writer import DBWriter
 
@@ -21,6 +23,7 @@ _TRADE_ID = "550e8400-e29b-41d4-a716-446655440000"
 
 
 # ── write_trade_entry ──────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_write_trade_entry_inserts_correct_params():
@@ -145,6 +148,7 @@ async def test_write_trade_entry_graceful_failure():
 
 # ── write_trade_exit ───────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_write_trade_exit_updates_correct_columns():
     writer = DBWriter()
@@ -206,6 +210,7 @@ async def test_write_trade_exit_graceful_failure():
 
 # ── write_phase_history ────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_write_phase_history_full_params():
     writer = DBWriter()
@@ -254,7 +259,7 @@ async def test_write_phase_history_initial_phase0():
 
     assert result is True
     call_args = writer._conn.execute.call_args[0]
-    assert call_args[3] is None   # from_phase
+    assert call_args[3] is None  # from_phase
     assert call_args[4] == "PHASE_0"
 
 
@@ -262,8 +267,10 @@ async def test_write_phase_history_initial_phase0():
 async def test_write_phase_history_no_connection():
     writer = DBWriter()
     result = await writer.write_phase_history(
-        timestamp=_TS, strategy="strategy_1",
-        from_phase=None, to_phase="PHASE_0",
+        timestamp=_TS,
+        strategy="strategy_1",
+        from_phase=None,
+        to_phase="PHASE_0",
     )
     assert result is False
 
@@ -275,13 +282,16 @@ async def test_write_phase_history_graceful_failure():
     writer._conn.execute.side_effect = Exception("unique violation")
 
     result = await writer.write_phase_history(
-        timestamp=_TS, strategy="strategy_1",
-        from_phase="PHASE_0", to_phase="PHASE_1",
+        timestamp=_TS,
+        strategy="strategy_1",
+        from_phase="PHASE_0",
+        to_phase="PHASE_1",
     )
     assert result is False
 
 
 # ── write_strategy1_decision ───────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_write_strategy1_decision_enter_long():

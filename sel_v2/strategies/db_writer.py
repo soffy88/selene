@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 import asyncpg
@@ -290,9 +290,7 @@ class DBWriter:
         Used for W2/B1/I1 etc. (Wave 5 tools) — Wave 3 interface placeholder.
         """
         if self._conn is None:
-            logger.warning(
-                "DBWriter.write_inverse_vocab_event: not connected, skipping"
-            )
+            logger.warning("DBWriter.write_inverse_vocab_event: not connected, skipping")
             return False
         try:
             await self._conn.execute(

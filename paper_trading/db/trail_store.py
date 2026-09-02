@@ -1,10 +1,10 @@
 """TrailStore — TimescaleDB persistence for DecisionTrail records."""
+
 from __future__ import annotations
 
 import json
 import logging
 from datetime import datetime
-from typing import Optional
 
 from paper_trading.trail import DecisionTrail
 

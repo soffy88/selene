@@ -28,9 +28,7 @@ from sel_v2.offline.ict_smt import MATCH_WINDOW, detect_smt
 from sel_v2.offline.lens_common import compute_atr, mann_whitney_one_sided
 from sel_v2.offline.lens_study import MIN_GROUP_N
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("smt_study")
 
 REPORT_PATH = Path(__file__).resolve().parents[2] / "analysis" / "smt_v1.md"

@@ -25,6 +25,7 @@ innocent" requires the opposite) but to the product of the calibration knobs the
 strategies were tuned over (see CALIBRATION_KNOBS). Callers who know their exact
 search can override it.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -46,10 +47,10 @@ MIN_DSR = 0.90
 # counts (a config is one point in this grid). A documented, conservative floor — real
 # tuning explores at least this much — grounded in the actual code/defaults:
 CALIBRATION_KNOBS = {
-    "tda_l1_percentile":        3,   # {p90, p95, p97} computed side by side (tda_calibration.py:258-260)
-    "cusum_threshold_quantile": 3,   # {0.90, 0.92, 0.95}; DEFAULT_THRESHOLD_QUANTILE=0.95 (cusum_short.py:31), tuned per §28
-    "hawkes_br_threshold":      3,   # {0.80, 0.85, 0.90}; schema default 0.85 (schema.py:102)
-    "state_entry_sigma_pctile": 3,   # {0.85, 0.90, 0.95} state-machine entry σ-percentile threshold
+    "tda_l1_percentile": 3,  # {p90, p95, p97} computed side by side (tda_calibration.py:258-260)
+    "cusum_threshold_quantile": 3,  # {0.90, 0.92, 0.95}; DEFAULT_THRESHOLD_QUANTILE=0.95 (cusum_short.py:31), tuned per §28
+    "hawkes_br_threshold": 3,  # {0.80, 0.85, 0.90}; schema default 0.85 (schema.py:102)
+    "state_entry_sigma_pctile": 3,  # {0.85, 0.90, 0.95} state-machine entry σ-percentile threshold
 }
 
 
@@ -70,6 +71,7 @@ DEFAULT_N_TRIALS = effective_calibration_trials()
 @dataclass
 class _TradeView:
     """Adapter to the metrics.py trade contract (.exit_time unix-ms, .pnl_usd)."""
+
     exit_time: int
     pnl_usd: float
     strategy: str
@@ -89,26 +91,37 @@ def collect_trades(engine) -> list[_TradeView]:
     out: list[_TradeView] = []
     for acct in (engine.accounts.subaccount_1, engine.accounts.subaccount_2):
         for c in acct.closed_positions:
-            out.append(_TradeView(
-                exit_time=_to_ms(c.exit_time),
-                pnl_usd=c.pnl_usdt,
-                strategy=c.position.strategy,
-                direction=c.position.direction,
-                entry_time_ms=_to_ms(c.position.entry_time),
-            ))
+            out.append(
+                _TradeView(
+                    exit_time=_to_ms(c.exit_time),
+                    pnl_usd=c.pnl_usdt,
+                    strategy=c.position.strategy,
+                    direction=c.position.direction,
+                    entry_time_ms=_to_ms(c.position.entry_time),
+                )
+            )
     out.sort(key=lambda t: t.exit_time)
     return out
 
 
-def evaluate_trades(trades: list[_TradeView], initial_capital: float,
-                    n_trials: int = DEFAULT_N_TRIALS) -> dict:
+def evaluate_trades(trades: list[_TradeView], initial_capital: float, n_trials: int = DEFAULT_N_TRIALS) -> dict:
     """Compute the performance/robustness metric panel for a set of trades."""
     n = len(trades)
     if n == 0:
-        return {"n_trades": 0, "win_rate": 0.0, "total_pnl_usd": 0.0, "return_pct": 0.0,
-                "sharpe": 0.0, "psr": 0.0, "dsr": 0.0, "bootstrap_sharpe_p5": 0.0,
-                "bootstrap_sharpe_p50": 0.0, "bootstrap_sharpe_p95": 0.0,
-                "max_drawdown": 0.0, "n_days": 0}
+        return {
+            "n_trades": 0,
+            "win_rate": 0.0,
+            "total_pnl_usd": 0.0,
+            "return_pct": 0.0,
+            "sharpe": 0.0,
+            "psr": 0.0,
+            "dsr": 0.0,
+            "bootstrap_sharpe_p5": 0.0,
+            "bootstrap_sharpe_p50": 0.0,
+            "bootstrap_sharpe_p95": 0.0,
+            "max_drawdown": 0.0,
+            "n_days": 0,
+        }
     daily = M.daily_returns_from_trades(trades, initial_capital)
     p5, p50, p95 = M.bootstrap_sharpe_ci(daily)
     wins = sum(1 for t in trades if t.pnl_usd > 0)
@@ -146,10 +159,10 @@ def enforce_oos_gate(result: dict) -> dict:
     if "oos" not in result or "oos_passed" not in result:
         raise BacktestRejected(
             "no out-of-sample evaluation present — run run_v2_backtest(..., oos_start_ms=...) "
-            "to produce binding OOS evidence")
+            "to produce binding OOS evidence"
+        )
     if not result["oos_passed"]:
-        raise BacktestRejected(
-            "out-of-sample validation FAILED: " + "; ".join(result.get("oos_fail_reasons", [])))
+        raise BacktestRejected("out-of-sample validation FAILED: " + "; ".join(result.get("oos_fail_reasons", [])))
     return result
 
 
@@ -169,11 +182,22 @@ def check_pass(metrics: dict) -> tuple[bool, list[str]]:
     return (not fails), fails
 
 
-def run_v2_backtest(df, *, initial_capital: float = 100_000.0,
-                    oi_series=None, funding_series=None, ofi_series=None,
-                    tick_times=None, micro=None, oos_start_ms: Optional[int] = None,
-                    hawkes_params=None, skip_hawkes: bool = False, skip_tda: bool = False,
-                    instrument: str = "BTC-USDT", n_trials: int = DEFAULT_N_TRIALS) -> dict:
+def run_v2_backtest(
+    df,
+    *,
+    initial_capital: float = 100_000.0,
+    oi_series=None,
+    funding_series=None,
+    ofi_series=None,
+    tick_times=None,
+    micro=None,
+    oos_start_ms: Optional[int] = None,
+    hawkes_params=None,
+    skip_hawkes: bool = False,
+    skip_tda: bool = False,
+    instrument: str = "BTC-USDT",
+    n_trials: int = DEFAULT_N_TRIALS,
+) -> dict:
     """Run the deployed sel_v2 engine over `df` and evaluate its trades.
 
     Returns a dict with overall metrics ('all'), per-strategy breakdown, the raw
@@ -183,12 +207,19 @@ def run_v2_backtest(df, *, initial_capital: float = 100_000.0,
     from sel_v2.paper.strategy_engine import PaperStrategyEngine
 
     engine = PaperStrategyEngine(
-        total_nav_usdt=initial_capital, instrument=instrument,
-        skip_hawkes=skip_hawkes, skip_tda=skip_tda, hawkes_params=hawkes_params,
+        total_nav_usdt=initial_capital,
+        instrument=instrument,
+        skip_hawkes=skip_hawkes,
+        skip_tda=skip_tda,
+        hawkes_params=hawkes_params,
     )
     summary = engine.process_frame(
-        df, oi_series=oi_series, funding_series=funding_series,
-        ofi_series=ofi_series, tick_times=tick_times, micro=micro,
+        df,
+        oi_series=oi_series,
+        funding_series=funding_series,
+        ofi_series=ofi_series,
+        tick_times=tick_times,
+        micro=micro,
     )
 
     trades = collect_trades(engine)
@@ -197,15 +228,12 @@ def run_v2_backtest(df, *, initial_capital: float = 100_000.0,
         "initial_capital": initial_capital,
         "all": evaluate_trades(trades, initial_capital, n_trials),
         "by_strategy": {
-            "strategy_1": evaluate_trades(
-                [t for t in trades if t.strategy == "strategy_1"], initial_capital, n_trials),
-            "strategy_2": evaluate_trades(
-                [t for t in trades if t.strategy == "strategy_2"], initial_capital, n_trials),
+            "strategy_1": evaluate_trades([t for t in trades if t.strategy == "strategy_1"], initial_capital, n_trials),
+            "strategy_2": evaluate_trades([t for t in trades if t.strategy == "strategy_2"], initial_capital, n_trials),
         },
     }
     if oos_start_ms is not None:
-        oos = evaluate_trades(
-            [t for t in trades if t.exit_time >= oos_start_ms], initial_capital, n_trials)
+        oos = evaluate_trades([t for t in trades if t.exit_time >= oos_start_ms], initial_capital, n_trials)
         passed, reasons = check_pass(oos)
         result["oos"] = oos
         result["oos_passed"] = passed

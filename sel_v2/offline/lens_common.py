@@ -45,9 +45,7 @@ class Swing:
     confirm_idx: int  # strictly > end_idx (causality; unit-tested)
 
 
-def zigzag_swings(
-    prices: np.ndarray, threshold_fn: Callable[[int, float], float]
-) -> list[Swing]:
+def zigzag_swings(prices: np.ndarray, threshold_fn: Callable[[int, float], float]) -> list[Swing]:
     """`leg_census._zigzag_legs` verbatim (equivalence unit-tested), additionally
     recording the bar at which each swing's confirming reversal fired. A final
     in-progress swing (not yet confirmed) is NOT included."""
@@ -84,9 +82,7 @@ def zigzag_swings(
     return swings
 
 
-def atr_zigzag_swings(
-    close: np.ndarray, atr: np.ndarray, mult: float = ZIGZAG_ATR_MULT
-) -> list[Swing]:
+def atr_zigzag_swings(close: np.ndarray, atr: np.ndarray, mult: float = ZIGZAG_ATR_MULT) -> list[Swing]:
     """1.5x ATR(14) zigzag — the CHAN-3 / ICT-2 shared fine resolution, identical
     parameter to `sel_v2.offline.substate` and `leg_census`'s push-count layer."""
 
@@ -103,9 +99,7 @@ def swings_confirmed_asof(swings: list[Swing], bar_idx: int, k: int = 3) -> list
     return known[-k:]
 
 
-def pivot_overlap(
-    swings3: list[Swing], close: np.ndarray, atr_i: float
-) -> tuple[float, float]:
+def pivot_overlap(swings3: list[Swing], close: np.ndarray, atr_i: float) -> tuple[float, float]:
     """CHAN-3 中枢: price-range intersection of 3 consecutive swings.
     Each swing's range is [min, max] of its two pivot closes. Returns
     (overlap_width, overlap_width / atr_i); (nan, nan) if fewer than 3 swings
@@ -170,33 +164,17 @@ class SwingStructure:
         ref_high = self._highs[-1][1] if self._highs else None
         ref_low = self._lows[-1][1] if self._lows else None
         if self._state == "UP":
-            if (
-                ref_high is not None
-                and close_i > ref_high
-                and self._fired_high_level != ref_high
-            ):
+            if ref_high is not None and close_i > ref_high and self._fired_high_level != ref_high:
                 self._fired_high_level = ref_high
                 return "BOS_UP"
-            if (
-                ref_low is not None
-                and close_i < ref_low
-                and self._fired_low_level != ref_low
-            ):
+            if ref_low is not None and close_i < ref_low and self._fired_low_level != ref_low:
                 self._fired_low_level = ref_low
                 return "CHOCH_DOWN"
         elif self._state == "DOWN":
-            if (
-                ref_low is not None
-                and close_i < ref_low
-                and self._fired_low_level != ref_low
-            ):
+            if ref_low is not None and close_i < ref_low and self._fired_low_level != ref_low:
                 self._fired_low_level = ref_low
                 return "BOS_DOWN"
-            if (
-                ref_high is not None
-                and close_i > ref_high
-                and self._fired_high_level != ref_high
-            ):
+            if ref_high is not None and close_i > ref_high and self._fired_high_level != ref_high:
                 self._fired_high_level = ref_high
                 return "CHOCH_UP"
         return None
@@ -219,9 +197,7 @@ class SurgingLeg:
     end_via: Optional[str]  # transition_via on the first bar AFTER the leg
 
 
-def surging_legs(
-    states: list[str], transition_via: list[Optional[str]], close: np.ndarray
-) -> list[SurgingLeg]:
+def surging_legs(states: list[str], transition_via: list[Optional[str]], close: np.ndarray) -> list[SurgingLeg]:
     legs: list[SurgingLeg] = []
     i, n = 0, len(states)
     while i < n:
@@ -270,18 +246,14 @@ def fisher_one_sided(table_2x2) -> float:
     return float(fisher_exact(table_2x2, alternative="greater")[1])
 
 
-def bootstrap_mean_diff_ci(
-    a, b, n_boot: int = 10_000, seed: int = 42, alpha: float = 0.10
-) -> tuple[float, float]:
+def bootstrap_mean_diff_ci(a, b, n_boot: int = 10_000, seed: int = 42, alpha: float = 0.10) -> tuple[float, float]:
     """Percentile bootstrap CI for mean(a) - mean(b). Seeded → deterministic."""
     rng = np.random.default_rng(seed)
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
     diffs = np.empty(n_boot)
     for k in range(n_boot):
-        diffs[k] = np.mean(rng.choice(a, size=len(a))) - np.mean(
-            rng.choice(b, size=len(b))
-        )
+        diffs[k] = np.mean(rng.choice(a, size=len(a))) - np.mean(rng.choice(b, size=len(b)))
     return (
         float(np.percentile(diffs, 100 * alpha / 2)),
         float(np.percentile(diffs, 100 * (1 - alpha / 2))),

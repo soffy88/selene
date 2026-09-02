@@ -22,20 +22,14 @@ import os
 
 import asyncpg
 
-MD_DSN = os.environ.get(
-    "MD_DSN", "postgresql://selene_app:sel_app_2026@platform-postgres:5432/marketdata"
-)
-DB_URL = os.environ.get(
-    "DB_URL", "postgresql://selene_app:sel_app_2026@platform-postgres:5432/selene"
-)
+MD_DSN = os.environ.get("MD_DSN", "postgresql://selene_app:sel_app_2026@platform-postgres:5432/marketdata")
+DB_URL = os.environ.get("DB_URL", "postgresql://selene_app:sel_app_2026@platform-postgres:5432/selene")
 VENUE = os.environ.get("TICKS_MD_VENUE", "okx")
 BASE_SYMBOL = os.environ.get("SYMBOLS", "BTC-USDT")
 _BATCH_LIMIT = 5000
 
 
-async def sync(
-    md: asyncpg.Pool, sel: asyncpg.Pool, last_trade_id: int
-) -> tuple[int, int]:
+async def sync(md: asyncpg.Pool, sel: asyncpg.Pool, last_trade_id: int) -> tuple[int, int]:
     rows = await md.fetch(
         """
         SELECT ts, trade_id, price, size, side
@@ -51,10 +45,7 @@ async def sync(
     )
     if not rows:
         return 0, last_trade_id
-    records = [
-        (r["ts"], BASE_SYMBOL, r["price"], r["size"], r["side"], r["trade_id"])
-        for r in rows
-    ]
+    records = [(r["ts"], BASE_SYMBOL, r["price"], r["size"], r["side"], r["trade_id"]) for r in rows]
     await sel.executemany(
         """
         INSERT INTO v2_ticks (timestamp, symbol, price, size, side, trade_id)
@@ -85,8 +76,7 @@ async def _run(loop_s: int) -> None:
                 )
                 n, _ = await sync(md, sel, last_trade_id)
                 print(
-                    f"v2_ticks_md_adapter: {n} {VENUE} trades upserted "
-                    f"(watermark was trade_id>{last_trade_id})",
+                    f"v2_ticks_md_adapter: {n} {VENUE} trades upserted (watermark was trade_id>{last_trade_id})",
                     flush=True,
                 )
             except Exception as exc:  # noqa: BLE001

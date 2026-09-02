@@ -7,18 +7,18 @@ Components:
   2. Market Impact (large orders move the price)
   3. Timing Slippage (price drift during order processing latency)
 """
+
 import math
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
 class SlippageEstimate:
-    spread:     float    # half-spread cost as pct
-    impact:     float    # market impact as pct
-    timing:     float    # timing slippage as pct
-    total:      float    # total expected slippage as pct
-    total_usd:  float    # absolute USD cost
+    spread: float  # half-spread cost as pct
+    impact: float  # market impact as pct
+    timing: float  # timing slippage as pct
+    total: float  # total expected slippage as pct
+    total_usd: float  # absolute USD cost
     recommendation: str  # "LIMIT" or "MARKET"
 
 
@@ -40,18 +40,17 @@ class SlippageModel:
     """
 
     # Historical estimate: per-millisecond price drift for average crypto asset
-    AVG_DRIFT_PCT_PER_MS = 0.000002   # 0.0002% per ms → ~0.03% per 150ms
+    AVG_DRIFT_PCT_PER_MS = 0.000002  # 0.0002% per ms → ~0.03% per 150ms
 
     def estimate(
         self,
-        notional_usd:      float,
-        price_volatility:  float,   # recent annualized vol as decimal (0.80 = 80%)
-        daily_volume_usd:  float,
-        spread_pct:        float,   # current bid-ask spread as pct
-        order_type:        str,     # "MARKET" or "LIMIT"
-        latency_ms:        float = 150.0,
+        notional_usd: float,
+        price_volatility: float,  # recent annualized vol as decimal (0.80 = 80%)
+        daily_volume_usd: float,
+        spread_pct: float,  # current bid-ask spread as pct
+        order_type: str,  # "MARKET" or "LIMIT"
+        latency_ms: float = 150.0,
     ) -> SlippageEstimate:
-
         # 1. Spread cost (limit orders pay half-spread on entry; market pays full)
         if order_type == "LIMIT":
             spread_cost = spread_pct / 2 / 100
@@ -88,6 +87,6 @@ class SlippageModel:
         """Adjust expected fill price for slippage (used in backtesting)."""
         adj = price * (1 + slippage_pct / 100)
         if side == "BUY":
-            return round(adj, 8)     # buy higher than expected
+            return round(adj, 8)  # buy higher than expected
         else:
             return round(price * (1 - slippage_pct / 100), 8)  # sell lower

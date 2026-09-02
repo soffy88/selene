@@ -5,6 +5,7 @@ valid when all ranks are distinct. Discretised signal scores and flat-bar return
 ties constantly, biasing the IC the system uses as an alpha-decay / sizing throttle. The IC
 now uses average ranks + Pearson-on-ranks, which equals scipy.stats.spearmanr under ties.
 """
+
 import pytest
 
 from services.signal.main import _spearman
@@ -12,11 +13,14 @@ from services.signal.main import _spearman
 spearmanr = pytest.importorskip("scipy.stats").spearmanr
 
 
-@pytest.mark.parametrize("a,b", [
-    ([1, 2, 3, 4, 5, 6, 7, 8], [1, 3, 2, 4, 6, 5, 8, 7]),       # no ties
-    ([1, 1, 2, 2, 3, 3], [1, 2, 2, 3, 3, 4]),                    # ties both sides
-    ([3, 3, 3, 1, 2, 2, 5, 4], [1, 1, 2, 2, 3, 3, 4, 5]),        # many ties
-])
+@pytest.mark.parametrize(
+    "a,b",
+    [
+        ([1, 2, 3, 4, 5, 6, 7, 8], [1, 3, 2, 4, 6, 5, 8, 7]),  # no ties
+        ([1, 1, 2, 2, 3, 3], [1, 2, 2, 3, 3, 4]),  # ties both sides
+        ([3, 3, 3, 1, 2, 2, 5, 4], [1, 1, 2, 2, 3, 3, 4, 5]),  # many ties
+    ],
+)
 def test_matches_scipy_spearman(a, b):
     ref = spearmanr(a, b).correlation
     assert _spearman(a, b) == pytest.approx(ref, abs=1e-9)
@@ -33,9 +37,10 @@ def test_tie_naive_formula_would_have_been_wrong():
     b = [2, 2, 1, 3, 3, 4]
     n = len(a)
     from services.signal.main import _rank
+
     ra, rb = _rank(a), _rank(b)
     d2 = sum((ra[i] - rb[i]) ** 2 for i in range(n))
-    tie_naive = 1 - 6 * d2 / (n * (n ** 2 - 1))
+    tie_naive = 1 - 6 * d2 / (n * (n**2 - 1))
     correct = _spearman(a, b)
     assert correct == pytest.approx(spearmanr(a, b).correlation, abs=1e-9)
-    assert abs(correct - tie_naive) > 1e-6   # they genuinely differ under ties
+    assert abs(correct - tie_naive) > 1e-6  # they genuinely differ under ties

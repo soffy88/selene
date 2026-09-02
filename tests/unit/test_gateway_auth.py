@@ -9,7 +9,6 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from starlette.requests import Request
 
 from shared.security.audit import get_audit_log, get_ledger, record_halt_reset
 from shared.security.auth import (
@@ -273,7 +272,6 @@ def test_single_circuit_breaker_reset_route():
     paths = [
         r
         for r in gw.app.routes
-        if getattr(r, "path", "") == "/api/v4/risk/circuit-breaker/reset"
-        and "POST" in getattr(r, "methods", set())
+        if getattr(r, "path", "") == "/api/v4/risk/circuit-breaker/reset" and "POST" in getattr(r, "methods", set())
     ]
     assert len(paths) == 1

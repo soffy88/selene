@@ -1,12 +1,14 @@
 """StateStore: persists sel state sequence to TimescaleDB (Wave 4)."""
+
 from __future__ import annotations
 
 import logging
 from datetime import datetime
 from typing import Optional
 
-from .schema import StateOutput
 from sel_engine.states.schema import StateLabel
+
+from .schema import StateOutput
 
 logger = logging.getLogger(__name__)
 

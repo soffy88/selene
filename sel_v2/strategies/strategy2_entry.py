@@ -59,9 +59,7 @@ class EntryDecision:
     state_4h: Optional[str] = None
     suggested_leverage: float = MAX_LEVERAGE
     step_reached: int = 0  # which step caused abort/observe
-    entry_confidence: float = (
-        1.0  # Step-5 divergence discount (1.0 clean, 0.7 mid-band)
-    )
+    entry_confidence: float = 1.0  # Step-5 divergence discount (1.0 clean, 0.7 mid-band)
 
 
 @dataclass
@@ -73,12 +71,8 @@ class Strategy2EntryFilter:
     called once per tick event.
     """
 
-    hawkes_tracker: HawkesIntensityTracker = field(
-        default_factory=HawkesIntensityTracker
-    )
-    hawkes_threshold: RollingIntensityThreshold = field(
-        default_factory=RollingIntensityThreshold
-    )
+    hawkes_tracker: HawkesIntensityTracker = field(default_factory=HawkesIntensityTracker)
+    hawkes_threshold: RollingIntensityThreshold = field(default_factory=RollingIntensityThreshold)
 
     def evaluate(
         self,
@@ -179,9 +173,7 @@ class Strategy2EntryFilter:
                 ofi_persistent_same_direction,
             )
         else:
-            entry_type = _classify_entry_type(
-                direction, vocab, ofi_persistent_same_direction
-            )
+            entry_type = _classify_entry_type(direction, vocab, ofi_persistent_same_direction)
         if entry_type is None:
             return EntryDecision(
                 action="ABORT",
@@ -200,9 +192,7 @@ class Strategy2EntryFilter:
         # Resolve actual entry direction after vocab classification
         if entry_type == "A":
             # Mean-reversion: enter opposite to CUSUM direction
-            actual_direction: Literal["LONG", "SHORT"] = (
-                "SHORT" if direction == "LONG" else "LONG"
-            )
+            actual_direction: Literal["LONG", "SHORT"] = "SHORT" if direction == "LONG" else "LONG"
         else:
             # Momentum: enter same as CUSUM direction
             actual_direction = direction  # type: ignore[assignment]
@@ -253,9 +243,7 @@ class Strategy2EntryFilter:
         # Step 6: Determine leverage
         leverage = _compute_leverage(vocab)
 
-        action: EntryAction = (
-            "ENTER_LONG" if actual_direction == "LONG" else "ENTER_SHORT"
-        )
+        action: EntryAction = "ENTER_LONG" if actual_direction == "LONG" else "ENTER_SHORT"
 
         h_lambda_str = f"{h_lambda:.6f}" if h_lambda is not None else "cold"
         conf_note = "" if entry_confidence >= 1.0 else f" conf×{entry_confidence:.2f}"
@@ -273,9 +261,7 @@ class Strategy2EntryFilter:
             # strength (C/h ratio, already capped at 3.0). At the minimum trigger
             # (coeff≈1) this is the 10% base; a stronger break sizes up to 3×. Then
             # discounted by the Step-5 cross-exchange confidence (0.7 in the mid band).
-            base_size_pct=BASE_SIZE_FRACTION
-            * max(1.0, cusum_trigger.intensity_coeff)
-            * entry_confidence,
+            base_size_pct=BASE_SIZE_FRACTION * max(1.0, cusum_trigger.intensity_coeff) * entry_confidence,
             hawkes_lambda=lam_now,
             hawkes_threshold=h_lambda,
             hawkes_passed=True,
@@ -335,9 +321,7 @@ def _compute_leverage(vocab: set[str]) -> float:
     High-confidence: multiple vocab enhancements → 5x.
     Default: 3x.
     """
-    enhancements = sum(
-        1 for tag in ("Absorption", "Sweep", "Crowding", "Divergence") if tag in vocab
-    )
+    enhancements = sum(1 for tag in ("Absorption", "Sweep", "Crowding", "Divergence") if tag in vocab)
     if enhancements >= 2:
         return HIGH_CONF_LEVERAGE
     return MAX_LEVERAGE

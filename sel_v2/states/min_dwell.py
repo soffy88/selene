@@ -7,11 +7,12 @@ can switch away. Cascade has no lower limit (can exit immediately).
 The MinDwellTracker is a simple counter that increments each bar while in
 the same state and resets on any state change.
 """
+
 from __future__ import annotations
 
 from typing import Optional
 
-from sel_v2.states.schema import StateLabel, MIN_DWELL_BARS
+from sel_v2.states.schema import MIN_DWELL_BARS, StateLabel
 
 
 class MinDwellTracker:

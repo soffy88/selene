@@ -1,12 +1,20 @@
 """Correlation-aware portfolio risk analytics (Phase 5)."""
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 import math
+
 from services.risk.portfolio.correlation_risk import (
-    correlation_matrix, covariance_matrix, correlated_exposure,
-    parametric_var_correlated, stress_test, funding_adjusted_cost,
+    correlated_exposure,
+    correlation_matrix,
+    covariance_matrix,
+    funding_adjusted_cost,
+    parametric_var_correlated,
     same_direction_correlated_exposure,
+    stress_test,
 )
 
 
@@ -33,9 +41,11 @@ class TestCorrelation:
 class TestCorrelatedExposure:
     def test_groups_correlated_same_direction(self):
         # A,B move together (corr~1); C is independent-ish. Long A,B,C.
-        r = {"A": [0.01, -0.02, 0.03, -0.01, 0.02],
-             "B": [0.011, -0.019, 0.031, -0.009, 0.021],
-             "C": [-0.02, 0.03, -0.01, 0.02, -0.03]}
+        r = {
+            "A": [0.01, -0.02, 0.03, -0.01, 0.02],
+            "B": [0.011, -0.019, 0.031, -0.009, 0.021],
+            "C": [-0.02, 0.03, -0.01, 0.02, -0.03],
+        }
         positions = {"A": 100.0, "B": 100.0, "C": 100.0}
         res = correlated_exposure(positions, r, threshold=0.6)
         # A and B should cluster (200 of 300 gross)
@@ -54,9 +64,11 @@ class TestCorrelatedExposure:
 
 class TestSameDirectionCorrelatedExposure:
     # A,B correlated (~1); C anti-correlated with A.
-    R = {"A": [0.01, -0.02, 0.03, -0.01, 0.02],
-         "B": [0.011, -0.019, 0.031, -0.009, 0.021],
-         "C": [-0.01, 0.02, -0.03, 0.01, -0.02]}
+    R = {
+        "A": [0.01, -0.02, 0.03, -0.01, 0.02],
+        "B": [0.011, -0.019, 0.031, -0.009, 0.021],
+        "C": [-0.01, 0.02, -0.03, 0.01, -0.02],
+    }
 
     def test_includes_correlated_same_direction(self):
         positions = {"B": {"side": "LONG", "notional": 100.0}}
@@ -101,8 +113,7 @@ class TestSameDirectionCorrelatedExposure:
 class TestVaR:
     def test_correlation_increases_var(self):
         # Same marginal vols, but correlated longs carry more portfolio risk than hedged.
-        corr_r = {"A": [0.01, -0.02, 0.03, -0.01, 0.02],
-                  "B": [0.01, -0.02, 0.03, -0.01, 0.02]}  # identical -> corr 1
+        corr_r = {"A": [0.01, -0.02, 0.03, -0.01, 0.02], "B": [0.01, -0.02, 0.03, -0.01, 0.02]}  # identical -> corr 1
         long_both = {"A": 100.0, "B": 100.0}
         hedged = {"A": 100.0, "B": -100.0}
         var_corr = parametric_var_correlated(long_both, corr_r, 0.95)

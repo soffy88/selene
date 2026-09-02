@@ -1,8 +1,9 @@
 """Wave 4 — Paper trading interface for the sel state engine."""
-from .schema import StateOutput, StateChangeEvent
-from .store import StateStore
+
 from .events import StateEventEmitter
+from .schema import StateChangeEvent, StateOutput
 from .service import StateOutputService
+from .store import StateStore
 
 __all__ = [
     "StateOutput",

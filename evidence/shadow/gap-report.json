@@ -1,0 +1,54 @@
+{
+  "artifact": {
+    "artifact_digest": "sha256:57d60dc3d1f50dca01b731907c5a50dc3a8cddf69ab3399e0f58fdf895c0ddd7",
+    "artifact_id": "bb6d0690-7925-4bab-b9f1-754ef2aa8adb",
+    "days_run": 0,
+    "duplicate_intents": 0,
+    "event_count": 0,
+    "expires_at": "2026-10-01T23:53:46Z",
+    "fail_reasons": [
+      "BLOCKED_INSUFFICIENT_DATA:days_run",
+      "BLOCKED_INSUFFICIENT_DATA:regimes"
+    ],
+    "gate_verdict": "BLOCKED",
+    "generated_at": "2026-09-01T23:53:46Z",
+    "image_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "latency_ms": null,
+    "ledger_gaps": 0,
+    "regimes_seen": 0,
+    "schema_version": "shadow-artifact-v1",
+    "shadow_only": true,
+    "simulated_fills": 0,
+    "slippage_drift": null,
+    "stale_data_actions": 0,
+    "strategy_commit": "e51c5d203cc75321447bd183be5ec0cae99677a8",
+    "unexplained_halts": 0,
+    "unresolved_reconcile_diff": 0
+  },
+  "block_reasons": [
+    "BLOCKED_INSUFFICIENT_DATA:days_run",
+    "BLOCKED_INSUFFICIENT_DATA:regimes"
+  ],
+  "calendar_not_used": true,
+  "days_run": 0,
+  "days_run_min": 30,
+  "evaluate_shadow_gates": [
+    "BLOCKED_INSUFFICIENT_DATA:days_run",
+    "BLOCKED_INSUFFICIENT_DATA:regimes"
+  ],
+  "event_count": 0,
+  "gate_verdict": "BLOCKED",
+  "generated_at": "2026-09-01T23:53:46Z",
+  "latency_ms": null,
+  "ledger_gaps": 0,
+  "regimes": [],
+  "regimes_min": 3,
+  "regimes_seen": 0,
+  "simulated_fills": 0,
+  "slippage_drift": null,
+  "sources": [],
+  "stale_data_actions": 0,
+  "status": "BLOCKED",
+  "touched_live_api": false,
+  "unresolved_reconcile_diff": 0
+}

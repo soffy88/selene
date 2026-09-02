@@ -145,11 +145,7 @@ def test_run_recent_observations_fired_sink_collects_only_lens_tools():
     assert all(f.signal for f in fired)
     # lens results carry the sel state for associated_state persistence
     lens_latest = [r for r in results if r.tool_id in _LENS_TOOL_IDS]
-    assert all(
-        r.metadata.get("associated_state") == "Drifting_Calm"
-        for r in lens_latest
-        if r.label != "WARMING"
-    )
+    assert all(r.metadata.get("associated_state") == "Drifting_Calm" for r in lens_latest if r.label != "WARMING")
 
 
 def test_run_recent_observations_without_new_kwargs_still_works():

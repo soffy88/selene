@@ -133,19 +133,11 @@ def test_strategy_summary_partitions_and_zero_fills(monkeypatch):
     _patch_pool(monkeypatch, _SummaryConn(agg, decisions, state_row, 4487))
     out = asyncio.run(api.strategy_summary(symbol="BTC-USDT"))
     s1 = out["strategy_1"]
-    assert (
-        s1["open_trades"] == 1 and s1["closed_trades"] == 4 and s1["win_rate"] == 0.75
-    )
+    assert s1["open_trades"] == 1 and s1["closed_trades"] == 4 and s1["win_rate"] == 0.75
     # the "why no entry" decision is attached
-    assert (
-        s1["last_decision"]["action"] == "ABORT"
-        and s1["last_decision"]["step_reached"] == 1
-    )
+    assert s1["last_decision"]["action"] == "ABORT" and s1["last_decision"]["step_reached"] == 1
     # absent strategy is present, zeroed, with no decision
-    assert (
-        out["strategy_2"]["closed_trades"] == 0
-        and out["strategy_2"]["last_decision"] is None
-    )
+    assert out["strategy_2"]["closed_trades"] == 0 and out["strategy_2"]["last_decision"] is None
     assert out["current_state"] == "Surging" and out["total_bars"] == 4487
 
 
@@ -201,9 +193,7 @@ def test_state_history_handles_jsonb_string(monkeypatch):
             "transition_from": None,
             "transition_via": None,
             "duration_4h": 1,
-            "state_features": _json.dumps(
-                {"x": 1, "cold_start": True}
-            ),  # asyncpg may hand back a str
+            "state_features": _json.dumps({"x": 1, "cold_start": True}),  # asyncpg may hand back a str
             "s1_action": None,
             "s1_step": None,
             "s1_reason": None,
@@ -285,6 +275,7 @@ def test_observations_graceful_when_table_absent(monkeypatch):
 def test_run_recent_observations_returns_all_tools():
     import numpy as np
     import pandas as pd
+
     from sel_v2.observation_tools.runner import run_recent_observations
 
     rng = np.random.default_rng(3)
@@ -292,9 +283,7 @@ def test_run_recent_observations_returns_all_tools():
     close = 30000 * np.exp(np.cumsum(rng.normal(0, 0.01, n)))
     df = pd.DataFrame(
         {
-            "time": [
-                pd.Timestamp("2024-01-01") + pd.Timedelta(hours=4 * i) for i in range(n)
-            ],
+            "time": [pd.Timestamp("2024-01-01") + pd.Timedelta(hours=4 * i) for i in range(n)],
             "close": close,
             "volume": 1000.0,
         }
@@ -371,9 +360,7 @@ def test_decision_view_flattens_entry_decision():
         direction = None
         cusum_direction = "LONG"
 
-    view = PaperStrategyEngine._decision_view(
-        (datetime(2026, 6, 30, tzinfo=timezone.utc), "Surging", _D())
-    )
+    view = PaperStrategyEngine._decision_view((datetime(2026, 6, 30, tzinfo=timezone.utc), "Surging", _D()))
     assert view["action"] == "OBSERVE" and view["step_reached"] == 2
     assert view["state_4h"] == "Surging" and view["direction"] == "LONG"
     assert PaperStrategyEngine._decision_view(None) is None
@@ -406,6 +393,7 @@ def test_decision_trail_emits_bounded_rows():
 def test_write_decision_trail_bulk_upserts(monkeypatch):
     import asyncio as _aio
     from unittest.mock import AsyncMock
+
     from sel_v2.strategies.db_writer import DBWriter
 
     w = DBWriter()
@@ -425,11 +413,7 @@ def test_write_decision_trail_bulk_upserts(monkeypatch):
     n = _aio.run(w.write_decision_trail_bulk(rows))
     assert n == 1
     sql = w._conn.executemany.call_args[0][0]
-    assert (
-        "ON CONFLICT (timestamp, strategy) DO UPDATE" in sql and "DO NOTHING" not in sql
-    )
+    assert "ON CONFLICT (timestamp, strategy) DO UPDATE" in sql and "DO NOTHING" not in sql
     assert "decision_trail" in sql
     encoded_rows = w._conn.executemany.call_args[0][1]
-    assert encoded_rows[0][-1] == json.dumps(
-        {"z_t": 0.1, "entropy_variance_rising": True}, default=str
-    )
+    assert encoded_rows[0][-1] == json.dumps({"z_t": 0.1, "entropy_variance_rising": True}, default=str)

@@ -1,4 +1,5 @@
 """Fill simulator — applies slippage + fees to produce a SimulatedFill."""
+
 from datetime import datetime
 from typing import Optional
 
@@ -21,11 +22,7 @@ class FillSimulator:
         config_hash: str,
     ) -> SimulatedFill:
         """Apply taker fee + open slippage."""
-        fee_rate = (
-            self.config.taker_fee_pct
-            if self.config.assume_taker
-            else self.config.maker_fee_pct
-        )
+        fee_rate = self.config.taker_fee_pct if self.config.assume_taker else self.config.maker_fee_pct
         slippage_pct = self.config.slippage_open_pct
 
         # Adverse fill: long pays more, short gets less
@@ -68,17 +65,9 @@ class FillSimulator:
         PnL = (exit_price - entry_price) / entry_price × close_size (long)
               (entry_price - exit_price) / entry_price × close_size (short)
         """
-        close_size = (
-            size_to_close_usdt
-            if size_to_close_usdt is not None
-            else position.current_size_usdt
-        )
+        close_size = size_to_close_usdt if size_to_close_usdt is not None else position.current_size_usdt
 
-        fee_rate = (
-            self.config.taker_fee_pct
-            if self.config.assume_taker
-            else self.config.maker_fee_pct
-        )
+        fee_rate = self.config.taker_fee_pct if self.config.assume_taker else self.config.maker_fee_pct
         slippage_pct = self.config.slippage_close_pct
 
         # Adverse fill on close: long sells lower, short buys higher

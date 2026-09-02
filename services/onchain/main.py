@@ -21,36 +21,41 @@ from typing import Optional
 import aiohttp
 from aiohttp import web
 
-from shared.db.redis_client import init_redis, get_redis, get_json, set_json
-from shared.events.streams import (
-    STREAM_SIGNAL_SCORED, STREAM_SIGNAL_RAW, STREAM_SYSTEM_ALERTS,
-    CG_NOTIFY, encode, decode, StreamEvent,
+from services.onchain.historian import (
+    backfill_outcomes,
+    get_signal_stats,
+    get_wallet_stats,
+    record_alert,
 )
 from services.onchain.scorer import OnchainScorer, RawOnchainEvent
-from services.onchain.historian import (
-    record_alert, backfill_outcomes, get_signal_stats, get_wallet_stats,
+from shared.db.redis_client import get_redis, init_redis
+from shared.events.streams import (
+    STREAM_SIGNAL_RAW,
+    STREAM_SIGNAL_SCORED,
+    STREAM_SYSTEM_ALERTS,
+    decode,
+    encode,
 )
 
 logger = logging.getLogger("onchain.main")
 
 # ── 新增 Stream 名称（在 cw4 的命名空间内）────────────
-STREAM_ONCHAIN_EVENTS = "onchain.events"   # btc/eth/sol worker 写入
+STREAM_ONCHAIN_EVENTS = "onchain.events"  # btc/eth/sol worker 写入
 CG_ONCHAIN = "onchain-sentinel"
 
 # 推送阈值
 PUSH_STRONG = float(os.environ.get("PUSH_THRESHOLD_STRONG", "0.62"))
-PUSH_WATCH  = float(os.environ.get("PUSH_THRESHOLD_WATCH",  "0.56"))
+PUSH_WATCH = float(os.environ.get("PUSH_THRESHOLD_WATCH", "0.56"))
 
 CHAIN_SYMBOL = {"BTC": "BTCUSDT", "ETH": "ETHUSDT", "SOL": "SOLUSDT"}
 
 
 class OnchainService:
-
     def __init__(self):
         self._session: Optional[aiohttp.ClientSession] = None
-        self._scorers  = {sym: OnchainScorer(sym) for sym in CHAIN_SYMBOL.values()}
-        self._regimes: dict[str, str]   = {}
-        self._prices:  dict[str, float] = {}
+        self._scorers = {sym: OnchainScorer(sym) for sym in CHAIN_SYMBOL.values()}
+        self._regimes: dict[str, str] = {}
+        self._prices: dict[str, float] = {}
         self._stats = {"events": 0, "pushes": 0, "errors": 0}
 
     # ── 启动 ──────────────────────────────────────────
@@ -84,9 +89,11 @@ class OnchainService:
         while True:
             try:
                 results = await r.xreadgroup(
-                    CG_ONCHAIN, "sentinel-events",
+                    CG_ONCHAIN,
+                    "sentinel-events",
                     {STREAM_ONCHAIN_EVENTS: ">"},
-                    count=20, block=1000,
+                    count=20,
+                    block=1000,
                 )
                 if not results:
                     continue
@@ -106,38 +113,38 @@ class OnchainService:
 
     async def _handle_event(self, data: dict):
         event = RawOnchainEvent(
-            id         = data.get("id", ""),
-            chain      = data.get("chain", "BTC"),
-            symbol     = data.get("symbol", "BTCUSDT"),
-            event_type = data.get("event_type", "whale_transfer"),
-            from_addr  = data.get("from_addr", ""),
-            to_addr    = data.get("to_addr", ""),
-            amount     = float(data.get("amount", 0)),
-            amount_usd = float(data.get("amount_usd", 0)),
-            severity   = data.get("severity", "medium"),
-            meta       = data.get("meta", {}),
+            id=data.get("id", ""),
+            chain=data.get("chain", "BTC"),
+            symbol=data.get("symbol", "BTCUSDT"),
+            event_type=data.get("event_type", "whale_transfer"),
+            from_addr=data.get("from_addr", ""),
+            to_addr=data.get("to_addr", ""),
+            amount=float(data.get("amount", 0)),
+            amount_usd=float(data.get("amount_usd", 0)),
+            severity=data.get("severity", "medium"),
+            meta=data.get("meta", {}),
         )
 
-        sym    = CHAIN_SYMBOL.get(event.chain, "BTCUSDT")
+        sym = CHAIN_SYMBOL.get(event.chain, "BTCUSDT")
         scorer = self._scorers[sym]
         regime = self._regimes.get(sym, "UNKNOWN")
 
         score = scorer.ingest(event)
-        comp  = scorer.composite_score()
+        comp = scorer.composite_score()
 
         # SQLite 历史记录
         record_alert(
-            alert_id       = event.id,
-            symbol         = sym,
-            chain          = event.chain,
-            signal_class   = event.classify(),
-            severity       = event.severity,
-            amount_usd     = event.amount_usd,
-            onchain_score  = score,
-            regime         = regime,
-            price_at_alert = self._prices.get(sym, 0.0),
-            win_prob_cw4   = comp.get("cw4_win_prob"),
-            fused_prob     = comp.get("fused_win_prob"),
+            alert_id=event.id,
+            symbol=sym,
+            chain=event.chain,
+            signal_class=event.classify(),
+            severity=event.severity,
+            amount_usd=event.amount_usd,
+            onchain_score=score,
+            regime=regime,
+            price_at_alert=self._prices.get(sym, 0.0),
+            win_prob_cw4=comp.get("cw4_win_prob"),
+            fused_prob=comp.get("fused_win_prob"),
         )
 
         # 写 Redis 状态快照（供 signal-service + gateway 读）
@@ -145,16 +152,23 @@ class OnchainService:
         await r.set(f"onchain:state:{sym}", json.dumps(scorer.get_state()), ex=3600)
 
         # 写 signal.raw → 触发 signal-service 重新合并 onchain factor
-        await r.xadd(STREAM_SIGNAL_RAW, encode({
-            "source":       "onchain-sentinel",
-            "symbol":       sym,
-            "factor":       "onchain",
-            "factor_score": str(round(comp.get("regime_adj_score", 0), 4)),
-            "net_ex_flow":  str(round(comp.get("net_exchange_flow", 0), 2)),
-            "regime":       comp.get("regime", "UNKNOWN"),
-            "trigger_id":   event.id,
-            "ts":           str(time.time()),
-        }), maxlen=10000, approximate=True)
+        await r.xadd(
+            STREAM_SIGNAL_RAW,
+            encode(
+                {
+                    "source": "onchain-sentinel",
+                    "symbol": sym,
+                    "factor": "onchain",
+                    "factor_score": str(round(comp.get("regime_adj_score", 0), 4)),
+                    "net_ex_flow": str(round(comp.get("net_exchange_flow", 0), 2)),
+                    "regime": comp.get("regime", "UNKNOWN"),
+                    "trigger_id": event.id,
+                    "ts": str(time.time()),
+                }
+            ),
+            maxlen=10000,
+            approximate=True,
+        )
 
         # 推送决策
         await self._push_decision(event, comp, sym)
@@ -166,9 +180,11 @@ class OnchainService:
         while True:
             try:
                 results = await r.xreadgroup(
-                    CG_ONCHAIN, "sentinel-scored",
+                    CG_ONCHAIN,
+                    "sentinel-scored",
                     {STREAM_SIGNAL_SCORED: ">"},
-                    count=20, block=1000,
+                    count=20,
+                    block=1000,
                 )
                 if not results:
                     continue
@@ -176,11 +192,11 @@ class OnchainService:
                     for msg_id, fields in messages:
                         try:
                             d = decode(fields)
-                            sym      = d.get("symbol", "")
-                            regime   = d.get("regime", "UNKNOWN")
+                            sym = d.get("symbol", "")
+                            regime = d.get("regime", "UNKNOWN")
                             win_prob = float(d.get("win_probability", 0.5))
-                            ci_lo    = float(d.get("confidence_lo", 0.45))
-                            ci_hi    = float(d.get("confidence_hi", 0.55))
+                            ci_lo = float(d.get("confidence_lo", 0.45))
+                            ci_hi = float(d.get("confidence_hi", 0.55))
                             if sym in self._scorers:
                                 self._regimes[sym] = regime
                                 self._scorers[sym].update_from_scored(win_prob, ci_lo, ci_hi)
@@ -210,19 +226,26 @@ class OnchainService:
             return
 
         stats = get_signal_stats(symbol, event.classify(), window_h=24, lookback_days=90)
-        msg   = self._build_msg(event, comp, stats, level, symbol)
+        msg = self._build_msg(event, comp, stats, level, symbol)
 
         # 写 system.alerts → cw4 NotificationHub 处理 Telegram 推送
         r = get_redis()
-        await r.xadd(STREAM_SYSTEM_ALERTS, encode({
-            "type":       "onchain_signal",
-            "level":      level,
-            "symbol":     symbol,
-            "message":    msg,
-            "fused_prob": str(fused or score),
-            "severity":   event.severity,
-            "ts":         str(time.time()),
-        }), maxlen=10000, approximate=True)
+        await r.xadd(
+            STREAM_SYSTEM_ALERTS,
+            encode(
+                {
+                    "type": "onchain_signal",
+                    "level": level,
+                    "symbol": symbol,
+                    "message": msg,
+                    "fused_prob": str(fused or score),
+                    "severity": event.severity,
+                    "ts": str(time.time()),
+                }
+            ),
+            maxlen=10000,
+            approximate=True,
+        )
 
         # 企微 / 飞书（cw4 NotificationHub 目前只有 Telegram + DingTalk）
         # 如配置了 WX/Feishu webhook，直接推
@@ -233,37 +256,36 @@ class OnchainService:
         self._stats["pushes"] += 1
         logger.info(f"PUSH [{level}] {symbol} fused={fused}")
 
-    def _build_msg(self, event: RawOnchainEvent, comp: dict, stats: dict,
-                   level: str, symbol: str) -> str:
-        icon  = "🚨" if level == "STRONG" else "⚠️"
+    def _build_msg(self, event: RawOnchainEvent, comp: dict, stats: dict, level: str, symbol: str) -> str:
+        icon = "🚨" if level == "STRONG" else "⚠️"
         fused = comp.get("fused_win_prob")
         cw4_p = comp.get("cw4_win_prob")
         score = comp.get("onchain_score", 0)
-        flow  = comp.get("net_exchange_flow", 0)
+        flow = comp.get("net_exchange_flow", 0)
         price = self._prices.get(symbol, 0)
         regime = comp.get("regime", "UNKNOWN")
 
         lines = [
             f"{icon} *链上哨兵 [{level}]* | {symbol}",
-            f"{'─'*22}",
-            f"📋 {event.classify().replace('_',' ').title()}",
-            f"💰 ${event.amount_usd/1e6:.1f}M | {event.severity.upper()}",
+            f"{'─' * 22}",
+            f"📋 {event.classify().replace('_', ' ').title()}",
+            f"💰 ${event.amount_usd / 1e6:.1f}M | {event.severity.upper()}",
             f"🌊 链上评分: {score:+.3f} | Regime: `{regime}`",
         ]
         if fused:
             lines += [
                 f"🎯 融合胜率: *{fused:.0%}*  (cw4:{cw4_p:.0%} + 链上)",
-                f"   CI [{comp.get('ci_lo',0):.0%}, {comp.get('ci_hi',0):.0%}]",
+                f"   CI [{comp.get('ci_lo', 0):.0%}, {comp.get('ci_hi', 0):.0%}]",
             ]
         if price:
             lines.append(f"💲 {symbol[:3]}: ${price:,.2f}")
         if flow != 0:
-            lines.append(f"🏦 交易所{'净流出📈' if flow>0 else '净流入📉'} {abs(flow):.1f} BTC")
+            lines.append(f"🏦 交易所{'净流出📈' if flow > 0 else '净流入📉'} {abs(flow):.1f} BTC")
         if stats.get("n", 0) >= 5:
             lines.append(f"📈 历史: {stats['summary']}")
         if level == "STRONG" and fused and fused >= PUSH_STRONG:
             action = "建议关注做多" if (fused or 0.5) >= 0.6 else "建议关注做空"
-            lines += [f"{'─'*22}", f"💡 *{action}*（仅供参考）"]
+            lines += [f"{'─' * 22}", f"💡 *{action}*（仅供参考）"]
         lines.append(f"⏰ {datetime.utcnow().strftime('%H:%M:%S')} UTC")
         return "\n".join(lines)
 
@@ -272,9 +294,9 @@ class OnchainService:
         if not url:
             return
         try:
-            await self._session.post(url,
-                json={"msgtype": "markdown", "markdown": {"content": text}},
-                timeout=aiohttp.ClientTimeout(total=5))
+            await self._session.post(
+                url, json={"msgtype": "markdown", "markdown": {"content": text}}, timeout=aiohttp.ClientTimeout(total=5)
+            )
         except Exception as e:
             logger.warning(f"wx push: {e}")
 
@@ -283,9 +305,9 @@ class OnchainService:
         if not url:
             return
         try:
-            await self._session.post(url,
-                json={"msg_type": "text", "content": {"text": text}},
-                timeout=aiohttp.ClientTimeout(total=5))
+            await self._session.post(
+                url, json={"msg_type": "text", "content": {"text": text}}, timeout=aiohttp.ClientTimeout(total=5)
+            )
         except Exception as e:
             logger.warning(f"feishu push: {e}")
 
@@ -294,15 +316,14 @@ class OnchainService:
         while True:
             try:
                 async with self._session.get(
-                    "https://api.coingecko.com/api/v3/simple/price"
-                    "?ids=bitcoin,ethereum,solana&vs_currencies=usd",
+                    "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd",
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as r:
                     if r.ok:
                         d = await r.json()
-                        self._prices["BTCUSDT"] = d.get("bitcoin",  {}).get("usd", 0)
+                        self._prices["BTCUSDT"] = d.get("bitcoin", {}).get("usd", 0)
                         self._prices["ETHUSDT"] = d.get("ethereum", {}).get("usd", 0)
-                        self._prices["SOLUSDT"] = d.get("solana",   {}).get("usd", 0)
+                        self._prices["SOLUSDT"] = d.get("solana", {}).get("usd", 0)
             except Exception as e:
                 logger.warning(f"price_updater: {e}")
             await asyncio.sleep(30)
@@ -314,13 +335,13 @@ class OnchainService:
             await asyncio.sleep(3600)
             for scorer in self._scorers.values():
                 scorer.decay(1.0)
-                await r.set(f"onchain:state:{scorer.symbol}",
-                            json.dumps(scorer.get_state()), ex=3600)
+                await r.set(f"onchain:state:{scorer.symbol}", json.dumps(scorer.get_state()), ex=3600)
 
     # ── SQLite 回填（每30分钟）───────────────────────
     async def _backfill_scheduler(self):
         async def price_fn(symbol, ts):
             return self._prices.get(symbol)
+
         while True:
             await asyncio.sleep(1800)
             await backfill_outcomes(price_fn)
@@ -328,8 +349,8 @@ class OnchainService:
     # ── HTTP API（挂在 gateway 聚合的 /api/v4/onchain）
     async def _http_server(self):
         app = web.Application()
-        app.router.add_get("/health",                   self._h_health)
-        app.router.add_get("/api/v4/onchain/state",     self._h_state)
+        app.router.add_get("/health", self._h_health)
+        app.router.add_get("/api/v4/onchain/state", self._h_state)
         app.router.add_get("/api/v4/onchain/stats/{sym}", self._h_stats)
         runner = web.AppRunner(app)
         await runner.setup()
@@ -340,22 +361,24 @@ class OnchainService:
     async def _h_health(self, _):
         r = get_redis()
         ok = await r.ping()
-        return web.json_response({
-            "status": "ok" if ok else "degraded",
-            "service": "onchain-sentinel",
-            "stats": self._stats,
-            "ts": datetime.utcnow().isoformat(),
-        })
+        return web.json_response(
+            {
+                "status": "ok" if ok else "degraded",
+                "service": "onchain-sentinel",
+                "stats": self._stats,
+                "ts": datetime.utcnow().isoformat(),
+            }
+        )
 
     async def _h_state(self, _):
-        return web.json_response({
-            sym: scorer.get_state()
-            for sym, scorer in self._scorers.items()
-        } | {"prices": self._prices, "regimes": self._regimes})
+        return web.json_response(
+            {sym: scorer.get_state() for sym, scorer in self._scorers.items()}
+            | {"prices": self._prices, "regimes": self._regimes}
+        )
 
     async def _h_stats(self, req):
-        sym    = req.match_info["sym"].upper()
-        cls    = req.rel_url.query.get("class", "whale_inflow_exchange")
+        sym = req.match_info["sym"].upper()
+        cls = req.rel_url.query.get("class", "whale_inflow_exchange")
         window = int(req.rel_url.query.get("window", 24))
         result = get_signal_stats(sym, cls, window)
         wallet = req.rel_url.query.get("wallet")

@@ -4,14 +4,16 @@ Shared fixtures for sel_v2 unit tests.
 Autouse fixture: patches params_loader.load_strategy_params so that tests
 never need a live DB connection.
 """
-import pytest
+
 from unittest.mock import patch
+
+import pytest
 
 # Wave 1 H2 MLE calibration results
 _H2_PARAMS = {
-    "mu_ref":    0.093136,
+    "mu_ref": 0.093136,
     "alpha_ref": 0.023899,
-    "beta_ref":  0.043163,
+    "beta_ref": 0.043163,
     "branching_ratio_threshold": 0.85,
     "event_sigma": 1.0,
     "eta_ref": 0.5537,

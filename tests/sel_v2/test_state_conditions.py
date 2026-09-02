@@ -8,20 +8,18 @@ Covers:
 - Priority order + min-dwell integration
 """
 
-import pytest
 from datetime import datetime, timezone
-from typing import Optional
 
-from sel_v2.states.schema import BarFeatures, StateLabel, MIN_DWELL_BARS
 from sel_v2.states.conditions import (
     check_cascade,
-    check_critical,
-    check_surging,
     check_coiling,
-    check_drifting_charged,
+    check_critical,
     check_drifting_calm,
+    check_drifting_charged,
+    check_surging,
 )
 from sel_v2.states.priority import arbitrate
+from sel_v2.states.schema import MIN_DWELL_BARS, BarFeatures, StateLabel
 
 _TS = datetime(2025, 1, 1, tzinfo=timezone.utc)
 
@@ -209,18 +207,14 @@ def test_coiling_sigma_high_false():
 
 
 def test_coiling_all_available_and_true():
-    f = _feat(
-        sigma_pctile=0.20, entropy_pctile=0.25, oi_change_rate=0.01, funding_pctile=0.50
-    )
+    f = _feat(sigma_pctile=0.20, entropy_pctile=0.25, oi_change_rate=0.01, funding_pctile=0.50)
     res = check_coiling(f)
     assert res.met is True
     assert not res.none_conditions
 
 
 def test_coiling_two_of_three_fires_despite_funding_extreme():
-    f = _feat(
-        sigma_pctile=0.20, entropy_pctile=0.25, oi_change_rate=0.01, funding_pctile=0.85
-    )
+    f = _feat(sigma_pctile=0.20, entropy_pctile=0.25, oi_change_rate=0.01, funding_pctile=0.85)
     # 2026-07-11 ruling (放宽授权): entropy_low + oi_positive = 2-of-3 True →
     # a lone funding=False no longer hard-vetoes (was met=False pre-ruling;
     # this is exactly the live 2026-07-11 00:00 bar that motivated the change)
@@ -230,9 +224,7 @@ def test_coiling_two_of_three_fires_despite_funding_extreme():
 
 
 def test_coiling_one_of_three_with_majority_evaluable_is_false():
-    f = _feat(
-        sigma_pctile=0.20, entropy_pctile=0.90, oi_change_rate=0.01, funding_pctile=0.85
-    )
+    f = _feat(sigma_pctile=0.20, entropy_pctile=0.90, oi_change_rate=0.01, funding_pctile=0.85)
     # 3 evaluable, only oi True → accumulation majority absent → met=False
     res = check_coiling(f)
     assert res.met is False
@@ -323,9 +315,7 @@ def test_priority_critical_beats_surging():
         StateLabel.DRIFTING_CALM: ConditionResult(False, [], [], {}),
     }
     # current=Surging, 10 bars dwell (min=2 met)
-    state, _ = arbitrate(
-        results, current_state=StateLabel.SURGING, current_duration_4h=10
-    )
+    state, _ = arbitrate(results, current_state=StateLabel.SURGING, current_duration_4h=10)
     assert state == StateLabel.CRITICAL
 
 
@@ -342,9 +332,7 @@ def test_cascade_instant_switch_ignores_min_dwell():
         StateLabel.DRIFTING_CALM: ConditionResult(False, [], [], {}),
     }
     # current=Coiling with only 2 bars (min_dwell=6 not met)
-    state, changed = arbitrate(
-        results, current_state=StateLabel.COILING, current_duration_4h=2
-    )
+    state, changed = arbitrate(results, current_state=StateLabel.COILING, current_duration_4h=2)
     assert state == StateLabel.CASCADE
     assert changed is True
 
@@ -362,9 +350,7 @@ def test_min_dwell_prevents_premature_exit():
         StateLabel.DRIFTING_CALM: ConditionResult(True, [], [], {}),
     }
     # current=Coiling with 3 bars (min_dwell=6 not met) → can't switch to Surging
-    state, changed = arbitrate(
-        results, current_state=StateLabel.COILING, current_duration_4h=3
-    )
+    state, changed = arbitrate(results, current_state=StateLabel.COILING, current_duration_4h=3)
     assert state == StateLabel.COILING
     assert changed is False
 
@@ -389,7 +375,7 @@ def test_surging_sub_state_direction_lifecycle():
 
     rec = StateRecognizer()
     # warm into Charged (σ mid + OI elevated), then break out upward
-    for i in range(8):
+    for _i in range(8):
         r = rec.recognize(_feat(sigma_pctile=0.50, oi_change_rate_pctile=0.80))
         assert r.sub_state is None  # sub_state only lives inside Surging
     r = rec.recognize(
@@ -412,7 +398,7 @@ def test_surging_sub_state_direction_lifecycle():
     )
     assert r.state.value == "Surging" and r.sub_state == "Down"
     # leave Surging → sub_state cleared
-    for i in range(12):
+    for _i in range(12):
         r = rec.recognize(_feat(sigma_pctile=0.45))
         if r.state.value != "Surging":
             assert r.sub_state is None

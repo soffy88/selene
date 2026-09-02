@@ -25,7 +25,6 @@ from sel_v2.offline.lens_common import (
     zigzag_swings,
 )
 
-
 # ── zigzag equivalence + causality ───────────────────────────────────────────
 
 
@@ -105,9 +104,7 @@ def test_pivot_overlap_insufficient_swings_or_bad_atr_is_nan():
     close = np.array([100.0, 110.0])
     w, r = pivot_overlap([_swing(0, 1, 1)], close, atr_i=2.0)
     assert np.isnan(w) and np.isnan(r)
-    w, r = pivot_overlap(
-        [_swing(0, 1, 1), _swing(0, 1, -1), _swing(0, 1, 1)], close, atr_i=0.0
-    )
+    w, r = pivot_overlap([_swing(0, 1, 1), _swing(0, 1, -1), _swing(0, 1, 1)], close, atr_i=0.0)
     assert np.isnan(w) and np.isnan(r)
 
 
@@ -171,9 +168,7 @@ def test_surging_legs_extraction_direction_and_end_via():
     close = np.array([100.0, 100.0, 120.0, 118.0, 117.0])
     legs = surging_legs(states, via, close)
     assert len(legs) == 2
-    assert legs[0] == SurgingLeg(
-        leg_id=0, start_idx=1, end_idx=2, direction=1, end_via="Exhaustion"
-    )
+    assert legs[0] == SurgingLeg(leg_id=0, start_idx=1, end_idx=2, direction=1, end_via="Exhaustion")
     # tail leg runs to the end: no after-bar → end_via None; flat → direction 0
     assert legs[1].start_idx == 4 and legs[1].end_via is None
     assert legs[1].direction == 0
@@ -202,9 +197,7 @@ def test_bh_adjust_monotone_and_capped():
     q = bh_adjust(pvals)
     # q preserves the p-value ordering and never exceeds 1
     order_p = np.argsort(pvals)
-    assert all(
-        q[order_p[i]] <= q[order_p[i + 1]] + 1e-12 for i in range(len(pvals) - 1)
-    )
+    assert all(q[order_p[i]] <= q[order_p[i + 1]] + 1e-12 for i in range(len(pvals) - 1))
     assert all(0 <= x <= 1 for x in q)
     assert q[0] == pytest.approx(0.04)  # 0.01 * 4 / 1
 

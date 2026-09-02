@@ -1,6 +1,9 @@
 """IC-decay closed-loop sizing multiplier (Phase 6)."""
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from services.signal.ic_health import ic_health_scalar
 

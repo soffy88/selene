@@ -27,7 +27,10 @@ class ArtifactError(RuntimeError):
 
 
 def _load(path: str) -> dict[str, Any]:
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ArtifactError(f"{path}: {exc}") from exc
     if not isinstance(data, dict):
         raise ArtifactError(f"{path} is not a JSON object")
     return data

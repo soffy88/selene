@@ -1,14 +1,14 @@
 """DecisionReplayer — replay recorded DecisionTrail sequences with a (possibly different) config."""
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import Optional
 
 from decision.config import DecisionConfig
 from paper_trading.engine import DecisionEngine
-from paper_trading.risk import RiskGate, RiskCheckResult
-from paper_trading.schema import AccountState, DecisionAction, Position, PositionSide
+from paper_trading.risk import RiskGate
+from paper_trading.schema import AccountState, Position, PositionSide
 from paper_trading.trail import DecisionTrail, DecisionTrailBuilder
 
 logger = logging.getLogger(__name__)
@@ -105,7 +105,7 @@ class DecisionReplayer:
                 state_output=state_out,
                 proposed_decision=proposed_decision,
                 risk_result=risk_result,
-                fill=None,       # fills not replayed (would require position tracking)
+                fill=None,  # fills not replayed (would require position tracking)
                 realized_pnl=None,
                 account_before=account_before,
             )
@@ -118,6 +118,7 @@ class DecisionReplayer:
 # ---------------------------------------------------------------------------
 # Thin shim for replay — wraps a DecisionTrail as a StateOutput-compatible object
 # ---------------------------------------------------------------------------
+
 
 class _ReplayStateOutput:
     """Duck-typed StateOutput from a recorded DecisionTrail."""

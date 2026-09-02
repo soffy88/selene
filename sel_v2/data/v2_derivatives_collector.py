@@ -2,21 +2,20 @@ import asyncio
 import logging
 import os
 from datetime import datetime, timezone
+
 import aiohttp
 import asyncpg
 
-from sel_v2.db.migrations import apply_schema
-from sel_v2.data.insert_guard import InsertGuard, InsertFailureLimitExceeded
 from sel_v2.data.binance_rest import (
-    fetch_json,
-    build_deriv_row_binance,
-    to_binance_symbol,
     BINANCE_PROXY,
+    build_deriv_row_binance,
+    fetch_json,
+    to_binance_symbol,
 )
+from sel_v2.data.insert_guard import InsertFailureLimitExceeded, InsertGuard
+from sel_v2.db.migrations import apply_schema
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("v2_derivatives_collector")
 
 _guard = InsertGuard("v2_derivatives_snapshots")
@@ -33,20 +32,13 @@ async def main():
     pool = await asyncpg.create_pool(DB_URL)
     await apply_schema(pool)
     insert_count = 0
-    logger.info(
-        f"derivatives collector: Binance REST {FETCH_SYMBOL} via {BINANCE_PROXY} "
-        f"(stored as {BASE_SYMBOL})"
-    )
+    logger.info(f"derivatives collector: Binance REST {FETCH_SYMBOL} via {BINANCE_PROXY} (stored as {BASE_SYMBOL})")
 
     async with aiohttp.ClientSession(timeout=REQUEST_TIMEOUT) as session:
         while True:
             try:
-                premium = await fetch_json(
-                    session, "/fapi/v1/premiumIndex", {"symbol": FETCH_SYMBOL}
-                )
-                oi_data = await fetch_json(
-                    session, "/fapi/v1/openInterest", {"symbol": FETCH_SYMBOL}
-                )
+                premium = await fetch_json(session, "/fapi/v1/premiumIndex", {"symbol": FETCH_SYMBOL})
+                oi_data = await fetch_json(session, "/fapi/v1/openInterest", {"symbol": FETCH_SYMBOL})
 
                 now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
                 row = build_deriv_row_binance(premium, oi_data, BASE_SYMBOL, now_ms)
@@ -61,9 +53,7 @@ async def main():
                         if insert_count == 1:
                             logger.info("INSERT row 1 to v2_derivatives_snapshots")
                         if insert_count % 10 == 0:
-                            logger.info(
-                                f"v2_derivatives_snapshots cumulative inserts: {insert_count}"
-                            )
+                            logger.info(f"v2_derivatives_snapshots cumulative inserts: {insert_count}")
                     except Exception as db_e:
                         _guard.fail(db_e)
             except InsertFailureLimitExceeded:

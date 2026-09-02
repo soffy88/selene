@@ -15,12 +15,12 @@ Output: analysis/wavelet_multiscale_v1.md
 Usage:
     python -m sel_v2.offline.wavelet [--data analysis/data/btc_4h.parquet]
 """
+
 from __future__ import annotations
 
 import argparse
 import logging
 import os
-from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
@@ -60,11 +60,10 @@ def compute_dwt(returns: np.ndarray, wavelet: str = "db4", level: int = 6):
     """Return (coeffs, energy_by_level) for the DWT decomposition."""
     coeffs = pywt.wavedec(returns, wavelet, level=level, mode="periodization")
     # Energy per level: ||c||^2
-    energies = [float(np.sum(c ** 2)) for c in coeffs]
+    energies = [float(np.sum(c**2)) for c in coeffs]
     total = sum(energies)
     energy_pct = [e / total * 100 if total > 0 else 0.0 for e in energies]
     return coeffs, energies, energy_pct
-
 
 
 def _event_signature(
@@ -84,17 +83,19 @@ def _event_signature(
             results.append({"date": date_str, "label": label, "desc": desc, "found": False})
             continue
 
-        window_ret = returns[idx - window: idx + window]
+        window_ret = returns[idx - window : idx + window]
         coeffs, energies, energy_pct = compute_dwt(window_ret, level=min(6, pywt.dwt_max_level(len(window_ret), "db4")))
-        results.append({
-            "date": date_str,
-            "label": label,
-            "desc": desc,
-            "found": True,
-            "peak_return_pct": float(np.min(window_ret) * 100),  # most negative return
-            "n_levels": len(coeffs) - 1,
-            "energy_pct": energy_pct,
-        })
+        results.append(
+            {
+                "date": date_str,
+                "label": label,
+                "desc": desc,
+                "found": True,
+                "peak_return_pct": float(np.min(window_ret) * 100),  # most negative return
+                "n_levels": len(coeffs) - 1,
+                "energy_pct": energy_pct,
+            }
+        )
     return results
 
 
@@ -127,14 +128,16 @@ def run_wavelet_analysis(
     rolling_energy: list[dict] = []
     step = 90  # 50% overlap
     for start_idx in range(0, n - window_size, step):
-        seg = returns[start_idx: start_idx + window_size]
+        seg = returns[start_idx : start_idx + window_size]
         seg_level = min(actual_level, pywt.dwt_max_level(len(seg), wavelet))
         _, e, e_pct = compute_dwt(seg, wavelet=wavelet, level=seg_level)
-        rolling_energy.append({
-            "start_idx": start_idx,
-            "start_time": str(df["time"].iloc[start_idx]),
-            "energy_pct": e_pct,
-        })
+        rolling_energy.append(
+            {
+                "start_idx": start_idx,
+                "start_time": str(df["time"].iloc[start_idx]),
+                "energy_pct": e_pct,
+            }
+        )
 
     # Cascade event signatures
     event_sigs = _event_signature(returns, times, KNOWN_EVENTS)
@@ -146,7 +149,7 @@ def run_wavelet_analysis(
 
     # Which levels have the most temporal structure (autocorrelation)?
     level_autocorr = []
-    for i, c in enumerate(coeffs[:-1]):  # skip approximation
+    for _i, c in enumerate(coeffs[:-1]):  # skip approximation
         ac = float(np.corrcoef(c[:-1], c[1:])[0, 1]) if len(c) > 2 else 0.0
         level_autocorr.append(ac)
 
@@ -184,7 +187,7 @@ def _write_report(result: dict, output_path: str) -> None:
         f"**Date**: {pd.Timestamp.now().date()}  ",
         f"**Mother wavelet**: {wavelet} (db4)  ",
         f"**Decomposition levels**: {actual_level}  ",
-        f"**Data**: BTC-USDT 4H log returns  ",
+        "**Data**: BTC-USDT 4H log returns  ",
         f"**Coverage**: {result['coverage_start']} → {result['coverage_end']}  ",
         f"**N bars**: {result['n_bars']}  ",
         "",
@@ -198,10 +201,7 @@ def _write_report(result: dict, output_path: str) -> None:
     # pywt.wavedec returns [cA, cD_level, cD_{level-1}, ..., cD_1]
     # So energy_pct[0] = approximation, energy_pct[1] = level 6, ..., energy_pct[6] = level 1
     for lvl in range(1, actual_level + 1):
-        lines.append(
-            f"| {lvl} | {LEVEL_DESCRIPTIONS.get(lvl, '?')} | "
-            f"Detail coefficients at scale 2^{lvl} |"
-        )
+        lines.append(f"| {lvl} | {LEVEL_DESCRIPTIONS.get(lvl, '?')} | Detail coefficients at scale 2^{lvl} |")
     lines.append(f"| A | {LEVEL_DESCRIPTIONS.get(7, 'Approximation')} | Low-freq trend |")
     lines.append("")
 
@@ -261,8 +261,7 @@ def _write_report(result: dict, output_path: str) -> None:
             detail_e = e_pcts[1:] if len(e_pcts) > 1 else e_pcts
             dom_lvl = actual_level - int(np.argmax(detail_e)) if detail_e else "?"
             lines.append(
-                f"| {ev['label']} | {ev['date']} | {ev['peak_return_pct']:.1f}% | "
-                f"Level {dom_lvl} | {ev['desc'][:40]} |"
+                f"| {ev['label']} | {ev['date']} | {ev['peak_return_pct']:.1f}% | Level {dom_lvl} | {ev['desc'][:40]} |"
             )
 
     lines += [
@@ -312,7 +311,7 @@ def _energy_interpretation(lvl: int, energy_pct: float, autocorr: float) -> str:
     elif autocorr > 0.3:
         return f"Low energy but persistent (AC={autocorr:.2f}) — trend carry-over"
     else:
-        return f"Low energy, low persistence — noise-dominated"
+        return "Low energy, low persistence — noise-dominated"
 
 
 def _anchor_validation(dominant_lvl: int, energy_pct: list) -> str:
@@ -333,7 +332,7 @@ def _anchor_validation(dominant_lvl: int, energy_pct: list) -> str:
         )
     else:
         return (
-            f"⚠️ **Low-freq dominance**: Most energy at Level {dominant_lvl} ({LEVEL_DESCRIPTIONS.get(dominant_lvl,'?')}). "
+            f"⚠️ **Low-freq dominance**: Most energy at Level {dominant_lvl} ({LEVEL_DESCRIPTIONS.get(dominant_lvl, '?')}). "
             "Suggests BTC regime dynamics operate at weekly+ timescales in this sample. "
             "4H is still a valid anchor but may miss slow-moving state changes."
         )
@@ -346,7 +345,7 @@ def _design_validation(dominant_lvl: int, energy_pct: list, actual_level: int) -
     if len(detail_energies) >= 3:
         l1_e = detail_energies[-1]  # level 1 (highest freq)
         l2_e = detail_energies[-2]  # level 2
-        l3_e = detail_energies[-3]  # level 3
+        detail_energies[-3]  # level 3
         noise_e = l1_e + l2_e
         signal_e = sum(detail_energies[:-2])
     else:
@@ -365,9 +364,7 @@ def _design_validation(dominant_lvl: int, energy_pct: list, actual_level: int) -
             "precisely because this high-freq energy is noise. v2.0 rationale holds.".format(noise_e)
         )
     else:
-        lines.append(
-            "ℹ️ **Noise zone energy**: {:.1f}% in L1+L2. Moderate noise level.".format(noise_e)
-        )
+        lines.append("ℹ️ **Noise zone energy**: {:.1f}% in L1+L2. Moderate noise level.".format(noise_e))
 
     if dominant_lvl in (3, 4, 5):
         lines.append(

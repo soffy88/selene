@@ -5,6 +5,7 @@ The bridge translates a deployed sel_v2 entry decision into the canonical Scored
 so the paper-validated strategy can reach the same risk-gated / native-stop execution path.
 Default OFF; nothing reaches live without the existing NOTIFY_ONLY + OOS gates.
 """
+
 import asyncio
 from dataclasses import dataclass
 from typing import Optional
@@ -12,7 +13,9 @@ from typing import Optional
 import pytest
 
 from sel_v2.paper_interface.live_bridge import (
-    decision_to_scored_signal, LiveBridge, bridge_enabled,
+    LiveBridge,
+    bridge_enabled,
+    decision_to_scored_signal,
 )
 from sel_v2.strategies.strategy_exit import S1_DRAWDOWN_STOP, S2_DRAWDOWN_STOP
 
@@ -39,9 +42,9 @@ class _S2Decision:
 
 # ── translation ─────────────────────────────────────────────────────────────
 
+
 def test_s1_long_translation_sets_stop_below_entry():
-    sig = decision_to_scored_signal(_S1Decision(), symbol="BTCUSDT",
-                                    entry_price=100.0, strategy="strategy_1")
+    sig = decision_to_scored_signal(_S1Decision(), symbol="BTCUSDT", entry_price=100.0, strategy="strategy_1")
     assert sig is not None
     assert sig.direction.value == "LONG"
     # stop computed from the REAL S1 drawdown-stop pct, below entry for a long
@@ -50,8 +53,7 @@ def test_s1_long_translation_sets_stop_below_entry():
 
 
 def test_s2_short_translation_via_action_sets_stop_above_entry():
-    sig = decision_to_scored_signal(_S2Decision(), symbol="BTCUSDT",
-                                    entry_price=100.0, strategy="strategy_2")
+    sig = decision_to_scored_signal(_S2Decision(), symbol="BTCUSDT", entry_price=100.0, strategy="strategy_2")
     assert sig is not None
     assert sig.direction.value == "SHORT"
     # short stop is above entry, using the S2 pct
@@ -63,16 +65,16 @@ def test_non_entry_returns_none():
     class _Obs:
         action: str = "OBSERVE"
         reason: str = "no"
-    assert decision_to_scored_signal(_Obs(), symbol="BTCUSDT",
-                                     entry_price=100.0, strategy="strategy_2") is None
+
+    assert decision_to_scored_signal(_Obs(), symbol="BTCUSDT", entry_price=100.0, strategy="strategy_2") is None
 
 
 def test_zero_entry_price_returns_none():
-    assert decision_to_scored_signal(_S1Decision(), symbol="BTCUSDT",
-                                     entry_price=0.0, strategy="strategy_1") is None
+    assert decision_to_scored_signal(_S1Decision(), symbol="BTCUSDT", entry_price=0.0, strategy="strategy_1") is None
 
 
 # ── gating ──────────────────────────────────────────────────────────────────
+
 
 class _StubRedis:
     def __init__(self):
@@ -86,17 +88,15 @@ def test_emit_is_noop_when_disabled(monkeypatch):
     monkeypatch.delenv("SEL_V2_LIVE_BRIDGE", raising=False)
     assert bridge_enabled() is False
     r = _StubRedis()
-    out = asyncio.run(LiveBridge(r).emit(_S1Decision(), symbol="BTCUSDT",
-                                         entry_price=100.0, strategy="strategy_1"))
+    out = asyncio.run(LiveBridge(r).emit(_S1Decision(), symbol="BTCUSDT", entry_price=100.0, strategy="strategy_1"))
     assert out is None
-    assert r.published == []   # nothing reached the live stream
+    assert r.published == []  # nothing reached the live stream
 
 
 def test_emit_publishes_when_enabled(monkeypatch):
     monkeypatch.setenv("SEL_V2_LIVE_BRIDGE", "on")
     r = _StubRedis()
-    out = asyncio.run(LiveBridge(r).emit(_S2Decision(), symbol="BTCUSDT",
-                                         entry_price=100.0, strategy="strategy_2"))
+    out = asyncio.run(LiveBridge(r).emit(_S2Decision(), symbol="BTCUSDT", entry_price=100.0, strategy="strategy_2"))
     assert out is not None
     assert len(r.published) == 1
     stream, _ = r.published[0]
@@ -111,7 +111,7 @@ def test_emit_noop_on_non_entry_even_when_enabled(monkeypatch):
     class _Abort:
         action: str = "ABORT"
         reason: str = "veto"
-    out = asyncio.run(LiveBridge(r).emit(_Abort(), symbol="BTCUSDT",
-                                         entry_price=100.0, strategy="strategy_2"))
+
+    out = asyncio.run(LiveBridge(r).emit(_Abort(), symbol="BTCUSDT", entry_price=100.0, strategy="strategy_2"))
     assert out is None
     assert r.published == []

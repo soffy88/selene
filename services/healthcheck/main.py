@@ -1,16 +1,15 @@
 import asyncio
+import json
 import logging
 import os
-import json
 import time
-from datetime import datetime, timezone, timedelta
-import asyncpg
+from datetime import datetime, timedelta, timezone
+
 import aiohttp
+import asyncpg
 import redis.asyncio as redis
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("healthcheck")
 
 DB_URL = os.environ.get("DB_URL")
@@ -115,9 +114,7 @@ async def check_rules(pool, r):
         # Rule 4b: state-dwell anomaly (Wave S2C). A trend/coiling state stuck too long is
         # the "Surging pinned 54 bars, nobody noticed" failure from the diagnosis. Only the
         # ACTIVE states (Surging / Coiling) alert — long Drifting_* dwell is normal and quiet.
-        dwell_rows = await conn.fetch(
-            "SELECT state FROM v2_state_history ORDER BY timestamp DESC LIMIT 200"
-        )
+        dwell_rows = await conn.fetch("SELECT state FROM v2_state_history ORDER BY timestamp DESC LIMIT 200")
         if dwell_rows:
             cur_state = dwell_rows[0]["state"]
             dwell = 0
@@ -141,13 +138,9 @@ async def check_rules(pool, r):
     last_paper_ts_raw = await r.get("v2:paper:last_bar_ts")
     if last_paper_ts_raw and max_bar:
         last_paper_ts = datetime.fromisoformat(
-            last_paper_ts_raw.decode()
-            if isinstance(last_paper_ts_raw, bytes)
-            else last_paper_ts_raw
+            last_paper_ts_raw.decode() if isinstance(last_paper_ts_raw, bytes) else last_paper_ts_raw
         )
-        if (
-            last_paper_ts < max_bar and (now - max_bar).total_seconds() > 3600 * 5
-        ):  # 5 hours behind
+        if last_paper_ts < max_bar and (now - max_bar).total_seconds() > 3600 * 5:  # 5 hours behind
             alerts.append(
                 (
                     "CRITICAL",
@@ -185,9 +178,7 @@ async def check_rules(pool, r):
                             }
                         ),
                     )
-                    logger.error(
-                        f"dead-man switch tripped: execution heartbeat stale {age:.0f}s"
-                    )
+                    logger.error(f"dead-man switch tripped: execution heartbeat stale {age:.0f}s")
         except Exception as e:
             logger.warning(f"dead-man check failed to parse heartbeat: {e}")
 
@@ -198,9 +189,7 @@ async def check_rules(pool, r):
     halt_raw = await r.get("cw4:execution:halt")
     if halt_raw:
         try:
-            halt = json.loads(
-                halt_raw.decode() if isinstance(halt_raw, bytes) else halt_raw
-            )
+            halt = json.loads(halt_raw.decode() if isinstance(halt_raw, bytes) else halt_raw)
             ts = float(halt.get("ts", 0))
             age_h = (now.timestamp() - ts) / 3600 if ts else -1.0
             if not await r.exists("hc_dedup:exec_halt_active"):

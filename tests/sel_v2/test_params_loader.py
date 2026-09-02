@@ -12,13 +12,15 @@ load_strategy_params with a fixed return value, which would prevent testing the
 function's internals.  The fixture is overridden below with a no-op fixture of
 the same name, scoped to this file only.
 """
-import pytest
+
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from sel_v2.strategies.params_loader import load_strategy_params, save_strategy_params
 
-
 # ── Fixture override ──────────────────────────────────────────────────────────
+
 
 @pytest.fixture(autouse=True)
 def mock_params_loader():
@@ -30,6 +32,7 @@ def mock_params_loader():
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _fake_rows(param_map: dict) -> list[dict]:
     """Simulate asyncpg fetch() returning rows from the flat v2_strategy_params
@@ -51,12 +54,13 @@ def _patch_asyncpg_connect(fetch_rows: list):
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
+
 def test_load_strategy_params_raises_when_param_missing():
     """
     When DB returns only a subset of requested params, load_strategy_params must
     raise RuntimeError naming every missing param (not just the first).
     """
-    partial_rows = _fake_rows({"mu_ref": 0.093136})   # alpha_ref and beta_ref absent
+    partial_rows = _fake_rows({"mu_ref": 0.093136})  # alpha_ref and beta_ref absent
 
     with _patch_asyncpg_connect(partial_rows):
         with pytest.raises(RuntimeError) as exc_info:
@@ -68,8 +72,8 @@ def test_load_strategy_params_raises_when_param_missing():
 
     msg = str(exc_info.value)
     assert "alpha_ref" in msg, f"Missing param 'alpha_ref' not named in error: {msg}"
-    assert "beta_ref"  in msg, f"Missing param 'beta_ref' not named in error: {msg}"
-    assert "mu_ref" not in msg or "missing" in msg   # mu_ref was returned, should not be listed as missing
+    assert "beta_ref" in msg, f"Missing param 'beta_ref' not named in error: {msg}"
+    assert "mu_ref" not in msg or "missing" in msg  # mu_ref was returned, should not be listed as missing
     assert "hawkes_calibration" in msg, f"Wave 1 hint absent from error: {msg}"
 
 
@@ -78,11 +82,13 @@ def test_load_strategy_params_succeeds_when_all_present():
     When DB returns all requested params, load_strategy_params returns a dict
     with the correct keys and float-cast values.
     """
-    all_rows = _fake_rows({
-        "mu_ref":    0.093136,
-        "alpha_ref": 0.023899,
-        "beta_ref":  0.043163,
-    })
+    all_rows = _fake_rows(
+        {
+            "mu_ref": 0.093136,
+            "alpha_ref": 0.023899,
+            "beta_ref": 0.043163,
+        }
+    )
 
     with _patch_asyncpg_connect(all_rows):
         result = load_strategy_params(
@@ -92,15 +98,16 @@ def test_load_strategy_params_succeeds_when_all_present():
         )
 
     assert set(result.keys()) == {"mu_ref", "alpha_ref", "beta_ref"}
-    assert result["mu_ref"]    == pytest.approx(0.093136, rel=1e-6)
+    assert result["mu_ref"] == pytest.approx(0.093136, rel=1e-6)
     assert result["alpha_ref"] == pytest.approx(0.023899, rel=1e-6)
-    assert result["beta_ref"]  == pytest.approx(0.043163, rel=1e-6)
+    assert result["beta_ref"] == pytest.approx(0.043163, rel=1e-6)
     # All values must be floats, not strings
     for k, v in result.items():
         assert isinstance(v, float), f"Expected float for {k}, got {type(v)}"
 
 
 # ── Writer round-trip (the chain that silently disabled Strategy 2) ────────────
+
 
 class _InMemoryConn:
     """A minimal in-memory stand-in for an asyncpg connection backed by a shared
@@ -112,20 +119,21 @@ class _InMemoryConn:
     def __init__(self, store: dict):
         self._store = store
 
-    async def executemany(self, query, args):       # save path
+    async def executemany(self, query, args):  # save path
         assert "INSERT INTO v2_strategy_params" in query
         for key, value in args:
-            self._store[key] = value                 # value is a JSON string
+            self._store[key] = value  # value is a JSON string
         return None
 
-    async def fetch(self, query, *args):             # load path
+    async def fetch(self, query, *args):  # load path
         assert "FROM v2_strategy_params" in query
-        if args:                                     # WHERE param_key = ANY($1)
+        if args:  # WHERE param_key = ANY($1)
             keys = args[0]
-            return [{"param_key": k, "param_value": self._store[k]}
-                    for k in keys if k in self._store]
-        return [{"param_key": k, "param_value": v}   # SELECT all (paper_engine)
-                for k, v in self._store.items()]
+            return [{"param_key": k, "param_value": self._store[k]} for k in keys if k in self._store]
+        return [
+            {"param_key": k, "param_value": v}  # SELECT all (paper_engine)
+            for k, v in self._store.items()
+        ]
 
     async def close(self):
         return None
@@ -142,16 +150,23 @@ def test_save_then_load_roundtrip():
     store: dict = {}
     dsn = "postgresql://test:test@localhost/test"
     with _patch_inmemory(store):
-        save_strategy_params("h2", {
-            "mu_ref": 0.093136,
-            "alpha_ref": 0.023899,
-            "beta_ref": 0.043163,
-            "branching_ratio_threshold": 0.85,
-        }, db_url=dsn)
+        save_strategy_params(
+            "h2",
+            {
+                "mu_ref": 0.093136,
+                "alpha_ref": 0.023899,
+                "beta_ref": 0.043163,
+                "branching_ratio_threshold": 0.85,
+            },
+            db_url=dsn,
+        )
 
         # keys are strategy-prefixed in storage
         assert set(store) == {
-            "h2_mu_ref", "h2_alpha_ref", "h2_beta_ref", "h2_branching_ratio_threshold",
+            "h2_mu_ref",
+            "h2_alpha_ref",
+            "h2_beta_ref",
+            "h2_branching_ratio_threshold",
         }
 
         got = load_strategy_params("h2", ["mu_ref", "alpha_ref", "beta_ref"], db_url=dsn)
@@ -173,9 +188,15 @@ def test_calibration_persist_enables_strategy2_params():
         with pytest.raises(RuntimeError):
             HawkesParams.from_h2_reference(db_url=dsn)
 
-        save_strategy_params("h2", {
-            "mu_ref": 0.093136, "alpha_ref": 0.023899, "beta_ref": 0.043163,
-        }, db_url=dsn)
+        save_strategy_params(
+            "h2",
+            {
+                "mu_ref": 0.093136,
+                "alpha_ref": 0.023899,
+                "beta_ref": 0.043163,
+            },
+            db_url=dsn,
+        )
 
         params = HawkesParams.from_h2_reference(db_url=dsn)
 

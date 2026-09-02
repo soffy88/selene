@@ -6,7 +6,7 @@ and returns (matched: bool, reason: str, used_quantiles: dict).
 
 All threshold values are marked PLACEHOLDER — calibrate with v1.0.md when available.
 """
-from typing import Optional
+
 from sel_engine.features.schema import FeatureVector
 
 
@@ -242,13 +242,7 @@ def check_drifting_charged(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict
         "abs_tf_24h_sum": tf24_qr,
         "OI_hurst": fv.OI_hurst,
     }
-    reason = (
-        f"DRIFTING_CHARGED:"
-        f"sigma@{sigma_qr:.2f}"
-        f"+H24h@{h24_qr:.2f}"
-        f"+tf24@{tf24_qr:.2f}"
-        f"+hurst={fv.OI_hurst:.3f}"
-    )
+    reason = f"DRIFTING_CHARGED:sigma@{sigma_qr:.2f}+H24h@{h24_qr:.2f}+tf24@{tf24_qr:.2f}+hurst={fv.OI_hurst:.3f}"
     return True, reason, used
 
 
@@ -288,11 +282,5 @@ def check_drifting_calm(fv: FeatureVector, qr: dict) -> tuple[bool, str, dict]:
         "abs_tf_24h_sum": tf24_qr,
         "abs_oi_change_rate_24h": abs_oi_cr_qr,
     }
-    reason = (
-        f"DRIFTING_CALM:"
-        f"sigma@{sigma_qr:.2f}"
-        f"+H24h@{h24_qr:.2f}"
-        f"+tf24@{tf24_qr:.2f}"
-        f"+oi_cr@{abs_oi_cr_qr:.2f}"
-    )
+    reason = f"DRIFTING_CALM:sigma@{sigma_qr:.2f}+H24h@{h24_qr:.2f}+tf24@{tf24_qr:.2f}+oi_cr@{abs_oi_cr_qr:.2f}"
     return True, reason, used

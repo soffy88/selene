@@ -7,6 +7,7 @@ Exit 0 on success.
 Usage:
     python -m paper_trading.scripts.validate_runner
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,10 +17,10 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-
 # ---------------------------------------------------------------------------
 # Synthetic StateOutputService shim
 # ---------------------------------------------------------------------------
+
 
 class _SyntheticStateOutputService:
     """Generates deterministic synthetic state outputs without DB or Redis."""
@@ -84,6 +85,7 @@ class _SyntheticStateOutput:
 # Patched runner
 # ---------------------------------------------------------------------------
 
+
 class _SyntheticRunner:
     """PaperTradingRunner variant that uses the synthetic state service."""
 
@@ -141,14 +143,13 @@ class _SyntheticRunner:
 
         if final_action in (DecisionAction.OPEN_LONG, DecisionAction.OPEN_SHORT):
             if self.positions.current is None and proposed_decision.target_size_usdt:
-                side = (
-                    PositionSide.LONG
-                    if final_action == DecisionAction.OPEN_LONG
-                    else PositionSide.SHORT
-                )
+                side = PositionSide.LONG if final_action == DecisionAction.OPEN_LONG else PositionSide.SHORT
                 fill = self.fills.simulate_open(
-                    bar_time, self.symbol, side,
-                    proposed_decision.target_size_usdt, close,
+                    bar_time,
+                    self.symbol,
+                    side,
+                    proposed_decision.target_size_usdt,
+                    close,
                     self.config.config_hash,
                 )
                 self.positions.open(fill, bar_time, close)
@@ -156,14 +157,22 @@ class _SyntheticRunner:
 
         elif final_action == DecisionAction.CLOSE and self.positions.current is not None:
             fill, realized_pnl = self.fills.simulate_close(
-                bar_time, self.symbol, self.positions.current, close,
+                bar_time,
+                self.symbol,
+                self.positions.current,
+                close,
                 self.config.config_hash,
             )
             self.positions.close(fill, realized_pnl)
             self.account.apply_fill(fill, realized_pnl)
 
         trail = self.trail_builder.build(
-            bar_time, state_out, proposed_decision, risk_result, fill, realized_pnl,
+            bar_time,
+            state_out,
+            proposed_decision,
+            risk_result,
+            fill,
+            realized_pnl,
             account_snapshot,
         )
         return trail
@@ -172,6 +181,7 @@ class _SyntheticRunner:
 # ---------------------------------------------------------------------------
 # Main validation routine
 # ---------------------------------------------------------------------------
+
 
 async def run_validation(num_bars: int = 800) -> None:
     from decision.config import load_config
@@ -191,10 +201,7 @@ async def run_validation(num_bars: int = 800) -> None:
         trails.append(trail)
 
     # ---- Summary statistics ----
-    final_nav = runner.account.snapshot(
-        start_time + timedelta(hours=num_bars - 1),
-        runner.positions.current
-    ).nav_usdt
+    final_nav = runner.account.snapshot(start_time + timedelta(hours=num_bars - 1), runner.positions.current).nav_usdt
 
     realized_pnl = runner.account._realized_pnl
 

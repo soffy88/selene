@@ -1,6 +1,7 @@
 """Feature quality validator: missing rate, outlier rate, distribution stats."""
+
 import logging
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
@@ -10,12 +11,25 @@ from sel_engine.features.schema import FeatureVector
 logger = logging.getLogger(__name__)
 
 NUMERIC_FIELDS = [
-    "close", "delta_p_pct", "sigma_p_24h",
-    "H", "top_5_bid_size", "top_5_ask_size", "total_depth", "spread_bps",
-    "TF", "OI", "funding_rate",
-    "LV", "absorption_ratio",
-    "price_autocorr_12h", "price_autocorr_24h", "price_autocorr_48h",
-    "sigma_p_d2", "H_change_rate_std_12h", "OI_hurst",
+    "close",
+    "delta_p_pct",
+    "sigma_p_24h",
+    "H",
+    "top_5_bid_size",
+    "top_5_ask_size",
+    "total_depth",
+    "spread_bps",
+    "TF",
+    "OI",
+    "funding_rate",
+    "LV",
+    "absorption_ratio",
+    "price_autocorr_12h",
+    "price_autocorr_24h",
+    "price_autocorr_48h",
+    "sigma_p_d2",
+    "H_change_rate_std_12h",
+    "OI_hurst",
 ]
 
 MISSING_RATE_THRESHOLD = 0.20
@@ -36,7 +50,7 @@ class FeatureStats:
     max: Optional[float] = None
     p1: Optional[float] = None
     p99: Optional[float] = None
-    flag_missing: bool = False   # True if missing_rate > threshold
+    flag_missing: bool = False  # True if missing_rate > threshold
 
 
 @dataclass

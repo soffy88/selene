@@ -15,19 +15,19 @@ States:
 
 Output label: "LOW_VOL" | "HIGH_VOL"
 """
+
 from __future__ import annotations
 
 from collections import deque
-from datetime import datetime
 
 import numpy as np
 
 from sel_v2.observation_tools.base import BarFeatures, ObservationResult, ObservationTool
 
-WINDOW_BARS = 60        # 60 × 4H = 10 days of history
-MIN_BARS = 20           # minimum before HMM is meaningful
-MAX_ITER = 50           # Baum-Welch EM iterations
-TOL = 1e-4              # convergence tolerance
+WINDOW_BARS = 60  # 60 × 4H = 10 days of history
+MIN_BARS = 20  # minimum before HMM is meaningful
+MAX_ITER = 50  # Baum-Welch EM iterations
+TOL = 1e-4  # convergence tolerance
 
 
 class _GaussianHMM:
@@ -59,10 +59,7 @@ class _GaussianHMM:
         B = np.empty((T, self.n_states))
         for k in range(self.n_states):
             std = max(self._sigma[k], 1e-8)
-            B[:, k] = (
-                np.exp(-0.5 * ((x - self._mu[k]) / std) ** 2)
-                / (std * np.sqrt(2 * np.pi))
-            )
+            B[:, k] = np.exp(-0.5 * ((x - self._mu[k]) / std) ** 2) / (std * np.sqrt(2 * np.pi))
         return np.clip(B, 1e-300, None)
 
     # ── Forward-Backward ──────────────────────────────────────────────────
@@ -96,8 +93,7 @@ class _GaussianHMM:
         # Initialise with k-means-style split on variance
         med = np.median(np.abs(x))
         self._mu = np.array([-med * 0.5, med * 0.5])
-        self._sigma = np.array([np.std(x[np.abs(x) <= med]) + 1e-8,
-                                 np.std(x[np.abs(x) > med]) + 1e-8])
+        self._sigma = np.array([np.std(x[np.abs(x) <= med]) + 1e-8, np.std(x[np.abs(x) > med]) + 1e-8])
 
         prev_ll = -np.inf
         for _ in range(self.n_iter):
@@ -174,6 +170,7 @@ class BayesianHMM(ObservationTool):
 
     STUB: pymc / hmmlearn unavailable → custom EM Baum-Welch.
     """
+
     tool_id = "B1"
 
     def __init__(self, window: int = WINDOW_BARS, high_vol_threshold: float = 0.60) -> None:

@@ -2,20 +2,19 @@
 StateRecognizer: applies state conditions in priority order to produce StateRecord.
 Also provides compute_state_distribution for quantile history validation.
 """
-from datetime import datetime
-from typing import Optional
 
 from sel_engine.features.schema import FeatureVector
-from .schema import StateLabel, StateNoneReason, StateRecord
-from .thresholds import RollingQuantileCalculator
+
 from .conditions import (
     check_cascade,
-    check_critical,
     check_coiling,
-    check_surging,
-    check_drifting_charged,
+    check_critical,
     check_drifting_calm,
+    check_drifting_charged,
+    check_surging,
 )
+from .schema import StateLabel, StateNoneReason, StateRecord
+from .thresholds import RollingQuantileCalculator
 
 # All feature names whose raw values enter the rolling quantile windows
 QUANTILE_FEATURES = [
@@ -32,14 +31,14 @@ QUANTILE_FEATURES = [
     "OI",
     "funding_rate",
     "H_change_rate_std_12h",  # doc §4.5 Cond3 Critical
-    "delta_H",                 # doc §4.6 Cond4 Cascade: |ΔH| this bar
+    "delta_H",  # doc §4.6 Cond4 Cascade: |ΔH| this bar
     # P1 features (doc §4.1–4.4)
-    "oi_change_rate_24h",      # §4.1 Cond3, §4.3 Cond4
-    "tf_dp_ratio_24h",         # §4.1 Cond4; WIKI_REQUIRED
-    "price_slope_6h",          # §4.2 Cond1 (already abs value)
+    "oi_change_rate_24h",  # §4.1 Cond3, §4.3 Cond4
+    "tf_dp_ratio_24h",  # §4.1 Cond4; WIKI_REQUIRED
+    "price_slope_6h",  # §4.2 Cond1 (already abs value)
     "sigma_change_rate_std_6h",  # §4.2 Cond3 stability
-    "H_24h_mean",              # §4.3 Cond2, §4.4 Cond2; WIKI_REQUIRED
-    "abs_tf_24h_sum",          # §4.3 Cond3, §4.4 Cond3; WIKI_REQUIRED
+    "H_24h_mean",  # §4.3 Cond2, §4.4 Cond2; WIKI_REQUIRED
+    "abs_tf_24h_sum",  # §4.3 Cond3, §4.4 Cond3; WIKI_REQUIRED
 ]
 
 
@@ -48,13 +47,15 @@ QUANTILE_FEATURES = [
 # (orderbook / trade_flow / oi_persister), add the feature name here.
 # See EC-05 in audit/engineering_concerns.md for the design rationale.
 # See test_hard_short_circuit_qr_covers_all_wiki_required_features for enforcement.
-_HARD_SHORT_CIRCUIT_QR: frozenset = frozenset({
-    "H_24h_mean",              # Coiling §4.1 Cond2, Drifting-Calm §4.3 Cond2, Drifting-Charged §4.4 Cond2
-    "abs_tf_24h_sum",          # Drifting-Calm §4.3 Cond3, Drifting-Charged §4.4 Cond3
-    "oi_change_rate_24h",      # Coiling §4.1 Cond3, Drifting-Calm §4.3 Cond4
-    "tf_dp_ratio_24h",         # Coiling §4.1 Cond4
-    "abs_oi_change_rate_24h",  # Drifting-Calm §4.3 Cond4
-})
+_HARD_SHORT_CIRCUIT_QR: frozenset = frozenset(
+    {
+        "H_24h_mean",  # Coiling §4.1 Cond2, Drifting-Calm §4.3 Cond2, Drifting-Charged §4.4 Cond2
+        "abs_tf_24h_sum",  # Drifting-Calm §4.3 Cond3, Drifting-Charged §4.4 Cond3
+        "oi_change_rate_24h",  # Coiling §4.1 Cond3, Drifting-Calm §4.3 Cond4
+        "tf_dp_ratio_24h",  # Coiling §4.1 Cond4
+        "abs_oi_change_rate_24h",  # Drifting-Calm §4.3 Cond4
+    }
+)
 
 
 def _none_reason_for_no_match(qr: dict, fv: FeatureVector) -> StateNoneReason:
@@ -101,12 +102,12 @@ class StateRecognizer:
 
         # Apply states in priority order (highest priority first)
         checks = [
-            (check_cascade,          StateLabel.CASCADE,          None),
-            (check_critical,         StateLabel.CRITICAL,         None),
-            (check_coiling,          StateLabel.COILING,          None),
-            (check_surging,          None,                        None),   # special: direction from reason
+            (check_cascade, StateLabel.CASCADE, None),
+            (check_critical, StateLabel.CRITICAL, None),
+            (check_coiling, StateLabel.COILING, None),
+            (check_surging, None, None),  # special: direction from reason
             (check_drifting_charged, StateLabel.DRIFTING_CHARGED, None),
-            (check_drifting_calm,    StateLabel.DRIFTING_CALM,    None),
+            (check_drifting_calm, StateLabel.DRIFTING_CALM, None),
         ]
 
         for check_fn, label, _ in checks:
@@ -203,15 +204,9 @@ def compute_state_distribution(state_records: list[StateRecord]) -> dict:
     Useful for verifying quantile history and state frequency.
     """
     total = len(state_records)
-    cold_start_bars = sum(
-        1 for r in state_records if r.none_reason == StateNoneReason.COLD_START
-    )
-    missing_data_bars = sum(
-        1 for r in state_records if r.none_reason == StateNoneReason.MISSING_DATA
-    )
-    no_match_bars = sum(
-        1 for r in state_records if r.none_reason == StateNoneReason.NO_MATCH
-    )
+    cold_start_bars = sum(1 for r in state_records if r.none_reason == StateNoneReason.COLD_START)
+    missing_data_bars = sum(1 for r in state_records if r.none_reason == StateNoneReason.MISSING_DATA)
+    no_match_bars = sum(1 for r in state_records if r.none_reason == StateNoneReason.NO_MATCH)
     active_bars = total - cold_start_bars - missing_data_bars - no_match_bars
 
     counts: dict[str, int] = {}

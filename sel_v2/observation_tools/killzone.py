@@ -81,9 +81,7 @@ class KillzoneAnomaly(ObservationTool):
             value=ret_rank,
             threshold=PCTILE,
             label=f"KZ{slot:02d}_ANOMALY" if signal else f"KZ{slot:02d}",
-            confidence=min(1.0, (min(ret_rank, vol_rank) - PCTILE) / (1 - PCTILE))
-            if signal
-            else 0.0,
+            confidence=min(1.0, (min(ret_rank, vol_rank) - PCTILE) / (1 - PCTILE)) if signal else 0.0,
             metadata={
                 "slot_utc": slot,
                 "ret_slot_pctile": round(ret_rank, 3),

@@ -14,6 +14,7 @@ What it does:
 
 If the DB is not running, it prints a "DB not available" message and exits 0.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,7 +22,6 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
-from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
@@ -37,8 +37,10 @@ def _make_mock_pg():
     class _CM:
         def __init__(self, c):
             self._c = c
+
         async def __aenter__(self):
             return self._c
+
         async def __aexit__(self, *_):
             pass
 
@@ -60,6 +62,7 @@ def _make_mock_redis():
 async def _read_candles(url: str, symbol: str, limit: int = 800) -> list[dict]:
     """Read last `limit` OHLCV candles from TimescaleDB."""
     import asyncpg
+
     pool = await asyncpg.create_pool(url, min_size=1, max_size=3, timeout=5)
     sql = """
         SELECT open_time, close
@@ -82,7 +85,7 @@ async def main() -> int:
         "postgresql://cw4:changeme@timescaledb:5432/cw4",
     )
 
-    print(f"=== sel Wave 4 — End-to-End Validation ===")
+    print("=== sel Wave 4 — End-to-End Validation ===")
     print(f"Symbol  : {symbol}")
     print(f"DB URL  : {timescale_url}")
     print()
@@ -95,13 +98,10 @@ async def main() -> int:
         print("[INFO] Falling back to synthetic data (100 flat bars at 50 000)")
         now = datetime(2024, 6, 1, tzinfo=timezone.utc)
         from datetime import timedelta
-        candles = [
-            {"open_time": now + timedelta(hours=i), "close": 50000.0 + i * 0.5}
-            for i in range(100)
-        ]
 
-    print(f"[1/4] Loaded {len(candles)} candles  "
-          f"({candles[0]['open_time']} → {candles[-1]['open_time']})")
+        candles = [{"open_time": now + timedelta(hours=i), "close": 50000.0 + i * 0.5} for i in range(100)]
+
+    print(f"[1/4] Loaded {len(candles)} candles  ({candles[0]['open_time']} → {candles[-1]['open_time']})")
 
     # ── Step 2: run through StateOutputService ───────────────────────────────
     from sel_engine.paper_interface.service import StateOutputService
@@ -125,8 +125,7 @@ async def main() -> int:
     # ── Step 3: print last 10 state records ──────────────────────────────────
     print()
     print("[3/4] Last 10 state records:")
-    print(f"  {'bar_time':<26}  {'state':<20}  {'dir':<5}  {'cold':<5}  "
-          f"{'legal':<5}  {'compl':>5}  reason")
+    print(f"  {'bar_time':<26}  {'state':<20}  {'dir':<5}  {'cold':<5}  {'legal':<5}  {'compl':>5}  reason")
     print("  " + "-" * 100)
     for out in outputs[-10:]:
         print(
@@ -148,7 +147,7 @@ async def main() -> int:
     print(f"  Active bars       : {report.active_bars}")
     print(f"  In healthy range  : {report.in_healthy_range}")
     print(f"  Legal tx rate     : {report.legal_transition_rate:.4f}")
-    print(f"  State rates:")
+    print("  State rates:")
     for state, rate in sorted(report.state_rates.items(), key=lambda x: -x[1]):
         if rate > 0:
             print(f"    {state:<22}: {rate:.4f}")

@@ -1,4 +1,5 @@
 """Liquidity layer: orderbook entropy H and H-derived features."""
+
 import logging
 from typing import Optional
 
@@ -19,6 +20,7 @@ def compute_orderbook_entropy(levels: list[tuple[float, float]]) -> float:
     Returns Shannon entropy H = -Σ p_i * log(p_i) over the size distribution.
     """
     from oprim import orderbook_entropy
+
     sizes = np.array([size for _, size in levels if size > 0], dtype=float)
     return orderbook_entropy(sizes)
 
@@ -36,7 +38,7 @@ def compute_H_change_rate_std(H_history: list[float], window: int = 12) -> Optio
     # Need window+1 values to compute window differences
     if len(H_history) < window + 1:
         return None
-    h = np.array(H_history[-(window + 1):], dtype=float)
+    h = np.array(H_history[-(window + 1) :], dtype=float)
     # Avoid division by zero for zero-entropy bars
     with np.errstate(divide="ignore", invalid="ignore"):
         rates = np.where(h[:-1] != 0, np.abs(np.diff(h) / h[:-1]), np.nan)

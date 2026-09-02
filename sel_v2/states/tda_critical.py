@@ -14,20 +14,20 @@ Bug fixes inherited from Wave 1 tda_calibration.py:
      → log-prices create meaningful orbits in phase space (Gidea & Katz 2018)
   2. Use np.trapezoid (not deprecated np.trapz) for L^1 norm integration
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import numpy as np
 from ripser import ripser
 
 logger = logging.getLogger(__name__)
 
-_WINDOW_BARS = 50   # bars per computation
-_EMBED_DIM = 4      # Takens embedding dimension
-_EMBED_TAU = 1      # Takens time delay (bars)
-_MAX_CLOUD = 200    # subsample if point cloud exceeds this
+_WINDOW_BARS = 50  # bars per computation
+_EMBED_DIM = 4  # Takens embedding dimension
+_EMBED_TAU = 1  # Takens time delay (bars)
+_MAX_CLOUD = 200  # subsample if point cloud exceeds this
 
 
 # ── Core TDA computation (re-uses Wave 1 algorithm exactly) ──────────────────
@@ -38,7 +38,7 @@ def takens_embed(x: np.ndarray, d: int = _EMBED_DIM, tau: int = _EMBED_TAU) -> n
     n = len(x) - (d - 1) * tau
     if n <= 0:
         raise ValueError(f"Series too short: len={len(x)}, d={d}, tau={tau}")
-    return np.stack([x[i * tau: i * tau + n] for i in range(d)], axis=1)
+    return np.stack([x[i * tau : i * tau + n] for i in range(d)], axis=1)
 
 
 def _persistence_landscape(dgm: np.ndarray, resolution: int = 100, x_max: float = 2.0) -> np.ndarray:
@@ -118,7 +118,7 @@ def precompute_tda_l1(
     l1_series = np.full(n, np.nan)
 
     for i in range(window, n):
-        seg = log_prices[i - window: i]
+        seg = log_prices[i - window : i]
         l1_series[i] = compute_pl_l1(seg)
         if i % 500 == 0:
             logger.debug("TDA L^1 computed at bar %d / %d  l1=%.6f", i, n, l1_series[i])
@@ -141,7 +141,7 @@ def compute_tda_rolling_pctile(
     pctile = np.full(n, np.nan)
 
     for i in range(quantile_window, n):
-        seg = l1_series[i - quantile_window: i]
+        seg = l1_series[i - quantile_window : i]
         valid = seg[np.isfinite(seg)]
         if len(valid) >= 10:
             pctile[i] = percentile_value(valid, q)

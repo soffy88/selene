@@ -16,15 +16,25 @@ Output: analysis/hawkes_calibration_v1.md
 Usage:
     python -m sel_v2.offline.hawkes_calibration [--data analysis/data/btc_4h.parquet]
 """
+
 from __future__ import annotations
 
 import argparse
 import logging
 import os
-from datetime import datetime
 
 import numpy as np
 import pandas as pd
+
+from sel_v2.hawkes.mle import fit_hawkes, hawkes_nll  # canonical; re-exported for migration tests
+
+__all__ = [
+    "CRITICAL_THRESHOLD",
+    "fit_hawkes",
+    "hawkes_nll",
+    "run_hawkes_calibration",
+    "run_rolling_hawkes",
+]
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -53,10 +63,8 @@ _MAX_BRANCHING_PERSIST = 10.0
 
 # ── Hawkes log-likelihood ─────────────────────────────────────────────────────
 
-from sel_v2.hawkes.mle import hawkes_nll, fit_hawkes  # canonical implementation
-
-
 # ── Rolling calibration ───────────────────────────────────────────────────────
+
 
 def run_rolling_hawkes(
     event_flags: np.ndarray,
@@ -106,6 +114,7 @@ def run_rolling_hawkes(
 
 # ── Main calibration ──────────────────────────────────────────────────────────
 
+
 def run_hawkes_calibration(
     data_path: str = "analysis/data/btc_4h.parquet",
     event_sigma_threshold: float = 1.0,
@@ -133,7 +142,11 @@ def run_hawkes_calibration(
 
     logger.info(
         "Event definition: |return| > %.4f (%.1f sigma). Events: %d / %d bars (%.1f%%)",
-        threshold, event_sigma_threshold, n_events_total, len(returns), event_rate * 100,
+        threshold,
+        event_sigma_threshold,
+        n_events_total,
+        len(returns),
+        event_rate * 100,
     )
 
     logger.info("Running rolling Hawkes calibration (window=%d bars, step=%d bars)...", window, step)
@@ -153,8 +166,13 @@ def run_hawkes_calibration(
     br_q95 = float(np.quantile(valid_br, 0.95)) if len(valid_br) > 0 else np.nan
     br_frac_critical = float(np.mean(valid_br > CRITICAL_THRESHOLD)) if len(valid_br) > 0 else np.nan
 
-    logger.info("Branching ratio: mean=%.3f std=%.3f q90=%.3f fraction_critical=%.1f%%",
-                br_mean, br_std, br_q90, br_frac_critical * 100)
+    logger.info(
+        "Branching ratio: mean=%.3f std=%.3f q90=%.3f fraction_critical=%.1f%%",
+        br_mean,
+        br_std,
+        br_q90,
+        br_frac_critical * 100,
+    )
 
     # Evaluate on known Cascade and control events
     event_results = []
@@ -176,24 +194,30 @@ def run_hawkes_calibration(
         win_idx = eligible[-1]
         br_val = branching_ratios[win_idx]
 
-        event_results.append({
-            "date": event_date_str,
-            "label": label,
-            "desc": desc,
-            "in_range": True,
-            "branching_ratio": br_val,
-            "above_threshold": bool(np.isfinite(br_val) and br_val > CRITICAL_THRESHOLD),
-        })
+        event_results.append(
+            {
+                "date": event_date_str,
+                "label": label,
+                "desc": desc,
+                "in_range": True,
+                "branching_ratio": br_val,
+                "above_threshold": bool(np.isfinite(br_val) and br_val > CRITICAL_THRESHOLD),
+            }
+        )
 
     # Overall fit on full dataset (for static threshold)
     full_event_times = np.where(event_flags)[0].astype(float)
     T_full = float(len(returns) - 1)
     logger.info("Fitting Hawkes on full dataset (%d events)...", len(full_event_times))
     full_fit = fit_hawkes(full_event_times, T_full, n_restarts=8)
-    logger.info("Full fit: mu=%.5f alpha=%.5f beta=%.5f eta=%.4f converged=%s",
-                full_fit.get("mu", np.nan), full_fit.get("alpha", np.nan),
-                full_fit.get("beta", np.nan), full_fit.get("branching_ratio", np.nan),
-                full_fit.get("converged", False))
+    logger.info(
+        "Full fit: mu=%.5f alpha=%.5f beta=%.5f eta=%.4f converged=%s",
+        full_fit.get("mu", np.nan),
+        full_fit.get("alpha", np.nan),
+        full_fit.get("beta", np.nan),
+        full_fit.get("branching_ratio", np.nan),
+        full_fit.get("converged", False),
+    )
 
     result = {
         "n_bars": len(df),
@@ -240,8 +264,9 @@ def _persist_to_db(full_fit: dict, db_url: str | None) -> dict | None:
     alpha = full_fit.get("alpha")
     beta = full_fit.get("beta")
     if None in (mu, alpha, beta) or not all(np.isfinite(x) for x in (mu, alpha, beta)):
-        logger.warning("Skipping DB persist: full-dataset fit did not converge "
-                       "(mu=%s alpha=%s beta=%s)", mu, alpha, beta)
+        logger.warning(
+            "Skipping DB persist: full-dataset fit did not converge (mu=%s alpha=%s beta=%s)", mu, alpha, beta
+        )
         return None
     # Reject degenerate fits: beta must be > 0 (else the H1 kernel never decays and
     # branching_ratio blows up), and the branching ratio must be in a sane range.
@@ -249,8 +274,13 @@ def _persist_to_db(full_fit: dict, db_url: str | None) -> dict | None:
     # Strategy-2 intensity with beta≈0 / α/β≈inf.
     branching = alpha / beta if beta > 0 else float("inf")
     if beta <= 0 or not (0.0 < branching <= _MAX_BRANCHING_PERSIST):
-        logger.warning("Skipping DB persist: degenerate Hawkes fit "
-                       "(mu=%s alpha=%s beta=%s branching=%s)", mu, alpha, beta, branching)
+        logger.warning(
+            "Skipping DB persist: degenerate Hawkes fit (mu=%s alpha=%s beta=%s branching=%s)",
+            mu,
+            alpha,
+            beta,
+            branching,
+        )
         return None
     params = {
         "mu_ref": mu,
@@ -260,14 +290,22 @@ def _persist_to_db(full_fit: dict, db_url: str | None) -> dict | None:
     }
     try:
         from sel_v2.strategies.params_loader import save_strategy_params
+
         save_strategy_params(strategy="h2", params=params, db_url=db_url)
-        logger.info("Persisted H2 reference params to v2_strategy_params "
-                    "(mu=%.6f alpha=%.6f beta=%.6f threshold=%.2f)",
-                    mu, alpha, beta, CRITICAL_THRESHOLD)
+        logger.info(
+            "Persisted H2 reference params to v2_strategy_params (mu=%.6f alpha=%.6f beta=%.6f threshold=%.2f)",
+            mu,
+            alpha,
+            beta,
+            CRITICAL_THRESHOLD,
+        )
         return params
     except Exception as exc:  # noqa: BLE001
-        logger.error("Failed to persist H2 params to v2_strategy_params (%s). "
-                     "Strategy 2 will stay disabled until these rows exist.", exc)
+        logger.error(
+            "Failed to persist H2 params to v2_strategy_params (%s). "
+            "Strategy 2 will stay disabled until these rows exist.",
+            exc,
+        )
         return None
 
 
@@ -284,10 +322,10 @@ def _write_report(result: dict, output_path: str) -> None:
         "**Method**: Exponential Hawkes MLE → Branching ratio α/β  ",
         "**Event definition**: |4H log-return| > 1σ of historical returns  ",
         f"**Event threshold**: {result['event_threshold']:.5f} ({result['event_sigma_threshold']:.1f}σ)  ",
-        f"**Data**: BTC-USDT 4H OHLCV (return-spike proxy for tick arrivals)  ",
+        "**Data**: BTC-USDT 4H OHLCV (return-spike proxy for tick arrivals)  ",
         f"**Coverage**: {result['coverage_start']} → {result['coverage_end']}  ",
         f"**N bars**: {result['n_bars']}  ",
-        f"**Events**: {result['n_events']} bars ({result['event_rate']*100:.1f}% of bars)  ",
+        f"**Events**: {result['n_events']} bars ({result['event_rate'] * 100:.1f}% of bars)  ",
         "",
         "> **Note**: Wave 1 uses OHLCV-proxy events. True tick-level Hawkes (Wave 3) "
         "requires LOB trade arrival data. Results here are directional only.",
@@ -313,7 +351,7 @@ def _write_report(result: dict, output_path: str) -> None:
         f"| Median α/β | {result['br_q50']:.4f} |",
         f"| 90th percentile α/β | {result['br_q90']:.4f} |",
         f"| 95th percentile α/β | {result['br_q95']:.4f} |",
-        f"| Fraction windows α/β > {CRITICAL_THRESHOLD} | {result['br_frac_critical']*100:.1f}% |",
+        f"| Fraction windows α/β > {CRITICAL_THRESHOLD} | {result['br_frac_critical'] * 100:.1f}% |",
         "",
         "**v2.1 spec**: H2 Critical state condition = α/β > 0.85 in rolling 90-day window.",
         "",
@@ -340,9 +378,9 @@ def _write_report(result: dict, output_path: str) -> None:
     lines += [
         "",
         f"**Cascade events above 0.85**: {cascade_tp}/{len(cascade_evs)} "
-        f"({'N/A' if not cascade_evs else f'{cascade_tp/len(cascade_evs)*100:.0f}% sensitivity'})",
+        f"({'N/A' if not cascade_evs else f'{cascade_tp / len(cascade_evs) * 100:.0f}% sensitivity'})",
         f"**Control events above 0.85 (false positive rate)**: {control_fp}/{len(control_evs)} "
-        f"({'N/A' if not control_evs else f'{control_fp/len(control_evs)*100:.0f}%'})",
+        f"({'N/A' if not control_evs else f'{control_fp / len(control_evs) * 100:.0f}%'})",
         "",
         "## Initial Threshold Parameters (for paper trading launch)",
         "",
@@ -381,8 +419,7 @@ def _write_report(result: dict, output_path: str) -> None:
         "",
         "## Design Validation",
         "",
-        _design_validation(cascade_tp, len(cascade_evs), control_fp, len(control_evs),
-                           result["br_frac_critical"]),
+        _design_validation(cascade_tp, len(cascade_evs), control_fp, len(control_evs), result["br_frac_critical"]),
         "",
         "## Limitations",
         "",
@@ -415,10 +452,7 @@ def _design_validation(
     lines = []
 
     if n_cascade == 0:
-        lines.append(
-            "⚠️ **Cascade events**: No in-range Cascade events for validation. "
-            "Cannot assess H2 sensitivity."
-        )
+        lines.append("⚠️ **Cascade events**: No in-range Cascade events for validation. Cannot assess H2 sensitivity.")
     elif cascade_tp / n_cascade >= 0.75:
         lines.append(
             f"✅ **Cascade sensitivity**: {cascade_tp}/{n_cascade} Cascade events "
@@ -440,16 +474,16 @@ def _design_validation(
         if control_fp / n_control <= 0.25:
             lines.append(
                 f"\n✅ **False positive rate**: {control_fp}/{n_control} control events "
-                f"({control_fp/n_control*100:.0f}%) exceeded threshold."
+                f"({control_fp / n_control * 100:.0f}%) exceeded threshold."
             )
         else:
             lines.append(
                 f"\n⚠️ **High false positive rate**: {control_fp}/{n_control} control events "
-                f"({control_fp/n_control*100:.0f}%) exceeded threshold."
+                f"({control_fp / n_control * 100:.0f}%) exceeded threshold."
             )
 
     lines.append(
-        f"\n**Baseline critical rate**: {br_frac_critical*100:.1f}% of rolling 90-day windows "
+        f"\n**Baseline critical rate**: {br_frac_critical * 100:.1f}% of rolling 90-day windows "
         f"have α/β > {CRITICAL_THRESHOLD}. "
         "In production, this rate should be elevated near Cascade events."
     )
@@ -466,17 +500,14 @@ def _design_validation(
 def main() -> None:
     parser = argparse.ArgumentParser(description="H2 Hawkes branching ratio calibration")
     parser.add_argument("--data", default="analysis/data/btc_4h.parquet")
-    parser.add_argument("--sigma", type=float, default=1.0,
-                        help="Event threshold in sigma units of returns")
-    parser.add_argument("--window", type=int, default=540,
-                        help="Rolling window in bars (default 540 = 90 days)")
-    parser.add_argument("--step", type=int, default=6,
-                        help="Step between calibration points (default 6 = 1 day)")
+    parser.add_argument("--sigma", type=float, default=1.0, help="Event threshold in sigma units of returns")
+    parser.add_argument("--window", type=int, default=540, help="Rolling window in bars (default 540 = 90 days)")
+    parser.add_argument("--step", type=int, default=6, help="Step between calibration points (default 6 = 1 day)")
     parser.add_argument("--output", default="analysis/hawkes_calibration_v1.md")
-    parser.add_argument("--no-persist", action="store_true",
-                        help="Skip writing H2 reference params to v2_strategy_params")
-    parser.add_argument("--db-url", default=None,
-                        help="Postgres DSN override for param persistence")
+    parser.add_argument(
+        "--no-persist", action="store_true", help="Skip writing H2 reference params to v2_strategy_params"
+    )
+    parser.add_argument("--db-url", default=None, help="Postgres DSN override for param persistence")
     args = parser.parse_args()
 
     run_hawkes_calibration(

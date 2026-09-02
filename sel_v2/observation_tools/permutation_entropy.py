@@ -14,11 +14,11 @@ Configuration (v2.1 §10.1):
 
 Output value: H_perm normalised to [0, 1].
 """
+
 from __future__ import annotations
 
 from collections import deque
 from itertools import permutations
-from typing import ClassVar
 
 import numpy as np
 
@@ -27,13 +27,11 @@ from sel_v2.observation_tools.base import BarFeatures, ObservationResult, Observ
 ORDER = 3
 WINDOW_BARS = 20
 MIN_BARS = ORDER + 5
-LOW_ENTROPY_THRESHOLD = 0.35    # structured signal → possible directional regime
-HIGH_ENTROPY_THRESHOLD = 0.90   # near-random → noise / breakdown
+LOW_ENTROPY_THRESHOLD = 0.35  # structured signal → possible directional regime
+HIGH_ENTROPY_THRESHOLD = 0.90  # near-random → noise / breakdown
 
 # Precompute ordinal-pattern rank map
-_PERM_RANK: dict[tuple[int, ...], int] = {
-    p: i for i, p in enumerate(permutations(range(ORDER)))
-}
+_PERM_RANK: dict[tuple[int, ...], int] = {p: i for i, p in enumerate(permutations(range(ORDER)))}
 _N_PATTERNS = len(_PERM_RANK)
 
 
@@ -47,7 +45,7 @@ def _permutation_entropy(x: np.ndarray, order: int = ORDER) -> float:
         return 1.0
     counts = np.zeros(_N_PATTERNS, dtype=np.float64)
     for i in range(n):
-        w = x[i: i + order]
+        w = x[i : i + order]
         rank = tuple(int(r) for r in np.argsort(np.argsort(w)))
         counts[_PERM_RANK[rank]] += 1
     probs = counts[counts > 0] / n
@@ -63,6 +61,7 @@ class PermutationEntropy(ObservationTool):
     Fires when H_perm falls below LOW_ENTROPY_THRESHOLD (structured directional
     signal) or rises above HIGH_ENTROPY_THRESHOLD (random/noise regime).
     """
+
     tool_id = "I1"
 
     def __init__(

@@ -7,6 +7,7 @@ the exporters) are added to docker-compose.
 
 Format ref: https://prometheus.io/docs/instrumenting/exposition_formats/
 """
+
 from __future__ import annotations
 
 import math
@@ -17,14 +18,13 @@ def _fmt_labels(labels: Optional[dict]) -> str:
     if not labels:
         return ""
     inner = ",".join(
-        f'{k}="{str(v).replace(chr(92), chr(92)*2).replace(chr(34), chr(92)+chr(34))}"'
+        f'{k}="{str(v).replace(chr(92), chr(92) * 2).replace(chr(34), chr(92) + chr(34))}"'
         for k, v in sorted(labels.items())
     )
     return "{" + inner + "}"
 
 
-def render_metric(name: str, value, *, mtype: str = "gauge",
-                  help_text: str = "", labels: Optional[dict] = None) -> str:
+def render_metric(name: str, value, *, mtype: str = "gauge", help_text: str = "", labels: Optional[dict] = None) -> str:
     """Render a single metric (with HELP/TYPE header) to exposition text."""
     lines = []
     if help_text:
@@ -59,10 +59,13 @@ def render_prometheus(metrics: Iterable[dict]) -> str:
     """
     blocks = []
     for m in metrics:
-        blocks.append(render_metric(
-            m["name"], m["value"],
-            mtype=m.get("type", "gauge"),
-            help_text=m.get("help", ""),
-            labels=m.get("labels"),
-        ))
+        blocks.append(
+            render_metric(
+                m["name"],
+                m["value"],
+                mtype=m.get("type", "gauge"),
+                help_text=m.get("help", ""),
+                labels=m.get("labels"),
+            )
+        )
     return "\n".join(blocks) + "\n"

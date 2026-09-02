@@ -25,19 +25,19 @@ v2.1 §5.3 Cascade early-warning thresholds (all placeholders):
   - IMBALANCE_THRESHOLD = 5.0  (buy/sell ratio > 5 or < 0.2)
   - WINDOW_BARS = 42           (7 days × 6 bars/day)
 """
+
 from __future__ import annotations
 
 from collections import deque
-from typing import Optional
 
 import numpy as np
 
 from sel_v2.observation_tools.base import BarFeatures, ObservationResult, ObservationTool
 
-WINDOW_BARS = 42          # 7-day rolling window for intensity baseline
-MIN_BARS = 14             # minimum before percentile is meaningful
-LIQ_PCTILE = 0.95         # λ_liq must exceed 95-pct to trigger (v2.1 §5.3)
-IMBALANCE_THRESHOLD = 5.0 # buy/sell ratio threshold (v2.1 §5.3 placeholder)
+WINDOW_BARS = 42  # 7-day rolling window for intensity baseline
+MIN_BARS = 14  # minimum before percentile is meaningful
+LIQ_PCTILE = 0.95  # λ_liq must exceed 95-pct to trigger (v2.1 §5.3)
+IMBALANCE_THRESHOLD = 5.0  # buy/sell ratio threshold (v2.1 §5.3 placeholder)
 
 
 def _bar_to_intensity_proxy(bar: BarFeatures) -> tuple[float, float, float]:
@@ -79,6 +79,7 @@ class HawkesCascadeWarning(ObservationTool):
     live and tick-level data is available.  With current data this tool
     will rarely trigger — this is expected behaviour, not a bug.
     """
+
     tool_id = "H3"
 
     def __init__(
@@ -132,9 +133,7 @@ class HawkesCascadeWarning(ObservationTool):
             imbalance = b / s
 
         liq_elevated = lambda_liq > liq_threshold and liq_threshold > 0
-        imbalance_extreme = (
-            imbalance > self._imbalance or imbalance < (1.0 / self._imbalance)
-        )
+        imbalance_extreme = imbalance > self._imbalance or imbalance < (1.0 / self._imbalance)
         signal = liq_elevated and imbalance_extreme
 
         label = "CASCADE_WARNING" if signal else "NORMAL"

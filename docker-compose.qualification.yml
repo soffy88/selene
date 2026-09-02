@@ -1,0 +1,43 @@
+# Isolated qualification stack. Does not join helios-net or any Helios service.
+# Ports: postgres 25432, redis 26379. Dummy password only. No real secrets.
+name: selene-qualification
+
+networks:
+  selene-qual-net:
+    driver: bridge
+
+services:
+  qual-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: selene
+      POSTGRES_PASSWORD: qualpass
+      POSTGRES_DB: selene
+    ports: ["25432:5432"]
+    networks: [selene-qual-net]
+    volumes:
+      - qual_pg:/var/lib/postgresql/data
+      - ./infra/qualification/01-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./infra/qualification/02-fixture.sql:/docker-entrypoint-initdb.d/02-fixture.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U selene -d selene"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  qual-redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports: ["26379:6379"]
+    networks: [selene-qual-net]
+    volumes:
+      - qual_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  qual_pg:
+  qual_redis:

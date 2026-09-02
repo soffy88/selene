@@ -80,9 +80,7 @@ class SwingStructureTool(ObservationTool):
             value=_STATE_VALUE[struct],
             threshold=0.0,
             label=event.kind,
-            confidence=(
-                _CHOCH_CONFIDENCE if event.kind.startswith("CHOCH") else _BOS_CONFIDENCE
-            ),
+            confidence=(_CHOCH_CONFIDENCE if event.kind.startswith("CHOCH") else _BOS_CONFIDENCE),
             metadata={
                 "structure": struct,
                 "event": event.kind,

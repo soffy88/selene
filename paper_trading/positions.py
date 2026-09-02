@@ -1,4 +1,5 @@
 """PositionTracker — open / close / reduce positions."""
+
 from datetime import datetime
 from typing import Optional
 
@@ -13,9 +14,7 @@ class PositionTracker:
     def open(self, fill: SimulatedFill, bar_time: datetime, mark_price: float) -> Position:
         """Open a new position from a fill. Raises if a position is already open."""
         if self._position is not None:
-            raise RuntimeError(
-                f"Cannot open position: {self._position.symbol} {self._position.side} already open"
-            )
+            raise RuntimeError(f"Cannot open position: {self._position.symbol} {self._position.side} already open")
         self._position = Position(
             symbol=fill.symbol,
             side=fill.side,

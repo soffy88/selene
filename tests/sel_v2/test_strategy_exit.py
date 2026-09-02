@@ -1,16 +1,16 @@
 """Tests for sel_v2.strategies.strategy_exit (v2.0 §13.3 + §14.3)."""
-import pytest
-from datetime import datetime, timezone, timedelta
+
+from datetime import datetime, timedelta, timezone
 
 from sel_v2.strategies.cusum_short import CUSUMTrigger
 from sel_v2.strategies.strategy_exit import (
+    S1_DRAWDOWN_STOP,
+    S1_TIME_STOP_HOURS,
+    S2_DRAWDOWN_STOP,
+    S2_TIME_STOP_HOURS,
+    ExitDecision,
     check_strategy1_exit,
     check_strategy2_exit,
-    ExitDecision,
-    S1_DRAWDOWN_STOP,
-    S2_DRAWDOWN_STOP,
-    S1_TIME_STOP_HOURS,
-    S2_TIME_STOP_HOURS,
 )
 
 _NOW = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -21,25 +21,34 @@ _ENTRY_PRICE = 50_000.0
 
 def _no_trigger() -> CUSUMTrigger:
     return CUSUMTrigger(
-        triggered=False, direction=None,
-        cusum_positive=0.5, cusum_negative=0.3,
-        threshold=2.0, intensity_coeff=0.0,
+        triggered=False,
+        direction=None,
+        cusum_positive=0.5,
+        cusum_negative=0.3,
+        threshold=2.0,
+        intensity_coeff=0.0,
     )
 
 
 def _long_trigger() -> CUSUMTrigger:
     return CUSUMTrigger(
-        triggered=True, direction="LONG",
-        cusum_positive=3.0, cusum_negative=0.0,
-        threshold=2.0, intensity_coeff=1.5,
+        triggered=True,
+        direction="LONG",
+        cusum_positive=3.0,
+        cusum_negative=0.0,
+        threshold=2.0,
+        intensity_coeff=1.5,
     )
 
 
 def _short_trigger() -> CUSUMTrigger:
     return CUSUMTrigger(
-        triggered=True, direction="SHORT",
-        cusum_positive=0.0, cusum_negative=3.0,
-        threshold=2.0, intensity_coeff=1.5,
+        triggered=True,
+        direction="SHORT",
+        cusum_positive=0.0,
+        cusum_negative=3.0,
+        threshold=2.0,
+        intensity_coeff=1.5,
     )
 
 
@@ -47,12 +56,13 @@ def _short_trigger() -> CUSUMTrigger:
 # Strategy 1 exit tests
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def test_s1_hold_when_no_condition_triggered():
     d = check_strategy1_exit(
         direction="LONG",
         entry_price=_ENTRY_PRICE,
         entry_time=_ENTRY,
-        mark_price=51_000.0,     # +2% — fine
+        mark_price=51_000.0,  # +2% — fine
         current_time=_NOW,
         state_4h="Surging",
         cusum_trigger=_no_trigger(),
@@ -198,6 +208,7 @@ def test_s1_cascade_beats_drawdown():
 # Strategy 2 exit tests
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def _s2_hold(**kwargs) -> ExitDecision:
     defaults = dict(
         direction="LONG",
@@ -247,9 +258,12 @@ def test_s2_new_high_sl_same_direction():
 
 def test_s2_batch1_at_50pct_decay():
     cusum_trigger = CUSUMTrigger(
-        triggered=False, direction=None,
-        cusum_positive=1.5, cusum_negative=0.0,  # 1.5 / 3.0 = 50%
-        threshold=2.0, intensity_coeff=0.0,
+        triggered=False,
+        direction=None,
+        cusum_positive=1.5,
+        cusum_negative=0.0,  # 1.5 / 3.0 = 50%
+        threshold=2.0,
+        intensity_coeff=0.0,
     )
     d = _s2_hold(
         cusum_trigger=cusum_trigger,
@@ -262,9 +276,12 @@ def test_s2_batch1_at_50pct_decay():
 
 def test_s2_batch2_at_25pct_decay():
     cusum_trigger = CUSUMTrigger(
-        triggered=False, direction=None,
-        cusum_positive=0.75, cusum_negative=0.0,  # 0.75 / 3.0 = 25%
-        threshold=2.0, intensity_coeff=0.0,
+        triggered=False,
+        direction=None,
+        cusum_positive=0.75,
+        cusum_negative=0.0,  # 0.75 / 3.0 = 25%
+        threshold=2.0,
+        intensity_coeff=0.0,
     )
     d = _s2_hold(
         cusum_trigger=cusum_trigger,
@@ -277,9 +294,12 @@ def test_s2_batch2_at_25pct_decay():
 
 def test_s2_batch3_at_baseline():
     cusum_trigger = CUSUMTrigger(
-        triggered=False, direction=None,
-        cusum_positive=0.0, cusum_negative=0.0,
-        threshold=2.0, intensity_coeff=0.0,
+        triggered=False,
+        direction=None,
+        cusum_positive=0.0,
+        cusum_negative=0.0,
+        threshold=2.0,
+        intensity_coeff=0.0,
     )
     d = _s2_hold(
         cusum_trigger=cusum_trigger,
@@ -292,9 +312,12 @@ def test_s2_batch3_at_baseline():
 
 def test_s2_batch_not_retriggered_when_already_done():
     cusum_trigger = CUSUMTrigger(
-        triggered=False, direction=None,
-        cusum_positive=0.0, cusum_negative=0.0,
-        threshold=2.0, intensity_coeff=0.0,
+        triggered=False,
+        direction=None,
+        cusum_positive=0.0,
+        cusum_negative=0.0,
+        threshold=2.0,
+        intensity_coeff=0.0,
     )
     d = _s2_hold(
         cusum_trigger=cusum_trigger,

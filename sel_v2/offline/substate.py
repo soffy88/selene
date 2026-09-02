@@ -33,9 +33,7 @@ ZIGZAG_ATR_MULT = 1.5
 PULLBACK_ATR_MULT = 0.5
 CONSOLIDATION_BARS = 6
 CONSOLIDATION_ATR_MULT = 1.5
-IMPULSE_ATR_MULT = (
-    1.0  # documents the Impulse definition; not a separate branch (see _classify)
-)
+IMPULSE_ATR_MULT = 1.0  # documents the Impulse definition; not a separate branch (see _classify)
 TERMINAL_PULLBACK_MULT = 1.5
 ATR_WINDOW = 14  # matches sel_v2/paper/strategy_engine.py:_ATR_WINDOW
 
@@ -60,30 +58,20 @@ class BarSubState:
 
     sub_state: Optional[SubState] = None
     direction: Optional[int] = None  # +1 long-side segment, -1 short-side segment
-    push_count: int = (
-        0  # confirmed RE_PUSH count since the last reset (segment start or break)
-    )
+    push_count: int = 0  # confirmed RE_PUSH count since the last reset (segment start or break)
     stop_level: Optional[float] = None  # current moving structural stop price
-    terminal_flag: bool = (
-        False  # latched for the remainder of the current push-structure
-    )
+    terminal_flag: bool = False  # latched for the remainder of the current push-structure
     events: list = dataclasses.field(default_factory=list)
 
 
-def compute_atr(
-    high: np.ndarray, low: np.ndarray, close: np.ndarray, window: int = ATR_WINDOW
-) -> np.ndarray:
+def compute_atr(high: np.ndarray, low: np.ndarray, close: np.ndarray, window: int = ATR_WINDOW) -> np.ndarray:
     """True range, rolling mean — identical definition to strategy_engine.py's ATR."""
     prev_close = np.concatenate([[close[0]], close[:-1]])
-    tr = np.maximum.reduce(
-        [high - low, np.abs(high - prev_close), np.abs(low - prev_close)]
-    )
+    tr = np.maximum.reduce([high - low, np.abs(high - prev_close), np.abs(low - prev_close)])
     return pd.Series(tr).rolling(window, min_periods=1).mean().to_numpy()
 
 
-def _segments(
-    parent_state: list[str], target: str = SURGING_STATE
-) -> list[tuple[int, int]]:
+def _segments(parent_state: list[str], target: str = SURGING_STATE) -> list[tuple[int, int]]:
     """[start, end) bar-index ranges of contiguous runs of `target` in parent_state."""
     segs = []
     i, n = 0, len(parent_state)
@@ -114,9 +102,7 @@ def _classify(
         w_low = low[i - CONSOLIDATION_BARS + 1 : i + 1].min()
         if (w_high - w_low) < CONSOLIDATION_ATR_MULT * atr_i:
             return SubState.CONSOLIDATION
-    return (
-        SubState.IMPULSE
-    )  # distance from extreme < 1.0x ATR, or ATR undefined at bar 0
+    return SubState.IMPULSE  # distance from extreme < 1.0x ATR, or ATR undefined at bar 0
 
 
 class _Structure:
@@ -130,22 +116,14 @@ class _Structure:
 
     def __init__(self, direction: int, base_price: float, base_idx: int):
         self.direction = direction
-        self.phase_up = (
-            True  # True: extending toward a new push extreme; False: retracing
-        )
+        self.phase_up = True  # True: extending toward a new push extreme; False: retracing
         self.ext_price = base_price
         self.ext_idx = base_idx
         self.leg_start_price = base_price  # price the CURRENT push leg is measured from
-        self.prior_push_pivot: Optional[float] = (
-            None  # confirmed push extreme before the active pullback
-        )
-        self.push_confirmed_this_leg = (
-            False  # RE_PUSH already fired for the active push leg
-        )
+        self.prior_push_pivot: Optional[float] = None  # confirmed push extreme before the active pullback
+        self.push_confirmed_this_leg = False  # RE_PUSH already fired for the active push leg
         self.stop_level: Optional[float] = None
-        self.pending_low: Optional[float] = (
-            None  # confirmed pullback low, awaiting RE_PUSH to become the stop
-        )
+        self.pending_low: Optional[float] = None  # confirmed pullback low, awaiting RE_PUSH to become the stop
         self.push_count = 0
         self.terminal_flag = False
         self.push_leg_sizes: list[float] = []
@@ -162,9 +140,7 @@ class _Structure:
                 return True
         if len(self.pullback_leg_sizes) >= 2:
             prior = self.pullback_leg_sizes[:-1]
-            if prior and self.pullback_leg_sizes[-1] > TERMINAL_PULLBACK_MULT * float(
-                np.median(prior)
-            ):
+            if prior and self.pullback_leg_sizes[-1] > TERMINAL_PULLBACK_MULT * float(np.median(prior)):
                 return True
         return False
 
@@ -185,10 +161,7 @@ class _Structure:
                     self.push_count += 1
                     self.push_confirmed_this_leg = True
                     events.append(Event.RE_PUSH)
-                    if (
-                        self.stop_level is None
-                        or d * (self.pending_low - self.stop_level) > 0
-                    ):
+                    if self.stop_level is None or d * (self.pending_low - self.stop_level) > 0:
                         self.stop_level = self.pending_low
             else:
                 retr = d * (self.ext_price - close_i)
@@ -217,9 +190,7 @@ class _Structure:
         # high while actively pushing, or the last CONFIRMED push high while retracing
         # (not the in-progress low being tracked — that would read as ~0 mid-pullback).
         extreme_ref = self.ext_price if self.phase_up else self.prior_push_pivot
-        retracement = (
-            max(0.0, d * (extreme_ref - close_i)) if extreme_ref is not None else 0.0
-        )
+        retracement = max(0.0, d * (extreme_ref - close_i)) if extreme_ref is not None else 0.0
 
         if not self.terminal_flag and self._check_terminal():
             self.terminal_flag = True

@@ -1,21 +1,29 @@
 """Unit tests for backtest/metrics.py — the corrected performance statistics."""
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from backtest.metrics import (
-    daily_returns_from_trades, sharpe_ratio, max_drawdown_net,
-    probabilistic_sharpe_ratio, deflated_sharpe_ratio, bootstrap_sharpe_ci,
-    funding_cost_pct, TRADING_DAYS_PER_YEAR,
+    TRADING_DAYS_PER_YEAR,
+    bootstrap_sharpe_ci,
+    daily_returns_from_trades,
+    deflated_sharpe_ratio,
+    funding_cost_pct,
+    max_drawdown_net,
+    probabilistic_sharpe_ratio,
+    sharpe_ratio,
 )
 
 
 @dataclass
 class FakeTrade:
-    exit_time: int        # unix ms
+    exit_time: int  # unix ms
     pnl_usd: float
     side: str = "LONG"
 
@@ -28,7 +36,7 @@ class TestDailyAggregation:
     def test_buckets_by_exit_day(self):
         trades = [
             FakeTrade(_ms(2024, 1, 1, 1), 100.0),
-            FakeTrade(_ms(2024, 1, 1, 5), 50.0),   # same day -> summed
+            FakeTrade(_ms(2024, 1, 1, 5), 50.0),  # same day -> summed
             FakeTrade(_ms(2024, 1, 3, 2), -30.0),  # gap day in between -> 0
         ]
         rets = daily_returns_from_trades(trades, 10_000.0)

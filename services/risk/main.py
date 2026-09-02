@@ -20,24 +20,23 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI
 
-from shared.db.connections import get_redis, get_pg, redis_health
 from services.risk.persistence.circuit_breaker import PersistentCircuitBreaker
-from shared.events.streams import (
-    STREAM_RISK_CHECK,
-    STREAM_RISK_APPROVED,
-    STREAM_SYSTEM_ALERTS,
-    encode,
-    decode,
-    run_forever,
+from services.risk.portfolio.correlation_risk import (
+    parametric_var_correlated,
+    same_direction_correlated_exposure,
 )
 from services.risk.portfolio.var_engine import (
-    calc_historical_var,
     DrawdownController,
-    DRAWDOWN_LEVELS,
+    calc_historical_var,
 )
-from services.risk.portfolio.correlation_risk import (
-    same_direction_correlated_exposure,
-    parametric_var_correlated,
+from shared.db.connections import get_pg, get_redis, redis_health
+from shared.events.streams import (
+    STREAM_RISK_APPROVED,
+    STREAM_RISK_CHECK,
+    STREAM_SYSTEM_ALERTS,
+    decode,
+    encode,
+    run_forever,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,9 +55,7 @@ MAX_LEVERAGE = float(os.getenv("MAX_LEVERAGE", "3.0"))
 MAX_DAILY_LOSS_PCT = float(os.getenv("MAX_DAILY_LOSS_PCT", "0.05"))  # 5% 日亏损熔断
 MAX_CORR_EXPOSURE = float(os.getenv("MAX_CORR_EXPOSURE", "0.30"))  # 同向暴露上限30%
 MIN_WIN_PROBABILITY = float(os.getenv("MIN_WIN_PROBABILITY", "0.55"))
-VAR_LIMIT_PCT = float(
-    os.getenv("VAR_LIMIT_PCT", "0.05")
-)  # post-trade VaR ≤ 5% of equity
+VAR_LIMIT_PCT = float(os.getenv("VAR_LIMIT_PCT", "0.05"))  # post-trade VaR ≤ 5% of equity
 # Perp liquidation guard (the existential gate for a leveraged perpetuals account).
 MAINT_MARGIN_RATE = float(
     os.getenv("MAINT_MARGIN_RATE", "0.005")
@@ -70,12 +67,8 @@ STOP_LIQ_SAFETY = float(
     os.getenv("STOP_LIQ_SAFETY", "0.80")
 )  # protective stop must fall within this fraction of the liquidation distance (so it triggers BEFORE liquidation)
 # Dynamic correlation gate (replaces the static CORR_GROUPS when return data is available).
-CORR_THRESHOLD = float(
-    os.getenv("CORR_THRESHOLD", "0.6")
-)  # signed ρ ≥ this ⇒ correlated (same-direction clustering)
-CORR_RETURNS_TTL_S = float(
-    os.getenv("CORR_RETURNS_TTL_S", "300")
-)  # cache returns for 5 min
+CORR_THRESHOLD = float(os.getenv("CORR_THRESHOLD", "0.6"))  # signed ρ ≥ this ⇒ correlated (same-direction clustering)
+CORR_RETURNS_TTL_S = float(os.getenv("CORR_RETURNS_TTL_S", "300"))  # cache returns for 5 min
 CORR_RETURNS_INTERVAL = os.getenv("CORR_RETURNS_INTERVAL", "1h")
 CORR_RETURNS_BARS = int(os.getenv("CORR_RETURNS_BARS", "120"))
 CORR_MIN_BARS = int(os.getenv("CORR_MIN_BARS", "30"))  # min bars to trust ρ
@@ -98,19 +91,14 @@ async def _get_corr_returns(symbols: set) -> dict:
         async with pg.acquire() as conn:
             for s in symbols:
                 rows = await conn.fetch(
-                    "SELECT close FROM candles WHERE symbol=$1 AND interval=$2 "
-                    "ORDER BY time DESC LIMIT $3",
+                    "SELECT close FROM candles WHERE symbol=$1 AND interval=$2 ORDER BY time DESC LIMIT $3",
                     s,
                     CORR_RETURNS_INTERVAL,
                     CORR_RETURNS_BARS + 1,
                 )
                 closes = [float(r["close"]) for r in rows][::-1]  # ascending
                 if len(closes) >= CORR_MIN_BARS:
-                    rets = [
-                        math.log(closes[i] / closes[i - 1])
-                        for i in range(1, len(closes))
-                        if closes[i - 1] > 0
-                    ]
+                    rets = [math.log(closes[i] / closes[i - 1]) for i in range(1, len(closes)) if closes[i - 1] > 0]
                     if rets:
                         out[s] = rets
     except Exception as e:
@@ -141,8 +129,8 @@ async def compute_portfolio_risk() -> dict:
     It closes the 'VaR ignores cross-asset correlation' gap by exposing the correct number.
     """
     from services.risk.portfolio.correlation_risk import (
-        parametric_var_correlated,
         correlated_exposure,
+        parametric_var_correlated,
         stress_test,
     )
 
@@ -158,14 +146,8 @@ async def compute_portfolio_risk() -> dict:
             "stress": {},
         }
     returns = await _get_corr_returns(set(signed))
-    var_usd = (
-        parametric_var_correlated(signed, returns, confidence=0.95) if returns else 0.0
-    )
-    corr_exp = (
-        correlated_exposure(signed, returns, threshold=CORR_THRESHOLD)
-        if returns
-        else {}
-    )
+    var_usd = parametric_var_correlated(signed, returns, confidence=0.95) if returns else 0.0
+    corr_exp = correlated_exposure(signed, returns, threshold=CORR_THRESHOLD) if returns else {}
     held = list(signed)
     scenarios = {
         "broad_drop_15": {s: -0.15 for s in held},
@@ -242,9 +224,7 @@ class RiskGate:
             )
         return True, "", scalar
 
-    async def check_var(
-        self, symbol: str, side: str, allocated_usd: float, equity: float
-    ) -> tuple[bool, str]:
+    async def check_var(self, symbol: str, side: str, allocated_usd: float, equity: float) -> tuple[bool, str]:
         """VaR Gate: post-trade portfolio VaR must not exceed VAR_LIMIT_PCT of equity.
 
         Primary path uses the correlation-aware portfolio VaR (w'Σw) including the
@@ -289,9 +269,7 @@ class RiskGate:
             return False, f"VaR limit: est {new_var_est:.1%} > {VAR_LIMIT_PCT:.0%}"
         return True, ""
 
-    def check_single_position(
-        self, symbol: str, allocated_usd: float, equity: float
-    ) -> tuple[bool, str, float]:
+    def check_single_position(self, symbol: str, allocated_usd: float, equity: float) -> tuple[bool, str, float]:
         """单仓位上限"""
         pos_pct = allocated_usd / equity if equity > 0 else 1.0
         if pos_pct > MAX_SINGLE_POS_PCT:
@@ -333,15 +311,10 @@ class RiskGate:
 
         exposure_pct = same_dir_notional / equity
         if exposure_pct > MAX_CORR_EXPOSURE:
-            return False, (
-                f"corr_exposure limit: {symbol} group already "
-                f"{exposure_pct:.1%} > {MAX_CORR_EXPOSURE:.1%}"
-            )
+            return False, (f"corr_exposure limit: {symbol} group already {exposure_pct:.1%} > {MAX_CORR_EXPOSURE:.1%}")
         return True, ""
 
-    async def check_corr_exposure_dynamic(
-        self, symbol: str, side: str, allocated: float
-    ) -> tuple[bool, str]:
+    async def check_corr_exposure_dynamic(self, symbol: str, side: str, allocated: float) -> tuple[bool, str]:
         """Correlation-exposure gate using *realized* correlations instead of the static
         CORR_GROUPS. Sums the candidate plus existing same-direction positions whose realized
         correlation with the candidate >= CORR_THRESHOLD and rejects if that exceeds
@@ -351,11 +324,7 @@ class RiskGate:
         if equity <= 0:
             return True, ""
         cand_sign = 1 if str(side).upper() in ("BUY", "LONG") else -1
-        positions = {
-            s: p
-            for s, p in _open_positions.items()
-            if s != "__equity__" and "notional" in p
-        }
+        positions = {s: p for s, p in _open_positions.items() if s != "__equity__" and "notional" in p}
         universe = set(positions) | {symbol}
         returns = await _get_corr_returns(universe)
         cluster_notional = same_direction_correlated_exposure(
@@ -367,8 +336,7 @@ class RiskGate:
         exposure_pct = cluster_notional / equity
         if exposure_pct > MAX_CORR_EXPOSURE:
             return False, (
-                f"corr_exposure(dynamic): {symbol} correlated same-dir "
-                f"{exposure_pct:.1%} > {MAX_CORR_EXPOSURE:.1%}"
+                f"corr_exposure(dynamic): {symbol} correlated same-dir {exposure_pct:.1%} > {MAX_CORR_EXPOSURE:.1%}"
             )
         return True, ""
 
@@ -381,9 +349,7 @@ class RiskGate:
         return True, ""
 
     def check_leverage(self, allocated_usd: float, equity: float) -> tuple[bool, str]:
-        total_exposure = sum(
-            p["notional"] for p in _open_positions.values() if "notional" in p
-        )
+        total_exposure = sum(p["notional"] for p in _open_positions.values() if "notional" in p)
         new_leverage = (total_exposure + allocated_usd) / equity if equity > 0 else 999
         if new_leverage > MAX_LEVERAGE:
             return False, f"leverage {new_leverage:.2f}x > max {MAX_LEVERAGE}x"
@@ -412,9 +378,7 @@ class RiskGate:
         """
         if equity <= 0 or allocated_usd <= 0:
             return True, ""
-        total_exposure = sum(
-            p["notional"] for p in _open_positions.values() if "notional" in p
-        )
+        total_exposure = sum(p["notional"] for p in _open_positions.values() if "notional" in p)
         lev = (total_exposure + allocated_usd) / equity
         if lev <= 0:
             return True, ""
@@ -477,9 +441,7 @@ class RiskGate:
             return False, reason, None
 
         # ── Gate 5b: 强平距离（永续命门：止损必须在强平价之前触发）──
-        ok, reason = self.check_liquidation_distance(
-            allocated, entry_price, stop_price, equity
-        )
+        ok, reason = self.check_liquidation_distance(allocated, entry_price, stop_price, equity)
         if not ok:
             return False, reason, None
 
@@ -553,9 +515,7 @@ async def consume_loop():
                     )
 
                     if not approved:
-                        logger.warning(
-                            f"RISK REJECTED order={order_id[:8]} reason={reason}"
-                        )
+                        logger.warning(f"RISK REJECTED order={order_id[:8]} reason={reason}")
                         # 发 system.alerts 通知
                         await r.xadd(
                             STREAM_SYSTEM_ALERTS,
@@ -570,9 +530,7 @@ async def consume_loop():
                             approximate=True,
                         )
                     else:
-                        logger.info(
-                            f"RISK APPROVED order={order_id[:8]} max_qty={max_qty}"
-                        )
+                        logger.info(f"RISK APPROVED order={order_id[:8]} max_qty={max_qty}")
 
                     await r.xack(STREAM_RISK_CHECK, CG_RISK, msg_id)
 
@@ -620,14 +578,8 @@ async def portfolio_state_listener():
                 logger.info(f"Daily PnL reset at UTC {today}")
             _daily_pnl = daily_pnl
 
-            if (
-                equity > 0
-                and abs(daily_pnl) / equity > MAX_DAILY_LOSS_PCT
-                and daily_pnl < 0
-            ):
-                trip_reason = (
-                    f"daily_loss {daily_pnl / equity:.1%} > {MAX_DAILY_LOSS_PCT:.1%}"
-                )
+            if equity > 0 and abs(daily_pnl) / equity > MAX_DAILY_LOSS_PCT and daily_pnl < 0:
+                trip_reason = f"daily_loss {daily_pnl / equity:.1%} > {MAX_DAILY_LOSS_PCT:.1%}"
                 # 持久化熔断（重启不丢失）
                 if _cb is not None:
                     cb_open = await _cb.is_open()
@@ -661,8 +613,7 @@ async def portfolio_state_listener():
                 json.dumps(
                     {
                         **dd_status,
-                        "new_trades_allowed": (not _circuit_broken)
-                        and dd_status["new_trades"],
+                        "new_trades_allowed": (not _circuit_broken) and dd_status["new_trades"],
                         "circuit_broken": _circuit_broken,
                         "circuit_reason": _circuit_reason,
                         "daily_pnl": _daily_pnl,
@@ -693,9 +644,7 @@ async def lifespan(app: FastAPI):
     # run_forever:Redis 断连不再永久杀死消费任务(2026-07-12 事故)
     tasks = [
         asyncio.create_task(run_forever("consume_loop", consume_loop)),
-        asyncio.create_task(
-            run_forever("portfolio_state_listener", portfolio_state_listener)
-        ),
+        asyncio.create_task(run_forever("portfolio_state_listener", portfolio_state_listener)),
     ]
     yield
     for t in tasks:
@@ -711,6 +660,7 @@ async def metrics():
     """Prometheus exposition: service liveness + redis reachability.
     Scraped by the central observability stack (Prometheus/Grafana)."""
     from fastapi.responses import PlainTextResponse
+
     from shared.metrics import render_prometheus
 
     out = [

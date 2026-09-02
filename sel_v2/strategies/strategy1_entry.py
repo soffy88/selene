@@ -25,10 +25,11 @@ STUB items:
 
 See sel_v2/strategies/STUB_BOUNDARIES.md for the full registry.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from typing import Literal, Optional
 
 from sel_v2.strategies.cusum_short import CUSUMShort, CUSUMTrigger
@@ -41,7 +42,7 @@ _ABORT_STATES = frozenset({"Drifting-Calm", "Surging", "Critical", "Cascade"})
 
 # §13.4: base_size = 20% of sub-account 1 nav
 BASE_SIZE_FRACTION: float = 0.20
-MAX_LEVERAGE: float = 2.0   # spot-primary; perp only for funding arbitrage
+MAX_LEVERAGE: float = 2.0  # spot-primary; perp only for funding arbitrage
 
 # §13.2 Step 4: funding extreme thresholds
 FUNDING_LONG_ABORT_PCTILE: float = 0.90
@@ -69,8 +70,8 @@ class Strategy1EntryDecision:
     state_4h: Optional[str] = None
     step_reached: int = 0
     # sizing outputs
-    base_size_pct: float = 0.0      # fraction of sub-account nav
-    size_modifier: float = 1.0      # from OI + vocab adjustments
+    base_size_pct: float = 0.0  # fraction of sub-account nav
+    size_modifier: float = 1.0  # from OI + vocab adjustments
     suggested_leverage: float = 1.0
     # diagnostics
     cusum_positive: float = 0.0
@@ -154,10 +155,7 @@ class Strategy1EntryFilter:
             self.cusum_mid.update(z_t, t)
             return Strategy1EntryDecision(
                 action="OBSERVE",
-                reason=(
-                    f"Step 2: {state_4h} dwell={current_duration_4h} < "
-                    f"min={_min_dwell} bars"
-                ),
+                reason=(f"Step 2: {state_4h} dwell={current_duration_4h} < min={_min_dwell} bars"),
                 state_4h=state_4h,
                 step_reached=2,
             )
@@ -291,7 +289,7 @@ class Strategy1EntryFilter:
                 f"C+={trigger.cusum_positive:.3f} C-={trigger.cusum_negative:.3f} "
                 f"h={trigger.threshold:.3f} "
                 f"size_modifier={size_modifier:.2f}"
-                + (f" oi_against=True(halved)" if oi_against else "")
+                + (" oi_against=True(halved)" if oi_against else "")
                 + (f" vocab={list(vocab_tags)}" if vocab_tags else "")
             ),
             direction=direction,

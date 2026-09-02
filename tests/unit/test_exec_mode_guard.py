@@ -3,6 +3,7 @@
 Live production boot requires bound artifacts. I_HAVE_OOS_EVIDENCE cannot unlock
 live. CONFIRM_THEN_EXEC is a deprecated alias of LIMITED_LIVE.
 """
+
 from unittest.mock import patch
 
 import pytest
@@ -96,9 +97,10 @@ def test_paper_init_skips_real_adapters(monkeypatch):
     monkeypatch.setenv("OKX_API_KEY", "k")
     monkeypatch.setenv("OKX_API_SECRET", "s")
     monkeypatch.setenv("OKX_PASSPHRASE", "p")
-    with patch("services.execution.adapters.binance.BinanceAdapter") as binance, patch(
-        "services.execution.adapters.okx.OKXAdapter"
-    ) as okx:
+    with (
+        patch("services.execution.adapters.binance.BinanceAdapter") as binance,
+        patch("services.execution.adapters.okx.OKXAdapter") as okx,
+    ):
         m._init_adapters()
         binance.assert_not_called()
         okx.assert_not_called()

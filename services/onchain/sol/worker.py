@@ -24,13 +24,13 @@ import websockets
 
 logger = logging.getLogger("sol.worker")
 
-REDIS_URL     = os.environ.get("REDIS_URL", "redis://:changeme@redis:6379/0")
-HELIUS_KEY    = os.environ.get("HELIUS_KEY", "")
+REDIS_URL = os.environ.get("REDIS_URL", "redis://:changeme@redis:6379/0")
+HELIUS_KEY = os.environ.get("HELIUS_KEY", "")
 THRESHOLD_SOL = float(os.environ.get("THRESHOLD_SOL", 50000))
 
-WSS_URL  = f"wss://atlas-mainnet.helius-rpc.com/?api-key={HELIUS_KEY}"
-API_URL  = f"https://api.helius.xyz/v0/transactions?api-key={HELIUS_KEY}"
-STREAM   = "onchain.events"
+WSS_URL = f"wss://atlas-mainnet.helius-rpc.com/?api-key={HELIUS_KEY}"
+API_URL = f"https://api.helius.xyz/v0/transactions?api-key={HELIUS_KEY}"
+STREAM = "onchain.events"
 
 KNOWN_EXCHANGES_SOL = {
     "CRX7bcgRDsGZMHqkNjEEJkjdqFbB7XrY2MXKXuV8B2N": "Binance SOL",
@@ -48,7 +48,7 @@ _sol_price = [145.0]
 # ── LimitedSet 防内存泄漏 ─────────────────────────────
 class LimitedSet:
     def __init__(self, maxsize=2000):
-        self._d   = OrderedDict()
+        self._d = OrderedDict()
         self._max = maxsize
 
     def add(self, key) -> bool:
@@ -59,6 +59,7 @@ class LimitedSet:
             for _ in range(self._max // 2):
                 self._d.popitem(last=False)
         return True
+
 
 seen_sigs = LimitedSet(2000)
 sig_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
@@ -73,8 +74,7 @@ async def get_redis():
 
 async def emit(event: dict):
     r = await get_redis()
-    encoded = {k: json.dumps(v) if not isinstance(v, (str, bytes)) else v
-               for k, v in event.items()}
+    encoded = {k: json.dumps(v) if not isinstance(v, (str, bytes)) else v for k, v in event.items()}
     await r.xadd(STREAM, encoded, maxlen=50000, approximate=True)
 
 
@@ -83,8 +83,8 @@ async def producer(ws):
     async for raw in ws:
         data = json.loads(raw)
         result = data.get("params", {}).get("result", {})
-        value  = result.get("value", {})
-        sig    = value.get("signature", "")
+        value = result.get("value", {})
+        sig = value.get("signature", "")
         if sig and seen_sigs.add(sig):
             try:
                 sig_queue.put_nowait(sig)
@@ -132,7 +132,7 @@ async def parse_batch(session: aiohttp.ClientSession, sigs: list):
 
 async def analyze_tx(session: aiohttp.ClientSession, tx: dict):
     sig = tx.get("signature", "")
-    ts  = tx.get("timestamp", time.time())
+    ts = tx.get("timestamp", time.time())
 
     # ── 原生 SOL 大额 ──────────────────────────────────
     for nt in tx.get("nativeTransfers", []):
@@ -141,53 +141,52 @@ async def analyze_tx(session: aiohttp.ClientSession, tx: dict):
             continue
 
         frm = (nt.get("fromUserAccount") or "").lower()
-        to  = (nt.get("toUserAccount")   or "").lower()
+        to = (nt.get("toUserAccount") or "").lower()
 
-        sev = ("critical" if amount_sol >= THRESHOLD_SOL * 5 else
-               "high"     if amount_sol >= THRESHOLD_SOL * 2 else "medium")
+        sev = "critical" if amount_sol >= THRESHOLD_SOL * 5 else "high" if amount_sol >= THRESHOLD_SOL * 2 else "medium"
 
         ev = {
-            "id":         uuid.uuid4().hex,
-            "chain":      "SOL",
-            "symbol":     "SOLUSDT",
+            "id": uuid.uuid4().hex,
+            "chain": "SOL",
+            "symbol": "SOLUSDT",
             "event_type": "whale_transfer",
-            "from_addr":  frm,
-            "to_addr":    to,
-            "amount":     amount_sol,
+            "from_addr": frm,
+            "to_addr": to,
+            "amount": amount_sol,
             "amount_usd": amount_sol * _sol_price[0],
-            "severity":   sev,
+            "severity": sev,
             "meta": {
-                "signature":  sig,
+                "signature": sig,
                 "from_label": KNOWN_EXCHANGES_SOL.get(frm, "") or SMART_WALLETS_SOL.get(frm, ""),
-                "to_label":   KNOWN_EXCHANGES_SOL.get(to,  "") or SMART_WALLETS_SOL.get(to,  ""),
+                "to_label": KNOWN_EXCHANGES_SOL.get(to, "") or SMART_WALLETS_SOL.get(to, ""),
             },
             "ts": float(ts),
         }
         await emit(ev)
-        logger.info(f"🐋 SOL {amount_sol:,.0f} SOL | ${amount_sol*_sol_price[0]/1e6:.1f}M | {sev}")
+        logger.info(f"🐋 SOL {amount_sol:,.0f} SOL | ${amount_sol * _sol_price[0] / 1e6:.1f}M | {sev}")
 
     # ── SPL Token 大额 ────────────────────────────────
     for tt in tx.get("tokenTransfers", []):
         amount = float(tt.get("tokenAmount", 0))
         symbol = tt.get("symbol", "TOKEN")
-        frm    = (tt.get("fromUserAccount") or "").lower()
-        to     = (tt.get("toUserAccount")   or "").lower()
+        frm = (tt.get("fromUserAccount") or "").lower()
+        to = (tt.get("toUserAccount") or "").lower()
 
         if amount < 1_000_000:
             continue
 
         ev = {
-            "id":         uuid.uuid4().hex,
-            "chain":      "SOL",
-            "symbol":     "SOLUSDT",
+            "id": uuid.uuid4().hex,
+            "chain": "SOL",
+            "symbol": "SOLUSDT",
             "event_type": "spl_transfer",
-            "from_addr":  frm,
-            "to_addr":    to,
-            "amount":     amount,
-            "amount_usd": amount,   # SPL token USD 需接 price feed
-            "severity":   "medium",
-            "meta":       {"token": symbol, "signature": sig},
-            "ts":         float(ts),
+            "from_addr": frm,
+            "to_addr": to,
+            "amount": amount,
+            "amount_usd": amount,  # SPL token USD 需接 price feed
+            "severity": "medium",
+            "meta": {"token": symbol, "signature": sig},
+            "ts": float(ts),
         }
         await emit(ev)
         logger.info(f"💎 SPL {amount:,.0f} {symbol}")
@@ -198,20 +197,20 @@ async def analyze_tx(session: aiohttp.ClientSession, tx: dict):
         price_sol = nft.get("amount", 0) / 1e9
         if price_sol >= 100:
             nft_name = (nft.get("nfts") or [{}])[0].get("name", "Unknown NFT")
-            buyer    = (nft.get("buyer")  or "").lower()
-            seller   = (nft.get("seller") or "").lower()
+            buyer = (nft.get("buyer") or "").lower()
+            seller = (nft.get("seller") or "").lower()
             ev = {
-                "id":         uuid.uuid4().hex,
-                "chain":      "SOL",
-                "symbol":     "SOLUSDT",
+                "id": uuid.uuid4().hex,
+                "chain": "SOL",
+                "symbol": "SOLUSDT",
                 "event_type": "nft_sale",
-                "from_addr":  seller,
-                "to_addr":    buyer,
-                "amount":     price_sol,
+                "from_addr": seller,
+                "to_addr": buyer,
+                "amount": price_sol,
                 "amount_usd": price_sol * _sol_price[0],
-                "severity":   "high" if price_sol >= 500 else "medium",
-                "meta":       {"nft_name": nft_name, "signature": sig},
-                "ts":         float(ts),
+                "severity": "high" if price_sol >= 500 else "medium",
+                "meta": {"nft_name": nft_name, "signature": sig},
+                "ts": float(ts),
             }
             await emit(ev)
             logger.info(f"🖼️  NFT {nft_name} {price_sol:.1f} SOL")
@@ -255,12 +254,16 @@ async def main():
             try:
                 logger.info("Connecting Helius WSS...")
                 async with websockets.connect(WSS_URL, ping_interval=30) as ws:
-                    await ws.send(json.dumps({
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "logsSubscribe",
-                        "params": [{"mentions": []}, {"commitment": "confirmed"}],
-                    }))
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "jsonrpc": "2.0",
+                                "id": 1,
+                                "method": "logsSubscribe",
+                                "params": [{"mentions": []}, {"commitment": "confirmed"}],
+                            }
+                        )
+                    )
                     confirm = json.loads(await ws.recv())
                     logger.info(f"✅ Helius 已连接 | sub={confirm.get('result')}")
                     retry = 5

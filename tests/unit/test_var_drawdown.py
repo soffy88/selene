@@ -2,13 +2,17 @@
 Unit tests for VaR Engine and DrawdownController.
 Key: VaR back-test check — actual exceedance rate should ≈ 5%.
 """
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
-import pytest
+
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 import random
 
 from services.risk.portfolio.var_engine import (
-    calc_historical_var, DrawdownController, DRAWDOWN_LEVELS,
+    DRAWDOWN_LEVELS,
+    DrawdownController,
+    calc_historical_var,
 )
 
 
@@ -49,8 +53,7 @@ class TestHistoricalVaR:
         r = calc_historical_var(returns, 0.95)
         actual_exceed = sum(1 for ret in returns if ret < -r.var_95)
         exceedance_rate = actual_exceed / len(returns)
-        assert abs(exceedance_rate - 0.05) < 0.03, \
-            f"Expected ~5% exceedance, got {exceedance_rate:.1%}"
+        assert abs(exceedance_rate - 0.05) < 0.03, f"Expected ~5% exceedance, got {exceedance_rate:.1%}"
 
     def test_insufficient_data_returns_none(self):
         assert calc_historical_var([1.0] * 20) is None
@@ -105,20 +108,20 @@ class TestDrawdownController:
         dc.update(10000)
         dc.update(12000)  # new peak
         dc.update(11000)  # drawdown from 12k
-        assert abs(dc.current_dd - 1/12) < 0.001
+        assert abs(dc.current_dd - 1 / 12) < 0.001
 
     def test_max_drawdown_persists(self):
         """max_dd should not decrease even if equity recovers."""
         dc = DrawdownController()
         dc.update(10000)
-        dc.update(8500)   # 15% dd
+        dc.update(8500)  # 15% dd
         dc.update(10000)  # recovery
         assert dc.max_dd >= 0.149  # still remembers the worst
 
     def test_manual_reset_clears_halt(self):
         dc = DrawdownController()
         dc.update(10000)
-        dc.update(8000)   # 20% → RED
+        dc.update(8000)  # 20% → RED
         assert dc.is_halted
         dc.manual_reset()
         assert not dc.is_halted
@@ -136,10 +139,10 @@ class TestDrawdownController:
     def test_levels_are_ordered(self):
         """Drawdown levels must be ordered by threshold."""
         for i in range(len(DRAWDOWN_LEVELS) - 1):
-            assert DRAWDOWN_LEVELS[i].threshold_hi == DRAWDOWN_LEVELS[i+1].threshold_lo
+            assert DRAWDOWN_LEVELS[i].threshold_hi == DRAWDOWN_LEVELS[i + 1].threshold_lo
 
     def test_position_scalar_decreases_with_severity(self):
         """More severe drawdown → smaller position scalar."""
         scalars = [lvl.max_position_pct for lvl in DRAWDOWN_LEVELS]
         for i in range(len(scalars) - 1):
-            assert scalars[i] >= scalars[i+1]
+            assert scalars[i] >= scalars[i + 1]

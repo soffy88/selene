@@ -4,7 +4,6 @@ Consumes system.alerts + order.lifecycle streams and fans out to channels.
 """
 
 import asyncio
-import json
 import logging
 import os
 from typing import Optional
@@ -12,11 +11,11 @@ from typing import Optional
 import aiohttp
 
 from shared.events.streams import (
-    STREAM_SYSTEM_ALERTS,
-    STREAM_ORDER_LIFECYCLE,
     CG_NOTIFY,
-    consume,
+    STREAM_ORDER_LIFECYCLE,
+    STREAM_SYSTEM_ALERTS,
     StreamEvent,
+    consume,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,18 +60,14 @@ class TelegramChannel:
                 ) as r:
                     if r.status == 200:
                         return True
-                    logger.warning(
-                        f"Telegram status {r.status} (attempt {attempt + 1})"
-                    )
+                    logger.warning(f"Telegram status {r.status} (attempt {attempt + 1})")
             except Exception as e:
                 logger.warning(f"Telegram send error (attempt {attempt + 1}): {e}")
             await asyncio.sleep(1)
         logger.error("Telegram send failed after 3 attempts")
         return False
 
-    async def send_signal(
-        self, signal: dict, order_id: str = None, exec_mode: str = "NOTIFY_ONLY"
-    ) -> bool:
+    async def send_signal(self, signal: dict, order_id: str = None, exec_mode: str = "NOTIFY_ONLY") -> bool:
         """Format and send a scored signal notification."""
         sig_type = signal.get("signal_type", "SIGNAL")
         symbol = signal.get("symbol", "")
@@ -142,9 +137,7 @@ class NotificationHub:
     Designed to run as an independent microservice.
     """
 
-    def __init__(
-        self, telegram: TelegramChannel = None, dingtalk: DingTalkChannel = None
-    ):
+    def __init__(self, telegram: TelegramChannel = None, dingtalk: DingTalkChannel = None):
         self._tg = telegram
         self._dd = dingtalk
         self._stats = {"sent": 0, "errors": 0}
@@ -161,9 +154,7 @@ class NotificationHub:
             )
         elif alert_t == "signal":
             if self._tg:
-                await self._tg.send_signal(
-                    data, exec_mode=data.get("exec_mode", "NOTIFY_ONLY")
-                )
+                await self._tg.send_signal(data, exec_mode=data.get("exec_mode", "NOTIFY_ONLY"))
             self._stats["sent"] += 1
             return
         elif alert_t == "onchain_signal":
@@ -240,16 +231,8 @@ class NotificationHub:
     async def run(self):
         """Main loop — consume streams forever."""
         tasks = [
-            asyncio.create_task(
-                consume(
-                    STREAM_SYSTEM_ALERTS, CG_NOTIFY, "notify-alerts", self._on_alert
-                )
-            ),
-            asyncio.create_task(
-                consume(
-                    STREAM_ORDER_LIFECYCLE, CG_NOTIFY, "notify-orders", self._on_order
-                )
-            ),
+            asyncio.create_task(consume(STREAM_SYSTEM_ALERTS, CG_NOTIFY, "notify-alerts", self._on_alert)),
+            asyncio.create_task(consume(STREAM_ORDER_LIFECYCLE, CG_NOTIFY, "notify-orders", self._on_order)),
         ]
         logger.info("NotificationHub: started")
         await asyncio.gather(*tasks)
@@ -260,6 +243,7 @@ class NotificationHub:
 
 async def main():
     import os
+
     from shared.db.redis_client import init_redis
 
     init_redis(os.environ.get("REDIS_URL", "redis://localhost:6379/0"))

@@ -1,9 +1,18 @@
 """Tests for decision config loader — Wave 1."""
-import pytest
+
 from pathlib import Path
 
-from decision.config import load_config, _validate, DecisionConfig, PositionConfig, AccountConfig, RiskConfig, ExecutionConfig
+import pytest
 
+from decision.config import (
+    AccountConfig,
+    DecisionConfig,
+    ExecutionConfig,
+    PositionConfig,
+    RiskConfig,
+    _validate,
+    load_config,
+)
 
 CONFIG_PATH = Path(__file__).parent.parent.parent / "configs" / "sel-decision-rules.yaml"
 
@@ -117,9 +126,7 @@ def test_validation_fails_missing_section():
 def test_validation_fails_unknown_action():
     bad_data = {
         "meta": {"version": "0.1"},
-        "decision_matrix": [
-            {"id": "bad_rule", "current_state": "Coiling", "action": "fly_away"}
-        ],
+        "decision_matrix": [{"id": "bad_rule", "current_state": "Coiling", "action": "fly_away"}],
         "position": {},
         "account": {},
         "risk": {},

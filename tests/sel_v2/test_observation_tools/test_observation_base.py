@@ -16,21 +16,20 @@ import pytest
 # collection error that aborts the whole run.
 pytest.importorskip("oprim", reason="private quant stack (oprim) not installed")
 
+from sel_v2.observation_tools import (
+    BayesianHMM,
+    HawkesCascadeWarning,
+    HMMBoundaryArbiter,
+    ObservationRunner,
+    PermutationEntropy,
+    TDAClustering,
+    TransferEntropyRolling,
+    WaveletMultifractal,
+)
 from sel_v2.observation_tools.base import (
     BarFeatures,
     ObservationResult,
     ObservationTool,
-    ToolEvaluationMetrics,
-)
-from sel_v2.observation_tools import (
-    BayesianHMM,
-    HMMBoundaryArbiter,
-    TDAClustering,
-    PermutationEntropy,
-    TransferEntropyRolling,
-    WaveletMultifractal,
-    HawkesCascadeWarning,
-    ObservationRunner,
 )
 
 ALL_TOOL_CLASSES = [
@@ -55,9 +54,7 @@ def make_bar(ret: float = 0.001, vol: float = 100.0) -> BarFeatures:
 
 def test_all_tools_are_subclasses_of_observation_tool():
     for cls in ALL_TOOL_CLASSES:
-        assert issubclass(cls, ObservationTool), (
-            f"{cls.__name__} not subclass of ObservationTool"
-        )
+        assert issubclass(cls, ObservationTool), f"{cls.__name__} not subclass of ObservationTool"
 
 
 def test_all_tools_have_tool_id():
@@ -78,9 +75,7 @@ def test_all_tools_return_observation_result():
     for cls in ALL_TOOL_CLASSES:
         instance = cls()
         result = instance.update(make_bar())
-        assert isinstance(result, ObservationResult), (
-            f"{cls.__name__}.update() should return ObservationResult"
-        )
+        assert isinstance(result, ObservationResult), f"{cls.__name__}.update() should return ObservationResult"
 
 
 def test_observation_result_has_required_fields():
@@ -108,8 +103,7 @@ def test_warming_label_when_not_ready():
         if not instance.is_ready():
             result = instance.update(make_bar())
             assert result.label in pre_ready_labels, (
-                f"{cls.__name__}: expected pre-ready label in {pre_ready_labels}, "
-                f"got {result.label}"
+                f"{cls.__name__}: expected pre-ready label in {pre_ready_labels}, got {result.label}"
             )
 
 
@@ -122,7 +116,6 @@ def test_observation_tools_not_imported_in_strategy_modules():
     sel_v2.observation_tools. This enforces the v2.1 §2.2 hard discipline.
     """
     import importlib
-    import sys
 
     strategy_modules = [
         "sel_v2.strategies.strategy1_entry",

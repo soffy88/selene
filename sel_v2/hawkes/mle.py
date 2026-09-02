@@ -7,6 +7,7 @@ Branching ratio: η = α/β
 H1 (Wave 2): per-event second-scale intensity tracker for Strategy 2
 H2 (Wave 3): 4H-bar rolling MLE for Critical state main condition B
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -5,12 +5,13 @@ precompute -> recognizer -> entry filters -> exits -> sub-accounts pipeline runs
 and the open/exit orchestration (the glue this module adds) behaves correctly.
 """
 
-import sys, os
+import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import numpy as np
@@ -71,9 +72,7 @@ class TestIntegration:
         assert summary["total_equity"] == 100_000.0
 
     def test_summary_shape(self):
-        eng = PaperStrategyEngine(
-            skip_hawkes=True, skip_tda=True, hawkes_params=(0.1, 0.3, 0.5)
-        )
+        eng = PaperStrategyEngine(skip_hawkes=True, skip_tda=True, hawkes_params=(0.1, 0.3, 0.5))
         s = eng.process_frame(_bars(200))
         for k in ("bars", "state_counts", "s1", "s2", "total_equity"):
             assert k in s
@@ -95,9 +94,7 @@ class TestEntryExitOrchestration:
     def test_s1_entry_opens_position_and_tracks_meta(self):
         eng = self._engine()
         ts = datetime(2024, 1, 5, tzinfo=timezone.utc)
-        eng._maybe_open_s1(
-            _FakeS1Decision("ENTER_LONG", "LONG"), "Coiling", 30000.0, ts
-        )
+        eng._maybe_open_s1(_FakeS1Decision("ENTER_LONG", "LONG"), "Coiling", 30000.0, ts)
         acct = eng.accounts.subaccount_1
         assert len(acct.open_positions) == 1
         pos = acct.open_positions[0]
@@ -117,9 +114,7 @@ class TestEntryExitOrchestration:
     def test_cascade_state_forces_full_exit(self):
         eng = self._engine()
         ts = datetime(2024, 1, 5, tzinfo=timezone.utc)
-        eng._maybe_open_s1(
-            _FakeS1Decision("ENTER_LONG", "LONG"), "Coiling", 30000.0, ts
-        )
+        eng._maybe_open_s1(_FakeS1Decision("ENTER_LONG", "LONG"), "Coiling", 30000.0, ts)
         assert len(eng.accounts.subaccount_1.open_positions) == 1
         # a non-triggered CUSUM + Cascade state -> check_strategy1_exit returns EXIT_FULL
         trig = CUSUMTrigger(False, None, 0.0, 0.0, 2.0, 0.0)
@@ -133,15 +128,11 @@ class TestEntryExitOrchestration:
     def test_drawdown_stop_closes_losing_long(self):
         eng = self._engine()
         ts = datetime(2024, 1, 5, tzinfo=timezone.utc)
-        eng._maybe_open_s1(
-            _FakeS1Decision("ENTER_LONG", "LONG"), "Coiling", 30000.0, ts
-        )
+        eng._maybe_open_s1(_FakeS1Decision("ENTER_LONG", "LONG"), "Coiling", 30000.0, ts)
         trig = CUSUMTrigger(False, None, 0.0, 0.0, 2.0, 0.0)
         eng._prev_state = "Coiling"
         # -5% move breaches the -3% S1 drawdown stop
-        eng._manage_s1_exits(
-            "Drifting-Calm", 30000.0 * 0.95, ts + timedelta(hours=4), trig
-        )
+        eng._manage_s1_exits("Drifting-Calm", 30000.0 * 0.95, ts + timedelta(hours=4), trig)
         assert len(eng.accounts.subaccount_1.open_positions) == 0
         closed = eng.accounts.subaccount_1.closed_positions
         assert len(closed) == 1 and closed[0].pnl_usdt < 0
@@ -208,11 +199,7 @@ class TestDecisionTrailReconstruction:
         assert trail["taker_vol"] == pytest.approx(float(micro["taker_vol"][-1]))
         assert trail["lob_imb"] == pytest.approx(float(micro["lob_imb"][-1]))
         # CUSUM values must be present (consumed by the entry filter this bar).
-        assert (
-            "cusum_positive" in trail
-            and "cusum_negative" in trail
-            and "cusum_threshold" in trail
-        )
+        assert "cusum_positive" in trail and "cusum_negative" in trail and "cusum_threshold" in trail
 
     def test_decision_trail_round_trips_through_json_encoding(self):
         """The snapshot must survive json.dumps/json.loads unchanged (asyncpg JSONB
@@ -249,17 +236,13 @@ class TestStalenessEnforcement:
     def test_s1_entry_blocked_when_funding_oi_stale(self):
         eng = self._engine()
         ts = datetime(2024, 1, 5, tzinfo=timezone.utc)
-        eng._maybe_open_s1(
-            _FakeS1Decision("ENTER_LONG", "LONG"), "Coiling", 30000.0, ts, blocked=True
-        )
+        eng._maybe_open_s1(_FakeS1Decision("ENTER_LONG", "LONG"), "Coiling", 30000.0, ts, blocked=True)
         assert len(eng.accounts.subaccount_1.open_positions) == 0
 
     def test_s1_entry_opens_when_not_blocked(self):
         eng = self._engine()
         ts = datetime(2024, 1, 5, tzinfo=timezone.utc)
-        eng._maybe_open_s1(
-            _FakeS1Decision("ENTER_LONG", "LONG"), "Coiling", 30000.0, ts, blocked=False
-        )
+        eng._maybe_open_s1(_FakeS1Decision("ENTER_LONG", "LONG"), "Coiling", 30000.0, ts, blocked=False)
         assert len(eng.accounts.subaccount_1.open_positions) == 1
 
     def test_s2_entry_blocked_when_ticks_stale(self):
@@ -291,9 +274,7 @@ class TestStalenessEnforcement:
         stops don't — same stale-ticks condition, different exit reasons."""
         eng = self._engine()
         ts = datetime(2024, 1, 5, tzinfo=timezone.utc)
-        eng._maybe_open_s1(
-            _FakeS1Decision("ENTER_LONG", "LONG"), "Coiling", 30000.0, ts
-        )
+        eng._maybe_open_s1(_FakeS1Decision("ENTER_LONG", "LONG"), "Coiling", 30000.0, ts)
         assert len(eng.accounts.subaccount_1.open_positions) == 1
 
         # A CUSUM-reverse trigger alone (no drawdown, no Cascade) would normally EXIT_FULL —
@@ -314,9 +295,7 @@ class TestStalenessEnforcement:
             reverse_trig,
             pause_cusum_reversal=True,
         )
-        assert (
-            len(eng.accounts.subaccount_1.open_positions) == 1
-        )  # CUSUM reversal suppressed
+        assert len(eng.accounts.subaccount_1.open_positions) == 1  # CUSUM reversal suppressed
 
         # The SAME stale condition must not block a drawdown stop (-5% move).
         eng._manage_s1_exits(
@@ -326,17 +305,13 @@ class TestStalenessEnforcement:
             CUSUMTrigger(False, None, 0.0, 0.0, 2.0, 0.0),
             pause_cusum_reversal=True,
         )
-        assert (
-            len(eng.accounts.subaccount_1.open_positions) == 0
-        )  # drawdown stop unaffected
+        assert len(eng.accounts.subaccount_1.open_positions) == 0  # drawdown stop unaffected
         assert eng.accounts.subaccount_1.closed_positions[-1].pnl_usdt < 0
 
     def test_cusum_reversal_exit_fires_when_not_paused(self):
         eng = self._engine()
         ts = datetime(2024, 1, 5, tzinfo=timezone.utc)
-        eng._maybe_open_s1(
-            _FakeS1Decision("ENTER_LONG", "LONG"), "Coiling", 30000.0, ts
-        )
+        eng._maybe_open_s1(_FakeS1Decision("ENTER_LONG", "LONG"), "Coiling", 30000.0, ts)
         reverse_trig = CUSUMTrigger(
             triggered=True,
             direction="SHORT",
@@ -370,7 +345,7 @@ class TestStalenessEnforcement:
                 block_s1_entry=True,
             )
         }
-        summary_blocked = eng.process_frame(df, staleness=staleness)
+        eng.process_frame(df, staleness=staleness)
         rows = eng.decision_trail(last_n=200)
         s1_rows = sorted((r for r in rows if r[1] == "strategy_1"), key=lambda r: r[0])
         # Only the LAST bar's snapshot should carry the stale reason code.

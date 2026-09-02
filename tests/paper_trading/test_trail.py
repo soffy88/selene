@@ -1,23 +1,23 @@
 """Tests for Wave 4: DecisionTrailBuilder, DecisionTrail, DecisionReplayer."""
+
 from __future__ import annotations
 
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
 
-from decision.config import load_config, DecisionConfig, DecisionRule
+import pytest
+
+from decision.config import DecisionConfig, DecisionRule, load_config
+from paper_trading.replay import DecisionReplayer
+from paper_trading.risk import RiskCheckResult
 from paper_trading.schema import (
     AccountState,
     Decision,
     DecisionAction,
-    Position,
     PositionSide,
     SimulatedFill,
 )
-from paper_trading.risk import RiskCheckResult
 from paper_trading.trail import DecisionTrail, DecisionTrailBuilder
-from paper_trading.replay import DecisionReplayer
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers / fixtures
@@ -62,8 +62,10 @@ def _state_output(
     none_reason: Optional[str] = None,
 ):
     """Create a minimal duck-typed StateOutput."""
+
     class _SO:
         pass
+
     so = _SO()
     so.bar_time = _T
     so.symbol = _SYMBOL
@@ -144,6 +146,7 @@ def _fill(price: float = 60_100.0, size: float = 2_000.0, fee: float = 1.0) -> S
 # Test 1: build() assembles all fields correctly
 # ---------------------------------------------------------------------------
 
+
 class TestDecisionTrailBuild:
     def test_build_assembles_all_fields(self, cfg):
         builder = DecisionTrailBuilder(_SYMBOL, cfg)
@@ -181,6 +184,7 @@ class TestDecisionTrailBuild:
 # ---------------------------------------------------------------------------
 # Test 2: state_history maintained across multiple bars (deque maxlen 12)
 # ---------------------------------------------------------------------------
+
 
 class TestStateHistoryDeque:
     def test_state_history_grows_per_bar(self, cfg):
@@ -221,6 +225,7 @@ class TestStateHistoryDeque:
 # Test 3: using_claude_default is True per config metadata
 # ---------------------------------------------------------------------------
 
+
 class TestUsingClaudeDefault:
     def test_using_claude_default_is_true(self, cfg):
         builder = DecisionTrailBuilder(_SYMBOL, cfg)
@@ -233,6 +238,7 @@ class TestUsingClaudeDefault:
 # ---------------------------------------------------------------------------
 # Test 4: feature_completeness is correctly computed
 # ---------------------------------------------------------------------------
+
 
 class TestFeatureCompleteness:
     def test_completeness_reflects_non_none_features(self, cfg):
@@ -283,6 +289,7 @@ class TestFeatureCompleteness:
 # Test 5: Fill fields are None when no fill
 # ---------------------------------------------------------------------------
 
+
 class TestFillFieldsNoFill:
     def test_fill_fields_none_when_no_fill(self, cfg):
         builder = DecisionTrailBuilder(_SYMBOL, cfg)
@@ -298,6 +305,7 @@ class TestFillFieldsNoFill:
 # ---------------------------------------------------------------------------
 # Test 6: Fill fields populated when fill provided
 # ---------------------------------------------------------------------------
+
 
 class TestFillFieldsWithFill:
     def test_fill_fields_populated(self, cfg):
@@ -325,6 +333,7 @@ class TestFillFieldsWithFill:
 # Test 7: Risk triggered fields correctly set
 # ---------------------------------------------------------------------------
 
+
 class TestRiskTriggeredFields:
     def test_risk_triggered_sets_rule_and_final_action(self, cfg):
         builder = DecisionTrailBuilder(_SYMBOL, cfg)
@@ -345,9 +354,7 @@ class TestRiskTriggeredFields:
     def test_risk_passed_has_none_triggered(self, cfg):
         builder = DecisionTrailBuilder(_SYMBOL, cfg)
         builder.record_state("Coiling")
-        trail = builder.build(
-            _T, _state_output(), _decision(cfg=cfg), _risk_passed(), None, None, _account()
-        )
+        trail = builder.build(_T, _state_output(), _decision(cfg=cfg), _risk_passed(), None, None, _account())
         assert trail.risk_triggered is None
         assert trail.risk_check_passed is True
 
@@ -355,6 +362,7 @@ class TestRiskTriggeredFields:
 # ---------------------------------------------------------------------------
 # Test 8: DecisionReplayer.replay() re-runs decisions correctly
 # ---------------------------------------------------------------------------
+
 
 def _make_trail(
     state: str,
@@ -414,14 +422,6 @@ class TestDecisionReplayer:
 
     def test_replayer_with_different_config_produces_different_decisions(self, cfg):
         """Config with different rules should change decisions."""
-        import copy
-        from decision.config import (
-            DecisionRule,
-            PositionConfig,
-            AccountConfig,
-            RiskConfig,
-            ExecutionConfig,
-        )
 
         # Create an alternative config where Surging_Up always holds
         alt_rules = [
@@ -463,7 +463,7 @@ class TestDecisionReplayer:
     # (already covered in test above; adding explicit assertion test)
     # -------------------------------------------------------------------
     def test_different_config_changes_rule_id(self, cfg):
-        from decision.config import DecisionRule, DecisionConfig
+        from decision.config import DecisionConfig
 
         alt_rules = [
             DecisionRule(
@@ -518,6 +518,7 @@ class TestDecisionReplayer:
 # Test 11: DecisionTrail.state_none_reason populated from StateOutput.none_reason
 # ---------------------------------------------------------------------------
 
+
 class TestDecisionTrailNoneReason:
     """Verify state_none_reason is set correctly for all three None causes."""
 
@@ -526,8 +527,15 @@ class TestDecisionTrailNoneReason:
         builder.record_state(None)
         so = _state_output(state=None, prev_state=None, none_reason="cold_start")
         so.is_cold_start = True
-        trail = builder.build(_T, so, _decision(action=DecisionAction.NO_ACTION, rule_id="none:cold_start", cfg=cfg),
-                              _risk_passed(), None, None, _account())
+        trail = builder.build(
+            _T,
+            so,
+            _decision(action=DecisionAction.NO_ACTION, rule_id="none:cold_start", cfg=cfg),
+            _risk_passed(),
+            None,
+            None,
+            _account(),
+        )
         assert trail.state_none_reason == "cold_start"
 
     def test_state_none_reason_missing_data(self, cfg):
@@ -535,8 +543,15 @@ class TestDecisionTrailNoneReason:
         builder.record_state(None)
         so = _state_output(state=None, prev_state=None, none_reason="missing_data")
         so.is_cold_start = False
-        trail = builder.build(_T, so, _decision(action=DecisionAction.NO_ACTION, rule_id="none:missing_data", cfg=cfg),
-                              _risk_passed(), None, None, _account())
+        trail = builder.build(
+            _T,
+            so,
+            _decision(action=DecisionAction.NO_ACTION, rule_id="none:missing_data", cfg=cfg),
+            _risk_passed(),
+            None,
+            None,
+            _account(),
+        )
         assert trail.state_none_reason == "missing_data"
 
     def test_state_none_reason_no_match(self, cfg):
@@ -544,8 +559,15 @@ class TestDecisionTrailNoneReason:
         builder.record_state(None)
         so = _state_output(state=None, prev_state=None, none_reason="no_match")
         so.is_cold_start = False
-        trail = builder.build(_T, so, _decision(action=DecisionAction.NO_ACTION, rule_id="none:no_match", cfg=cfg),
-                              _risk_passed(), None, None, _account())
+        trail = builder.build(
+            _T,
+            so,
+            _decision(action=DecisionAction.NO_ACTION, rule_id="none:no_match", cfg=cfg),
+            _risk_passed(),
+            None,
+            None,
+            _account(),
+        )
         assert trail.state_none_reason == "no_match"
 
     def test_state_none_reason_none_when_state_active(self, cfg):

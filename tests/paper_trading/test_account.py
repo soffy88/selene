@@ -1,11 +1,12 @@
 """Tests for AccountManager."""
+
+from datetime import datetime, timedelta, timezone
+
 import pytest
-from datetime import datetime, timezone, timedelta
 
 from decision.config import load_config
 from paper_trading.account import AccountManager
-from paper_trading.schema import AccountState, Position, PositionSide, SimulatedFill
-
+from paper_trading.schema import Position, PositionSide, SimulatedFill
 
 _T = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
 _HASH = "abc123"
@@ -50,6 +51,7 @@ def _make_position(unrealized: float = 0.0) -> Position:
 
 
 # ---------------------------------------------------------------------------
+
 
 class TestApplyFill:
     def test_open_fill_deducts_fee(self):

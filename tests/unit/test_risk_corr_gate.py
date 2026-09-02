@@ -3,12 +3,15 @@
 Exercises RiskGate.check_corr_exposure_dynamic with the DB fetch and equity mocked, so the
 real wiring (position registry -> returns -> correlated exposure -> reject/allow) is verified.
 """
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 import pytest
-import services.risk.main as risk
 
+import services.risk.main as risk
 
 # A,B strongly correlated; C uncorrelated/anti.
 _RETURNS = {
@@ -22,6 +25,7 @@ _RETURNS = {
 def _patch(monkeypatch):
     async def fake_returns(symbols):
         return {s: _RETURNS[s] for s in symbols if s in _RETURNS}
+
     monkeypatch.setattr(risk, "_get_corr_returns", fake_returns)
     monkeypatch.setattr(risk, "_get_equity", lambda: 100_000.0)
     monkeypatch.setattr(risk, "MAX_CORR_EXPOSURE", 0.30)
@@ -57,6 +61,7 @@ async def test_allows_when_opposite_direction():
 async def test_falls_back_to_static_when_no_return_data(monkeypatch):
     async def empty(symbols):
         return {}
+
     monkeypatch.setattr(risk, "_get_corr_returns", empty)
     risk._open_positions["ETHUSDT"] = {"side": "LONG", "notional": 25_000.0}
     gate = risk.RiskGate()

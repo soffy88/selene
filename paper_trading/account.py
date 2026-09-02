@@ -1,4 +1,5 @@
 """AccountManager — NAV, realized PnL, daily drawdown, risk controls."""
+
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -72,16 +73,12 @@ class AccountManager:
         drawdown_pct = self._daily_drawdown_pct()
         if drawdown_pct >= self.config.max_daily_drawdown_pct:
             self._set_pause(bar_time)
-            return True, (
-                f"Daily drawdown breached: {drawdown_pct:.2%} >= {self.config.max_daily_drawdown_pct:.2%}"
-            )
+            return True, (f"Daily drawdown breached: {drawdown_pct:.2%} >= {self.config.max_daily_drawdown_pct:.2%}")
 
         # 5. Consecutive loss stop
         if self._consecutive_losses >= self.config.consecutive_loss_stop:
             self._set_pause(bar_time)
-            return True, (
-                f"Consecutive loss stop: {self._consecutive_losses} losses in a row"
-            )
+            return True, (f"Consecutive loss stop: {self._consecutive_losses} losses in a row")
 
         return False, ""
 
@@ -92,9 +89,7 @@ class AccountManager:
         pos_side = position.side.value if position else None
         pos_size = position.current_size_usdt if position else 0.0
 
-        is_paused = (
-            self._pause_until is not None and time < self._pause_until
-        )
+        is_paused = self._pause_until is not None and time < self._pause_until
 
         return AccountState(
             time=time,

@@ -5,7 +5,6 @@ Type A/B classification that a non-direction-aware stub kept aborting on.
 """
 
 import numpy as np
-import pytest
 
 from sel_v2.strategies.inverse_vocab import (
     AbsorptionSignal,
@@ -15,7 +14,6 @@ from sel_v2.strategies.inverse_vocab import (
     detect_absorption,
     detect_sweep,
 )
-
 
 # ── adaptive_percentile ────────────────────────────────────────────────────────
 
@@ -155,10 +153,7 @@ def test_type_b_momentum():
 
 def test_type_b_blocked_by_absorption():
     # persistent OFI but absorption present → not momentum
-    assert (
-        classify_entry_type("LONG", _absorb("up"), SweepSignal(present=False), True)
-        is None
-    )
+    assert classify_entry_type("LONG", _absorb("up"), SweepSignal(present=False), True) is None
 
 
 def test_ambiguous_aborts():

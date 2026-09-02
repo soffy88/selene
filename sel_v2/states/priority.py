@@ -12,12 +12,16 @@ Rules:
 
 The caller is responsible for passing the ConditionResult for each state.
 """
+
 from __future__ import annotations
 
 from typing import Optional
 
 from sel_v2.states.schema import (
-    BarFeatures, ConditionResult, StateLabel, STATE_PRIORITY, MIN_DWELL_BARS,
+    MIN_DWELL_BARS,
+    STATE_PRIORITY,
+    ConditionResult,
+    StateLabel,
 )
 
 

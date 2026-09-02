@@ -7,8 +7,6 @@ ADR-101: Redis Streams replace asyncio.Queue for cross-service communication.
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
-
 
 # ── Stream Names ──────────────────────────────────────────────────────────────
 STREAM_MARKET_RAW = "market.raw"  # Data → Signal
@@ -110,7 +108,5 @@ async def run_forever(name: str, factory, retry_delay: float = 5.0):
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            log.error(
-                f"{name} crashed: {e} — restarting in {retry_delay}s", exc_info=True
-            )
+            log.error(f"{name} crashed: {e} — restarting in {retry_delay}s", exc_info=True)
         await asyncio.sleep(retry_delay)

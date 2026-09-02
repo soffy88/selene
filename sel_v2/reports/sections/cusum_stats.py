@@ -1,4 +1,5 @@
 """§26.2 Section 2: CUSUM 触発統計."""
+
 from __future__ import annotations
 
 from typing import Any

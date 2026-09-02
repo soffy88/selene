@@ -9,11 +9,11 @@ Tests:
 - connection failure → all NaN
 - time boundary: window is [bar_start, bar_end) — bar_start exclusive check
 """
+
 import math
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import numpy as np
 import pytest
 
 from sel_v2.scheduler.taker_flow_loader import load_taker_flow_series
@@ -42,14 +42,15 @@ def _make_conn(rows) -> AsyncMock:
 
 # ── 4H aggregation ─────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_single_bar_aggregates_1m_rows_in_window():
     # bar_ts = 2026-04-28 04:00 → window [00:00, 04:00)
     bar_ts = _ts(2026, 4, 28, 4)
     rows = [
-        _mock_row(_ts(2026, 4, 28, 0, 0), buy=100.0, sell=80.0),   # net=+20
+        _mock_row(_ts(2026, 4, 28, 0, 0), buy=100.0, sell=80.0),  # net=+20
         _mock_row(_ts(2026, 4, 28, 1, 0), buy=200.0, sell=250.0),  # net=-50
-        _mock_row(_ts(2026, 4, 28, 3, 59), buy=50.0, sell=30.0),   # net=+20
+        _mock_row(_ts(2026, 4, 28, 3, 59), buy=50.0, sell=30.0),  # net=+20
     ]
     mock_conn = _make_conn(rows)
 
@@ -65,7 +66,7 @@ async def test_row_exactly_at_bar_ts_excluded():
     # window is [bar_ts - 4H, bar_ts) — bar_ts itself excluded
     bar_ts = _ts(2026, 4, 28, 4)
     rows = [
-        _mock_row(_ts(2026, 4, 28, 4, 0), buy=999.0, sell=0.0),   # at bar_ts → outside
+        _mock_row(_ts(2026, 4, 28, 4, 0), buy=999.0, sell=0.0),  # at bar_ts → outside
     ]
     mock_conn = _make_conn(rows)
 
@@ -92,13 +93,13 @@ async def test_row_exactly_at_bar_start_included():
 
 @pytest.mark.asyncio
 async def test_multiple_bars_independent_windows():
-    bar1 = _ts(2026, 4, 28, 4)   # [00:00, 04:00)
-    bar2 = _ts(2026, 4, 28, 8)   # [04:00, 08:00)
+    bar1 = _ts(2026, 4, 28, 4)  # [00:00, 04:00)
+    bar2 = _ts(2026, 4, 28, 8)  # [04:00, 08:00)
 
     rows = [
-        _mock_row(_ts(2026, 4, 28, 0, 30), buy=100.0, sell=50.0),   # bar1 +50
-        _mock_row(_ts(2026, 4, 28, 4, 0),  buy=200.0, sell=180.0),  # bar2 +20
-        _mock_row(_ts(2026, 4, 28, 7, 59), buy=80.0, sell=100.0),   # bar2 -20
+        _mock_row(_ts(2026, 4, 28, 0, 30), buy=100.0, sell=50.0),  # bar1 +50
+        _mock_row(_ts(2026, 4, 28, 4, 0), buy=200.0, sell=180.0),  # bar2 +20
+        _mock_row(_ts(2026, 4, 28, 7, 59), buy=80.0, sell=100.0),  # bar2 -20
     ]
     mock_conn = _make_conn(rows)
 
@@ -110,6 +111,7 @@ async def test_multiple_bars_independent_windows():
 
 
 # ── Edge cases ─────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_empty_bar_timestamps():

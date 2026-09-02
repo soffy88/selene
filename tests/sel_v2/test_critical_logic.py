@@ -7,15 +7,21 @@ Covers:
 - None data never triggers Critical alone
 - A_full vs A_partial semantics
 """
-import pytest
+
 from datetime import datetime, timezone
 from typing import Optional
 
-from sel_v2.states.schema import BarFeatures
 from sel_v2.states.critical_logic import (
-    evaluate_critical_entry, CriticalConditions,
-    _eval_a1, _eval_a2, _eval_b, _eval_c, _and, _or,
+    CriticalConditions,
+    _and,
+    _eval_a1,
+    _eval_a2,
+    _eval_b,
+    _eval_c,
+    _or,
+    evaluate_critical_entry,
 )
+from sel_v2.states.schema import BarFeatures
 
 _TS = datetime(2025, 1, 1, tzinfo=timezone.utc)
 
@@ -31,19 +37,28 @@ def _feat(
     tda_threshold: float = 0.000097,
 ) -> BarFeatures:
     return BarFeatures(
-        timestamp=_TS, bar_index=600, close=50000.0, log_price=10.8,
-        sigma_4h=0.02, sigma_pctile=sigma_pctile,
+        timestamp=_TS,
+        bar_index=600,
+        close=50000.0,
+        log_price=10.8,
+        sigma_4h=0.02,
+        sigma_pctile=sigma_pctile,
         sigma_monotone_3bar=sigma_monotone,
-        price_breakout_up=None, price_breakout_down=None,
+        price_breakout_up=None,
+        price_breakout_down=None,
         entropy_variance_rising=entropy_variance_rising,
-        hawkes_br=hawkes_br, hawkes_br_threshold=hawkes_threshold,
-        tda_l1=None, tda_l1_pctile=tda_l1_pctile,
-        tda_l1_threshold=tda_threshold, tda_l1_monotone_3bar=tda_l1_monotone,
+        hawkes_br=hawkes_br,
+        hawkes_br_threshold=hawkes_threshold,
+        tda_l1=None,
+        tda_l1_pctile=tda_l1_pctile,
+        tda_l1_threshold=tda_threshold,
+        tda_l1_monotone_3bar=tda_l1_monotone,
         cold_start=False,
     )
 
 
 # ── Tristate helpers ──────────────────────────────────────────────────────────
+
 
 def test_and_truth_table():
     assert _and(True, True) is True
@@ -69,6 +84,7 @@ def test_or_truth_table():
 
 # ── A1 condition ──────────────────────────────────────────────────────────────
 
+
 def test_a1_true():
     f = _feat(sigma_pctile=0.95, sigma_monotone=True)
     assert _eval_a1(f) is True
@@ -92,6 +108,7 @@ def test_a1_none_monotone_unavailable():
 
 # ── A2 condition (STUB) ───────────────────────────────────────────────────────
 
+
 def test_a2_always_none_in_wave3():
     f = _feat(entropy_variance_rising=None)
     assert _eval_a2(f) is None
@@ -108,6 +125,7 @@ def test_a2_false_when_entropy_not_rising():
 
 
 # ── B condition (Hawkes) ──────────────────────────────────────────────────────
+
 
 def test_b_true():
     f = _feat(hawkes_br=0.90)
@@ -137,6 +155,7 @@ def test_b_above_threshold_true():
 
 # ── C condition (TDA) ─────────────────────────────────────────────────────────
 
+
 def test_c_true():
     f = _feat(tda_l1_pctile=0.96, tda_l1_monotone=True)
     assert _eval_c(f) is True
@@ -164,11 +183,14 @@ def test_c_none_monotone_unavailable():
 
 # ── Full Critical entry truth table ──────────────────────────────────────────
 
+
 def _eval(
-    sigma_pctile=0.95, sigma_monotone=True,
+    sigma_pctile=0.95,
+    sigma_monotone=True,
     entropy_rising=None,
     hawkes_br=None,
-    tda_pctile=None, tda_monotone=None,
+    tda_pctile=None,
+    tda_monotone=None,
 ) -> CriticalConditions:
     f = _feat(
         sigma_pctile=sigma_pctile,

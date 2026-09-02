@@ -28,9 +28,7 @@ import asyncpg
 from sel_v2.data.binance_rest import BINANCE_PROXY, to_binance_symbol
 from sel_v2.db.migrations import apply_schema
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("v2_binance_ticker")
 
 DB_URL = os.environ.get("DB_URL")
@@ -50,9 +48,7 @@ async def fetch_spot_price(session, symbol: str, *, retries: int = 3):
     url = f"{BINANCE_SPOT_BASE}/api/v3/ticker/price"
     for attempt in range(retries):
         try:
-            async with session.get(
-                url, params={"symbol": symbol}, proxy=BINANCE_PROXY
-            ) as resp:
+            async with session.get(url, params={"symbol": symbol}, proxy=BINANCE_PROXY) as resp:
                 if resp.status != 200:
                     return None
                 data = await resp.json()

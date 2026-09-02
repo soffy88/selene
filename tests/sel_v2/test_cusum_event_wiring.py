@@ -15,8 +15,6 @@ halves of the fix without a live DB:
 
 import asyncio
 
-import pytest
-
 from sel_v2.paper.strategy_engine import PaperStrategyEngine
 from sel_v2.strategies.db_writer import DBWriter
 

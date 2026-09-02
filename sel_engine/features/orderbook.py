@@ -1,6 +1,6 @@
 """Orderbook depth features: top-5 bid/ask sizes, total depth, spread."""
+
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 

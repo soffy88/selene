@@ -1,4 +1,5 @@
 """§26.2 Section 7: 異常事件日誌."""
+
 from __future__ import annotations
 
 from typing import Any

@@ -3,10 +3,11 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+
 import asyncpg
 
+from sel_v2.data.insert_guard import InsertFailureLimitExceeded, InsertGuard
 from sel_v2.db.migrations import apply_schema
-from sel_v2.data.insert_guard import InsertGuard, InsertFailureLimitExceeded
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("v2_liquidation_collector")
@@ -35,29 +36,29 @@ def extract_liquidation_rows(data, inst_id, base_symbol):
             continue
         for d in item.get("details", []):
             ts = datetime.fromtimestamp(int(d["ts"]) / 1000, tz=timezone.utc)
-            rows.append((
-                ts, base_symbol, d["side"], float(d["sz"]),
-                float(d["bkPx"]) if d.get("bkPx") else 0.0,
-                float(d["bkLoss"]) if d.get("bkLoss") else 0.0,
-            ))
+            rows.append(
+                (
+                    ts,
+                    base_symbol,
+                    d["side"],
+                    float(d["sz"]),
+                    float(d["bkPx"]) if d.get("bkPx") else 0.0,
+                    float(d["bkLoss"]) if d.get("bkLoss") else 0.0,
+                )
+            )
     return rows
 
 
 async def collect_liquidations(pool):
-    from websockets_proxy import proxy_connect, Proxy   # lazy: keep module import-safe without the proxy lib
+    from websockets_proxy import Proxy, proxy_connect  # lazy: keep module import-safe without the proxy lib
+
     insert_count = 0
     proxy = Proxy.from_url(PROXY_URL) if PROXY_URL else None
-    
-    async with proxy_connect(
-        "wss://ws.okx.com:8443/ws/v5/public",
-        proxy=proxy
-    ) as ws:
-        await ws.send(json.dumps({
-            "op": "subscribe",
-            "args": [{"channel": "liquidation-orders", "instType": "SWAP"}]
-        }))
+
+    async with proxy_connect("wss://ws.okx.com:8443/ws/v5/public", proxy=proxy) as ws:
+        await ws.send(json.dumps({"op": "subscribe", "args": [{"channel": "liquidation-orders", "instType": "SWAP"}]}))
         logger.info(f"Subscribed to liquidation-orders via proxy: {PROXY_URL}")
-        
+
         async for msg in ws:
             data = json.loads(msg)
             if "data" in data:
@@ -65,7 +66,7 @@ async def collect_liquidations(pool):
                     try:
                         await pool.execute(
                             "INSERT INTO v2_liquidations (timestamp, symbol, side, size, price, loss) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
-                            *row
+                            *row,
                         )
                         _guard.ok()
                         insert_count += 1
@@ -75,6 +76,7 @@ async def collect_liquidations(pool):
                             logger.info(f"v2_liquidations cumulative inserts: {insert_count}")
                     except Exception as db_e:
                         _guard.fail(db_e)
+
 
 async def main():
     pool = await asyncpg.create_pool(DB_URL)
@@ -90,6 +92,7 @@ async def main():
             logger.error(f"Connection error: {e}. Retrying in {retry_delay}s...")
             await asyncio.sleep(retry_delay)
             retry_delay = min(60, retry_delay * 2)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

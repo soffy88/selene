@@ -10,11 +10,12 @@ Covers:
 - clear_state_history: truncate call
 - No DB connection: write_* methods return False gracefully
 """
-import json
-import pytest
+
 from datetime import datetime, timezone
 from typing import Optional
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from sel_v2.states.schema import StateLabel, StateRecord
 from sel_v2.strategies.db_writer import DBWriter
@@ -44,6 +45,7 @@ def _make_state_record(
 
 # ── Connection management ──────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_connect_calls_asyncpg():
     with patch("sel_v2.strategies.db_writer.asyncpg.connect", new_callable=AsyncMock) as mock_conn:
@@ -65,6 +67,7 @@ async def test_close_closes_connection():
 
 # ── write_state ────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_write_state_calls_execute():
     writer = DBWriter()
@@ -85,8 +88,8 @@ async def test_write_state_calls_execute():
     assert "INSERT INTO v2_state_history" in call_args[0]
     assert call_args[1] == _TS
     assert call_args[2] == "Coiling"
-    assert call_args[5] is None   # transition_from = None
-    assert call_args[6] is None   # transition_via = None
+    assert call_args[5] is None  # transition_from = None
+    assert call_args[6] is None  # transition_via = None
 
 
 @pytest.mark.asyncio
@@ -125,6 +128,7 @@ async def test_write_state_returns_false_when_not_connected():
 
 # ── write_cusum_event ──────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_write_cusum_event_correct_params():
     writer = DBWriter()
@@ -150,9 +154,7 @@ async def test_write_cusum_event_graceful_failure():
     writer = DBWriter()
     writer._conn = AsyncMock()
     writer._conn.execute.side_effect = Exception("timeout")
-    result = await writer.write_cusum_event(
-        _TS, "short", "down", 2.5, 1.8
-    )
+    result = await writer.write_cusum_event(_TS, "short", "down", 2.5, 1.8)
     assert result is False
 
 
@@ -164,6 +166,7 @@ async def test_write_cusum_event_no_connection():
 
 
 # ── write_strategy2_decision ──────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_write_strategy2_decision_enter_long():
@@ -210,13 +213,12 @@ async def test_write_strategy2_decision_graceful_failure():
     writer = DBWriter()
     writer._conn = AsyncMock()
     writer._conn.execute.side_effect = RuntimeError("connection lost")
-    result = await writer.write_strategy2_decision(
-        _TS, "ABORT", "cascade block", "Cascade", None, None, None, 2
-    )
+    result = await writer.write_strategy2_decision(_TS, "ABORT", "cascade block", "Cascade", None, None, None, 2)
     assert result is False
 
 
 # ── write_inverse_vocab_event ─────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_write_inverse_vocab_event_wave5_placeholder():
@@ -236,10 +238,11 @@ async def test_write_inverse_vocab_event_wave5_placeholder():
     assert "INSERT INTO v2_inverse_vocab_events" in call_args[0]
     assert call_args[2] == "Absorption"
     assert call_args[6] == "hawkes"
-    assert call_args[7] is True   # observation_only
+    assert call_args[7] is True  # observation_only
 
 
 # ── write_states_bulk ──────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_write_states_bulk_returns_count():
@@ -274,6 +277,7 @@ async def test_write_states_bulk_graceful_failure():
 
 
 # ── clear_state_history ────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_clear_state_history():

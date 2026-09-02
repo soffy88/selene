@@ -3,19 +3,17 @@
 Only tests the none_reason collection helper and alert dedup logic — full runner
 integration requires a live StateOutputService (DB + Redis) and is not covered here.
 """
+
 from __future__ import annotations
 
+import asyncio
 from collections import deque
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from unittest.mock import AsyncMock, MagicMock
 
 _T = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
 _SYMBOL = "BTCUSDT"
-
-
-import asyncio
-
-from unittest.mock import AsyncMock, MagicMock
 
 
 def _make_runner(dedup_hours: int = 6):
@@ -25,6 +23,7 @@ def _make_runner(dedup_hours: int = 6):
     requires DB/Redis) — we only need to test window helpers and alert dedup.
     """
     from paper_trading.runner import PaperTradingRunner
+
     runner = object.__new__(PaperTradingRunner)
     runner._recent_none_reasons = deque(maxlen=720)
     runner._last_alert_time = None
@@ -70,11 +69,13 @@ class TestRunnerNoneReasonCollection:
         t1 = _T + timedelta(hours=1)
         t2 = _T + timedelta(hours=2)
         t3 = _T + timedelta(hours=3)
-        runner._recent_none_reasons.extend([
-            (t1, "missing_data"),
-            (t2, "no_match"),
-            (t3, "missing_data"),
-        ])
+        runner._recent_none_reasons.extend(
+            [
+                (t1, "missing_data"),
+                (t2, "no_match"),
+                (t3, "missing_data"),
+            ]
+        )
         result = runner._get_none_reasons_in_window(_T, t3)
         assert result["missing_data"] == 2
         assert result["no_match"] == 1
@@ -119,6 +120,7 @@ class TestRunnerNoneReasonCollection:
 # ---------------------------------------------------------------------------
 # Test: Rule 2 alert emission with deduplication
 # ---------------------------------------------------------------------------
+
 
 class TestRule2AlertDedup:
     """_emit_rule2_alert_if_needed rate-limits alerts to one per dedup_hours window."""

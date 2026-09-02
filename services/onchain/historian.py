@@ -11,13 +11,9 @@ P2: 历史回测验证层
 数据库文件：~/.chain_sentinel/onchain_history.db
 """
 
-import asyncio
 import logging
 import sqlite3
 import time
-from contextlib import asynccontextmanager
-from dataclasses import dataclass
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -96,30 +92,45 @@ def init_db():
 
 # ── 记录预警 ──────────────────────────────────────────
 def record_alert(
-    alert_id:     str,
-    symbol:       str,
-    chain:        str,
+    alert_id: str,
+    symbol: str,
+    chain: str,
     signal_class: str,
-    severity:     str,
-    amount_usd:   float,
+    severity: str,
+    amount_usd: float,
     onchain_score: float,
-    regime:       str,
+    regime: str,
     price_at_alert: float,
     win_prob_cw4: Optional[float] = None,
-    fused_prob:   Optional[float] = None,
+    fused_prob: Optional[float] = None,
 ):
     direction = _infer_direction(signal_class)
     conn = get_db()
     try:
-        conn.execute("""
+        conn.execute(
+            """
             INSERT OR IGNORE INTO onchain_alerts
             (id, symbol, chain, signal_class, severity, amount_usd,
              onchain_score, regime, win_prob_cw4, fused_prob,
              price_at_alert, ts, direction)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (alert_id, symbol, chain, signal_class, severity, amount_usd,
-              onchain_score, regime, win_prob_cw4, fused_prob,
-              price_at_alert, time.time(), direction))
+        """,
+            (
+                alert_id,
+                symbol,
+                chain,
+                signal_class,
+                severity,
+                amount_usd,
+                onchain_score,
+                regime,
+                win_prob_cw4,
+                fused_prob,
+                price_at_alert,
+                time.time(),
+                direction,
+            ),
+        )
         conn.commit()
     except Exception as e:
         logger.error(f"record_alert error: {e}")
@@ -128,10 +139,8 @@ def record_alert(
 
 
 def _infer_direction(signal_class: str) -> str:
-    bullish = {"whale_outflow_exchange", "smart_wallet_long",
-               "miner_accumulate", "net_exchange_outflow"}
-    bearish = {"whale_inflow_exchange", "smart_wallet_exit",
-               "miner_sell", "dormant_wake", "net_exchange_inflow"}
+    bullish = {"whale_outflow_exchange", "smart_wallet_long", "miner_accumulate", "net_exchange_outflow"}
+    bearish = {"whale_inflow_exchange", "smart_wallet_exit", "miner_sell", "dormant_wake", "net_exchange_inflow"}
     if signal_class in bullish:
         return "LONG"
     if signal_class in bearish:
@@ -151,17 +160,20 @@ async def backfill_outcomes(get_price_fn) -> int:
     filled = 0
 
     try:
-        rows = conn.execute("""
+        rows = conn.execute(
+            """
             SELECT * FROM onchain_alerts
             WHERE backfill_done = 0 AND ts < ?
             ORDER BY ts ASC LIMIT 200
-        """, (now - 3600,)).fetchall()   # 至少等1小时再尝试回填
+        """,
+            (now - 3600,),
+        ).fetchall()  # 至少等1小时再尝试回填
 
         for row in rows:
             alert_id = row["id"]
-            ts       = row["ts"]
-            symbol   = row["symbol"]
-            price0   = row["price_at_alert"]
+            ts = row["ts"]
+            symbol = row["symbol"]
+            price0 = row["price_at_alert"]
             direction = row["direction"]
 
             updates = {}
@@ -185,9 +197,9 @@ async def backfill_outcomes(get_price_fn) -> int:
                 ret = (price - price0) / price0 if price0 > 0 else 0.0
                 # 判断胜负（根据方向）
                 if direction == "LONG":
-                    outcome = 1 if ret > 0.005 else 0    # 涨超0.5% = win
+                    outcome = 1 if ret > 0.005 else 0  # 涨超0.5% = win
                 elif direction == "SHORT":
-                    outcome = 1 if ret < -0.005 else 0   # 跌超0.5% = win
+                    outcome = 1 if ret < -0.005 else 0  # 跌超0.5% = win
                 else:
                     outcome = None
 
@@ -198,10 +210,7 @@ async def backfill_outcomes(get_price_fn) -> int:
             if updates:
                 updates["backfill_done"] = 1 if all_done else 0
                 set_clause = ", ".join(f"{k}=?" for k in updates)
-                conn.execute(
-                    f"UPDATE onchain_alerts SET {set_clause} WHERE id=?",
-                    list(updates.values()) + [alert_id]
-                )
+                conn.execute(f"UPDATE onchain_alerts SET {set_clause} WHERE id=?", list(updates.values()) + [alert_id])
                 conn.commit()
                 filled += 1
 
@@ -228,35 +237,37 @@ def get_signal_stats(
     """
     cutoff = time.time() - lookback_days * 86400
     outcome_col = f"outcome_{window_h}h"
-    ret_col     = f"ret_{window_h}h"
+    ret_col = f"ret_{window_h}h"
 
     conn = get_db()
     try:
-        rows = conn.execute(f"""
+        rows = conn.execute(
+            f"""
             SELECT {outcome_col}, {ret_col}
             FROM onchain_alerts
             WHERE symbol=? AND signal_class=? AND ts>?
               AND {outcome_col} IS NOT NULL
             ORDER BY ts DESC LIMIT 200
-        """, (symbol, signal_class, cutoff)).fetchall()
+        """,
+            (symbol, signal_class, cutoff),
+        ).fetchall()
 
         if not rows:
-            return {"n": 0, "win_rate": None, "avg_ret": None,
-                    "signal_class": signal_class, "window_h": window_h}
+            return {"n": 0, "win_rate": None, "avg_ret": None, "signal_class": signal_class, "window_h": window_h}
 
-        n     = len(rows)
-        wins  = sum(1 for r in rows if r[outcome_col] == 1)
-        rets  = [r[ret_col] for r in rows if r[ret_col] is not None]
+        n = len(rows)
+        wins = sum(1 for r in rows if r[outcome_col] == 1)
+        rets = [r[ret_col] for r in rows if r[ret_col] is not None]
         avg_r = sum(rets) / len(rets) if rets else 0.0
 
         return {
-            "n":            n,
-            "win_rate":     round(wins / n, 3),
-            "avg_ret_pct":  round(avg_r * 100, 2),
+            "n": n,
+            "win_rate": round(wins / n, 3),
+            "avg_ret_pct": round(avg_r * 100, 2),
             "signal_class": signal_class,
-            "window_h":     window_h,
+            "window_h": window_h,
             "lookback_days": lookback_days,
-            "summary":      f"过去{lookback_days}天 {n}次 | 胜率{wins/n:.0%} | 均值{avg_r*100:+.2f}%",
+            "summary": f"过去{lookback_days}天 {n}次 | 胜率{wins / n:.0%} | 均值{avg_r * 100:+.2f}%",
         }
     finally:
         conn.close()
@@ -266,27 +277,30 @@ def get_wallet_stats(address: str, chain: str) -> dict:
     """聪明钱包历史胜率"""
     conn = get_db()
     try:
-        rows = conn.execute("""
+        rows = conn.execute(
+            """
             SELECT pnl_pct_24h, win_24h FROM wallet_history
             WHERE address=? AND chain=? AND win_24h IS NOT NULL
             ORDER BY ts DESC LIMIT 100
-        """, (address, chain)).fetchall()
+        """,
+            (address, chain),
+        ).fetchall()
 
         if not rows:
             return {"address": address, "n": 0, "win_rate": None}
 
-        n    = len(rows)
+        n = len(rows)
         wins = sum(1 for r in rows if r["win_24h"] == 1)
         pnls = [r["pnl_pct_24h"] for r in rows if r["pnl_pct_24h"] is not None]
         avg_pnl = sum(pnls) / len(pnls) if pnls else 0.0
 
         return {
-            "address":     address,
-            "chain":       chain,
-            "n":           n,
-            "win_rate":    round(wins / n, 3),
+            "address": address,
+            "chain": chain,
+            "n": n,
+            "win_rate": round(wins / n, 3),
             "avg_pnl_pct": round(avg_pnl * 100, 2),
-            "summary":     f"本地记录 {n}笔 | 胜率{wins/n:.0%} | 均值PnL{avg_pnl*100:+.2f}%",
+            "summary": f"本地记录 {n}笔 | 胜率{wins / n:.0%} | 均值PnL{avg_pnl * 100:+.2f}%",
         }
     finally:
         conn.close()
@@ -297,7 +311,8 @@ def get_daily_summary(symbol: str, lookback_days: int = 7) -> list:
     cutoff = time.time() - lookback_days * 86400
     conn = get_db()
     try:
-        rows = conn.execute("""
+        rows = conn.execute(
+            """
             SELECT
                 date(ts, 'unixepoch') as day,
                 COUNT(*) as n_alerts,
@@ -307,7 +322,9 @@ def get_daily_summary(symbol: str, lookback_days: int = 7) -> list:
             FROM onchain_alerts
             WHERE symbol=? AND ts>?
             GROUP BY day ORDER BY day DESC
-        """, (symbol, cutoff)).fetchall()
+        """,
+            (symbol, cutoff),
+        ).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()

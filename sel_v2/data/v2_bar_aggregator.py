@@ -1,7 +1,8 @@
 import asyncio
 import logging
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 import asyncpg
 
 from sel_v2.db.migrations import apply_schema
@@ -14,6 +15,7 @@ SYMBOL = os.environ.get("SYMBOLS", "BTC-USDT")
 # REST gap-fill uses the perp candle (matches the tick feed instrument, see P0-2).
 INST_ID = os.environ.get("BAR_INST_ID", f"{SYMBOL}-SWAP")
 BASE_URL = "https://www.okx.com"
+
 
 def get_4h_boundaries(ts: datetime):
     # Align to 4H: 0, 4, 8, 12, 16, 20
@@ -32,9 +34,8 @@ def build_bar_row(ticks, start: datetime, symbol: str):
     sizes = [float(t["size"]) for t in ticks]
     volume = sum(sizes)
     # NULL (unknown) when there's no volume to weight by, not a fake 0.0 (P2-5).
-    vwap = (sum(p * s for p, s in zip(prices, sizes)) / volume) if volume > 0 else None
-    return (start, symbol, prices[0], max(prices), min(prices), prices[-1],
-            volume, vwap, len(ticks))
+    vwap = (sum(p * s for p, s in zip(prices, sizes, strict=False)) / volume) if volume > 0 else None
+    return (start, symbol, prices[0], max(prices), min(prices), prices[-1], volume, vwap, len(ticks))
 
 
 def parse_rest_candle(candles, start: datetime, symbol: str):
@@ -44,9 +45,9 @@ def parse_rest_candle(candles, start: datetime, symbol: str):
     start_ms = int(start.timestamp() * 1000)
     for c in candles or []:
         if int(c[0]) == start_ms:
-            o, h, l, cl, vol = float(c[1]), float(c[2]), float(c[3]), float(c[4]), float(c[5])
+            o, h, low, cl, vol = float(c[1]), float(c[2]), float(c[3]), float(c[4]), float(c[5])
             # vwap NULL (REST candles carry no VWAP), tick_count=0 marks REST-recovered (P2-5).
-            return (start, symbol, o, h, l, cl, vol, None, 0)
+            return (start, symbol, o, h, low, cl, vol, None, 0)
     return None
 
 
@@ -54,8 +55,7 @@ async def _fetch_rest_bar_row(session, start: datetime, symbol: str):
     """Fetch the official OKX 4H candle for the bar at `start` to recover a tick gap.
     Returns a row tuple or None. Never raises (gap recovery is best-effort)."""
     end_ms = int((start + timedelta(hours=4)).timestamp() * 1000)
-    url = (f"{BASE_URL}/api/v5/market/history-candles"
-           f"?instId={INST_ID}&bar=4H&after={end_ms}&limit=3")
+    url = f"{BASE_URL}/api/v5/market/history-candles?instId={INST_ID}&bar=4H&after={end_ms}&limit=3"
     try:
         async with session.get(url, timeout=10) as resp:
             data = await resp.json()
@@ -71,7 +71,9 @@ async def aggregate_bar(pool, start: datetime, end: datetime, session=None):
     async with pool.acquire() as conn:
         ticks = await conn.fetch(
             "SELECT price, size FROM v2_ticks WHERE symbol=$1 AND timestamp >= $2 AND timestamp < $3 ORDER BY timestamp ASC",
-            SYMBOL, start, end
+            SYMBOL,
+            start,
+            end,
         )
         row = build_bar_row(ticks, start, SYMBOL)
         recovered = False
@@ -82,22 +84,28 @@ async def aggregate_bar(pool, start: datetime, end: datetime, session=None):
                 row = await _fetch_rest_bar_row(session, start, SYMBOL)
                 recovered = row is not None
             if row is None:
-                logger.warning(f"GAP: no ticks and no REST recovery for bar ts={start} — "
-                               f"bar missing (downstream rolling windows will see a hole)")
+                logger.warning(
+                    f"GAP: no ticks and no REST recovery for bar ts={start} — "
+                    f"bar missing (downstream rolling windows will see a hole)"
+                )
                 return
 
         await conn.execute(
             """INSERT INTO v2_bars_4h (time, symbol, open, high, low, close, volume, vwap, tick_count)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                ON CONFLICT (time, symbol) DO NOTHING""",
-            *row
+            *row,
         )
         src = "REST-recovered" if recovered else "ticks"
-        logger.info(f"INSERT bar time={start} O={row[2]} H={row[3]} L={row[4]} C={row[5]} "
-                    f"vol={row[6]} tick_count={row[8]} src={src}")
+        logger.info(
+            f"INSERT bar time={start} O={row[2]} H={row[3]} L={row[4]} C={row[5]} "
+            f"vol={row[6]} tick_count={row[8]} src={src}"
+        )
+
 
 async def main():
     import aiohttp
+
     pool = await asyncpg.create_pool(DB_URL)
     await apply_schema(pool)
 
@@ -128,6 +136,7 @@ async def main():
 
             # Now aggregate the bar that just finished (REST-recover if ticks are missing)
             await aggregate_bar(pool, current_start, current_end, session=session)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

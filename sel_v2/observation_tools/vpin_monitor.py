@@ -34,9 +34,7 @@ import asyncpg
 
 from sel_v2.observation_tools.vpin import VPINCalculator
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("vpin_monitor")
 
 SYMBOL = os.environ.get("SYMBOLS", "BTC-USDT")
@@ -91,9 +89,7 @@ async def _stream_ticks(pool, calc, since_ts, since_id, on_bucket) -> tuple:
         if not rows:
             return since_ts, since_id
         for r in rows:
-            for bucket in calc.on_tick(
-                r["timestamp"], float(r["price"]), float(r["size"]), r["side"]
-            ):
+            for bucket in calc.on_tick(r["timestamp"], float(r["price"]), float(r["size"]), r["side"]):
                 await on_bucket(bucket)
         since_ts, since_id = rows[-1]["timestamp"], rows[-1]["trade_id"]
         if len(rows) < BATCH:
@@ -116,8 +112,7 @@ async def _persist_signal(pool, calc, bucket, history_start) -> None:
         "history_days": round(history_days, 2),
     }
     state = await pool.fetchval(
-        "SELECT state FROM v2_state_history WHERE timestamp <= $1 "
-        "ORDER BY timestamp DESC LIMIT 1",
+        "SELECT state FROM v2_state_history WHERE timestamp <= $1 ORDER BY timestamp DESC LIMIT 1",
         bucket.close_ts,
     )
     await pool.execute(

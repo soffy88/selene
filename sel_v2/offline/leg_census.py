@@ -30,9 +30,7 @@ import numpy as np
 
 from sel_v2.offline.substate import compute_atr
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("leg_census")
 
 SYMBOL = os.environ.get("SYMBOLS", "BTC-USDT")
@@ -73,9 +71,7 @@ class CoarseLeg:
     surging_overlap: float  # fraction of [start_idx, end_idx] bars labeled Surging
 
 
-def _zigzag_legs(
-    prices: np.ndarray, threshold_fn: Callable[[int, float], float]
-) -> list[tuple[int, int, int]]:
+def _zigzag_legs(prices: np.ndarray, threshold_fn: Callable[[int, float], float]) -> list[tuple[int, int, int]]:
     """Generic causal zigzag: bootstrap the initial phase from the first non-flat
     move, then flip phase whenever price reverses by >= threshold_fn(bar, extreme)
     from the running extreme. Returns confirmed (start_idx, end_idx, direction)
@@ -114,9 +110,7 @@ def _zigzag_legs(
     return legs
 
 
-def _max_adverse_pct(
-    close: np.ndarray, start_idx: int, end_idx: int, direction: int
-) -> float:
+def _max_adverse_pct(close: np.ndarray, start_idx: int, end_idx: int, direction: int) -> float:
     """Largest intra-leg retracement against `direction`, as a fraction of the
     running best-so-far price. 0.0 for a leg that never pulls back at all."""
     best = close[start_idx]
@@ -131,9 +125,7 @@ def _max_adverse_pct(
     return worst_retracement
 
 
-def _push_count(
-    close: np.ndarray, atr: np.ndarray, start_idx: int, end_idx: int, direction: int
-) -> int:
+def _push_count(close: np.ndarray, atr: np.ndarray, start_idx: int, end_idx: int, direction: int) -> int:
     """Count of confirmed fine (1.5x ATR) zigzag swings within the leg that run in
     the SAME direction as the coarse leg — i.e. how many times price pushed further
     in the trend direction, at the substate.py-identical fine-zigzag resolution."""
@@ -235,13 +227,11 @@ def _median(vals: list[float]) -> Optional[float]:
     return float(np.median(np.array(vals, dtype=float)))
 
 
-def _build_config_section(
-    name: str, legs: list[CoarseLeg], tail_bars: int, times, states
-) -> list[str]:
+def _build_config_section(name: str, legs: list[CoarseLeg], tail_bars: int, times, states) -> list[str]:
     lines = [f"## Threshold config: {name}", ""]
 
-    n_up = sum(1 for l in legs if l.direction == 1)
-    n_down = sum(1 for l in legs if l.direction == -1)
+    n_up = sum(1 for leg in legs if leg.direction == 1)
+    n_down = sum(1 for leg in legs if leg.direction == -1)
     lines += [
         "### 1. Leg counts",
         "",
@@ -251,7 +241,7 @@ def _build_config_section(
         "| year bucket | legs |",
         "|---|---:|",
     ]
-    year_counts = Counter(_year_bucket(times[l.start_idx]) for l in legs)
+    year_counts = Counter(_year_bucket(times[leg.start_idx]) for leg in legs)
     for label, _s, _e in YEAR_BUCKETS:
         lines.append(f"| {label} | {year_counts.get(label, 0)} |")
     lines.append("")
@@ -259,14 +249,14 @@ def _build_config_section(
     lines += [
         "### 2. Duration / push / displacement distribution",
         "",
-        f"- Duration (days): {_dist_line([l.duration_days for l in legs])}",
-        f"- Push count: {_dist_line([float(l.push_count) for l in legs])}",
-        f"- Net displacement (%): {_dist_line([l.net_pct * 100 for l in legs])}",
-        f"- Max adverse excursion (%): {_dist_line([l.max_adverse_pct * 100 for l in legs])}",
+        f"- Duration (days): {_dist_line([leg.duration_days for leg in legs])}",
+        f"- Push count: {_dist_line([float(leg.push_count) for leg in legs])}",
+        f"- Net displacement (%): {_dist_line([leg.net_pct * 100 for leg in legs])}",
+        f"- Max adverse excursion (%): {_dist_line([leg.max_adverse_pct * 100 for leg in legs])}",
         "",
     ]
 
-    wiki_legs = [l for l in legs if _is_wiki_spec(l)]
+    wiki_legs = [leg for leg in legs if _is_wiki_spec(leg)]
     wiki_share = len(wiki_legs) / len(legs) if legs else 0.0
     lines += [
         "### 3. Legs matching the Wiki spec "
@@ -276,8 +266,8 @@ def _build_config_section(
         "",
     ]
 
-    captured = [l for l in legs if l.surging_overlap >= CAPTURE_OVERLAP_THRESHOLD]
-    missed = [l for l in legs if l.surging_overlap < CAPTURE_OVERLAP_THRESHOLD]
+    captured = [leg for leg in legs if leg.surging_overlap >= CAPTURE_OVERLAP_THRESHOLD]
+    missed = [leg for leg in legs if leg.surging_overlap < CAPTURE_OVERLAP_THRESHOLD]
     lines += [
         f"### 4. Parent-state-machine overlap (>= {_pct(CAPTURE_OVERLAP_THRESHOLD)} Surging bars = captured)",
         "",
@@ -312,12 +302,12 @@ def _build_config_section(
         "",
         "| | duration (d) | net displacement (%) | push count |",
         "|---|---:|---:|---:|",
-        f"| missed | {_fmt(_median([l.duration_days for l in missed]))} | "
-        f"{_fmt(_median([l.net_pct * 100 for l in missed]))} | "
-        f"{_fmt(_median([float(l.push_count) for l in missed]), 1)} |",
-        f"| captured | {_fmt(_median([l.duration_days for l in captured]))} | "
-        f"{_fmt(_median([l.net_pct * 100 for l in captured]))} | "
-        f"{_fmt(_median([float(l.push_count) for l in captured]), 1)} |",
+        f"| missed | {_fmt(_median([leg.duration_days for leg in missed]))} | "
+        f"{_fmt(_median([leg.net_pct * 100 for leg in missed]))} | "
+        f"{_fmt(_median([float(leg.push_count) for leg in missed]), 1)} |",
+        f"| captured | {_fmt(_median([leg.duration_days for leg in captured]))} | "
+        f"{_fmt(_median([leg.net_pct * 100 for leg in captured]))} | "
+        f"{_fmt(_median([float(leg.push_count) for leg in captured]), 1)} |",
         "",
     ]
     return lines
@@ -343,10 +333,8 @@ def _build_report(results: dict) -> str:
         "|---|---:|---:|",
     ]
     for name, (legs, _tail, _times, _states) in results.items():
-        wiki_legs = [l for l in legs if _is_wiki_spec(l)]
-        captured = [
-            l for l in wiki_legs if l.surging_overlap >= CAPTURE_OVERLAP_THRESHOLD
-        ]
+        wiki_legs = [leg for leg in legs if _is_wiki_spec(leg)]
+        captured = [leg for leg in wiki_legs if leg.surging_overlap >= CAPTURE_OVERLAP_THRESHOLD]
         lines.append(f"| {name} | {len(wiki_legs)} | {len(captured)} |")
     lines += ["", "Regenerate: `python -m sel_v2.offline.leg_census`."]
     return "\n".join(lines)
@@ -373,9 +361,7 @@ async def _load(pool):
         close.append(float(r["close"]))
         states.append(st)
     if not times:
-        raise SystemExit(
-            "v2_bars_4h / v2_state_annotation unreadable or empty — STOP per Wave red line"
-        )
+        raise SystemExit("v2_bars_4h / v2_state_annotation unreadable or empty — STOP per Wave red line")
     return times, np.array(high), np.array(low), np.array(close), states
 
 

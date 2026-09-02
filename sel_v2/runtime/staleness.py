@@ -58,16 +58,12 @@ def is_stale(
     """True if `source`'s last known update is older than its threshold, or the
     source has never reported (last_update is None -> stale, conservative)."""
     if source not in DEFAULT_THRESHOLDS_S:
-        raise ValueError(
-            f"is_stale: unknown fixed-age source {source!r} (bar_4h uses is_bar_stale)"
-        )
+        raise ValueError(f"is_stale: unknown fixed-age source {source!r} (bar_4h uses is_bar_stale)")
     if last_update is None:
         return True
     if last_update.tzinfo is None:
         last_update = last_update.replace(tzinfo=timezone.utc)
-    threshold = (thresholds or DEFAULT_THRESHOLDS_S).get(
-        source, DEFAULT_THRESHOLDS_S[source]
-    )
+    threshold = (thresholds or DEFAULT_THRESHOLDS_S).get(source, DEFAULT_THRESHOLDS_S[source])
     return (now - last_update).total_seconds() > threshold
 
 

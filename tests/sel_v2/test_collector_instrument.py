@@ -45,9 +45,7 @@ def _assert_perp_instrument(m, modname, base: str):
     assert m.fetch_json is binance_rest.fetch_json, (
         f"{modname} must reach Binance through binance_rest (futures-only client)"
     )
-    assert "fapi" in binance_rest.BINANCE_FAPI, (
-        "binance_rest must target USD-M futures (the perp), not spot"
-    )
+    assert "fapi" in binance_rest.BINANCE_FAPI, "binance_rest must target USD-M futures (the perp), not spot"
 
 
 @pytest.mark.parametrize("modname", COLLECTORS)

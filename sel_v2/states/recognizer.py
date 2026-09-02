@@ -11,18 +11,23 @@ Pipeline:
   4. Transition vocabulary identification
   5. Assemble and return StateRecord
 """
+
 from __future__ import annotations
 
 import logging
 from typing import Optional
 
-from sel_v2.states.schema import BarFeatures, ConditionResult, StateLabel, StateRecord
 from sel_v2.states.conditions import (
-    check_cascade, check_critical, check_surging,
-    check_coiling, check_drifting_charged, check_drifting_calm,
+    check_cascade,
+    check_coiling,
+    check_critical,
+    check_drifting_calm,
+    check_drifting_charged,
+    check_surging,
 )
-from sel_v2.states.priority import arbitrate
 from sel_v2.states.min_dwell import MinDwellTracker
+from sel_v2.states.priority import arbitrate
+from sel_v2.states.schema import BarFeatures, ConditionResult, StateLabel, StateRecord
 from sel_v2.states.transitions import identify_transition
 
 logger = logging.getLogger(__name__)
@@ -62,9 +67,14 @@ class StateRecognizer:
             self._dwell.update(new_state)
             self._surging_entry_close = None
             rec = _make_record(
-                features, new_state, self._prev_state, vocab, is_legal,
+                features,
+                new_state,
+                self._prev_state,
+                vocab,
+                is_legal,
                 self._dwell.duration_4h,
-                cold_start=True, none_reason="cold_start",
+                cold_start=True,
+                none_reason="cold_start",
                 condition_results={},
             )
             self._prev_state = new_state
@@ -91,7 +101,6 @@ class StateRecognizer:
         # (covers the case where σ is in transition zone and all STUB features missing)
         if new_state is None:
             new_state = StateLabel.DRIFTING_CALM
-            changed = (self._dwell.current_state != new_state)
 
         # Transition vocabulary
         vocab, is_legal = identify_transition(self._prev_state, new_state, features)
@@ -111,18 +120,21 @@ class StateRecognizer:
 
         self._dwell.update(new_state)
         rec = _make_record(
-            features, new_state, self._prev_state, vocab, is_legal,
+            features,
+            new_state,
+            self._prev_state,
+            vocab,
+            is_legal,
             self._dwell.duration_4h,
-            cold_start=cold_start, none_reason=none_reason,
+            cold_start=cold_start,
+            none_reason=none_reason,
             condition_results=results,
             sub_state=sub_state,
         )
         self._prev_state = new_state
         return rec
 
-    def _surging_sub_state(
-        self, new_state: StateLabel, features: BarFeatures
-    ) -> Optional[str]:
+    def _surging_sub_state(self, new_state: StateLabel, features: BarFeatures) -> Optional[str]:
         """Direction of the current Surging leg — 'Up'/'Down' (C3, 2026-07-12
         user ruling; sub_state had been reserved-but-empty since v2.0, forcing
         every consumer to re-infer leg direction after the fact, V22 series).
@@ -132,10 +144,7 @@ class StateRecognizer:
         if new_state != StateLabel.SURGING:
             self._surging_entry_close = None
             return None
-        if (
-            self._prev_state != StateLabel.SURGING
-            or self._surging_entry_close is None
-        ):
+        if self._prev_state != StateLabel.SURGING or self._surging_entry_close is None:
             self._surging_entry_close = features.close
             if features.price_breakout_up:
                 return "Up"
@@ -190,16 +199,18 @@ def _make_record(
     # Critical sub-conditions (always include for auditability)
     if StateLabel.CRITICAL in condition_results:
         cr = condition_results[StateLabel.CRITICAL]
-        sf.update({
-            "critical_a1": cr.details.get("a1"),
-            "critical_a2": cr.details.get("a2"),
-            "critical_a_full": cr.details.get("a_full"),
-            "critical_a_partial": cr.details.get("a_partial"),
-            "critical_b": cr.details.get("b"),
-            "critical_c": cr.details.get("c"),
-            "critical_path1": cr.details.get("path1"),
-            "critical_path2": cr.details.get("path2"),
-        })
+        sf.update(
+            {
+                "critical_a1": cr.details.get("a1"),
+                "critical_a2": cr.details.get("a2"),
+                "critical_a_full": cr.details.get("a_full"),
+                "critical_a_partial": cr.details.get("a_partial"),
+                "critical_b": cr.details.get("b"),
+                "critical_c": cr.details.get("c"),
+                "critical_path1": cr.details.get("path1"),
+                "critical_path2": cr.details.get("path2"),
+            }
+        )
 
     return StateRecord(
         timestamp=features.timestamp,

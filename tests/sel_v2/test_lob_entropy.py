@@ -22,7 +22,6 @@ from sel_v2.features.lob_entropy import (
     rolling_entropy_variance,
 )
 
-
 # ── rolling_entropy_variance ────────────────────────────────────────────────
 
 
@@ -49,9 +48,7 @@ def test_variance_direction_tracks_regime_switch():
     """Entropy stable for the first half, then starts fluctuating — variance should
     rise once the fluctuating regime enters the trailing window."""
     stable = np.full(ENTROPY_VARIANCE_WINDOW_BARS * 3, 2.0)
-    fluctuating = np.array(
-        [2.0 if i % 2 == 0 else 0.2 for i in range(ENTROPY_VARIANCE_WINDOW_BARS * 3)]
-    )
+    fluctuating = np.array([2.0 if i % 2 == 0 else 0.2 for i in range(ENTROPY_VARIANCE_WINDOW_BARS * 3)])
     entropy = np.concatenate([stable, fluctuating])
     var = rolling_entropy_variance(entropy)
     # last bar's window is entirely inside the fluctuating regime → high variance

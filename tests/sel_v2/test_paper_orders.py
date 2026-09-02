@@ -4,12 +4,12 @@ The live engine collapsed to Drifting_Calm (no trades) because _reprocess called
 process_frame(df) with no OI/funding/OFI. These tests lock in that, when those
 series are provided, the trading states fire and positions open.
 """
+
 import math
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from sel_v2.paper.paper_engine import PaperEngine
 from sel_v2.paper.strategy_engine import PaperStrategyEngine
@@ -21,23 +21,32 @@ def _bars(n=600):
     price = 30000.0
     for i in range(n):
         drift = 0.004 if i < 300 else 0.012
-        price *= (1 + drift * math.sin(i / 9) + (0.05 if i % 73 == 0 else 0))
+        price *= 1 + drift * math.sin(i / 9) + (0.05 if i % 73 == 0 else 0)
         o = price
         c = price * (1 + 0.01 * math.sin(i / 4))
-        rows.append({"time": t0 + timedelta(hours=4 * i), "open": o,
-                     "high": max(o, c) * 1.006, "low": min(o, c) * 0.994,
-                     "close": c, "volume": 100 + i % 40})
+        rows.append(
+            {
+                "time": t0 + timedelta(hours=4 * i),
+                "open": o,
+                "high": max(o, c) * 1.006,
+                "low": min(o, c) * 0.994,
+                "close": c,
+                "volume": 100 + i % 40,
+            }
+        )
     return pd.DataFrame(rows)
 
 
 def _engine():
     try:
         import ripser  # noqa: F401
+
         skip_tda = False
     except Exception:
         skip_tda = True
-    return PaperStrategyEngine(total_nav_usdt=100_000, instrument="BTC-USDT",
-                               skip_tda=skip_tda, hawkes_params=(0.5, 0.3, 1.5))
+    return PaperStrategyEngine(
+        total_nav_usdt=100_000, instrument="BTC-USDT", skip_tda=skip_tda, hawkes_params=(0.5, 0.3, 1.5)
+    )
 
 
 def test_ofi_proxy_shape_and_sign():
@@ -57,8 +66,7 @@ def test_engine_opens_positions_with_flow_inputs():
     eng = _engine()
     summary = eng.process_frame(df, oi_series=oi, funding_series=funding, ofi_series=ofi)
     a1, a2 = eng.accounts.subaccount_1, eng.accounts.subaccount_2
-    total_trades = (len(a1.closed_positions) + len(a1.open_positions)
-                    + len(a2.closed_positions) + len(a2.open_positions))
+    total_trades = len(a1.closed_positions) + len(a1.open_positions) + len(a2.closed_positions) + len(a2.open_positions)
     # Trading states must be reachable and at least one order placed.
     assert set(summary["state_counts"]) - {"Drifting_Calm"}, "no trading states fired"
     assert total_trades > 0, "engine placed no orders despite flow inputs"
@@ -72,12 +80,13 @@ def test_s2_disabled_gracefully_when_hawkes_params_unavailable(monkeypatch):
 
     def _boom(*a, **k):
         raise RuntimeError("H2 params missing")
+
     monkeypatch.setattr(se, "Strategy2EntryFilter", _boom)
 
     df = _bars(200)
     eng = se.PaperStrategyEngine(total_nav_usdt=100_000, skip_tda=True)
     assert eng._s2_enabled is False
-    summary = eng.process_frame(df)   # must not raise
+    summary = eng.process_frame(df)  # must not raise
     assert summary["bars"] == len(df)
     assert len(eng.records) == len(df)
 
@@ -91,8 +100,7 @@ def test_tick_feed_drives_s2_hawkes_intensity():
     # robust to the bar-runner's naive-vs-UTC timestamp offset on synthetic frames.
     t1 = df["time"].iloc[-1].timestamp()
     tick_times = np.linspace(t1 - 86400, t1, 400_000)
-    eng = PaperStrategyEngine(total_nav_usdt=100_000, skip_tda=True,
-                              hawkes_params=(0.09, 0.023, 0.04))
+    eng = PaperStrategyEngine(total_nav_usdt=100_000, skip_tda=True, hawkes_params=(0.09, 0.023, 0.04))
     assert eng._s2_enabled and eng._s2_tracker is not None
     eng.process_frame(df, tick_times=tick_times)
     tr = eng._s2_tracker
@@ -105,15 +113,13 @@ def test_micro_vocab_classifier_tags():
     # Build bars with controlled moves and a micro dict that should produce each tag.
     df = _bars(80)
     n = len(df)
-    close = df["close"].values.astype(float)
-    open_ = df["open"].values.astype(float)
+    df["close"].values.astype(float)
+    df["open"].values.astype(float)
     taker_vol = np.full(n, 100.0)
-    taker_vol[-1] = 10_000.0           # last bar: high activity
-    taker_net = np.full(n, 50.0)       # persistently positive flow → Crowding
-    micro = {"taker_net": taker_net, "taker_vol": taker_vol,
-             "lob_imb": np.full(n, np.nan)}
-    eng = PaperStrategyEngine(total_nav_usdt=100_000, skip_tda=True,
-                              hawkes_params=(0.09, 0.023, 0.04))
+    taker_vol[-1] = 10_000.0  # last bar: high activity
+    taker_net = np.full(n, 50.0)  # persistently positive flow → Crowding
+    micro = {"taker_net": taker_net, "taker_vol": taker_vol, "lob_imb": np.full(n, np.nan)}
+    eng = PaperStrategyEngine(total_nav_usdt=100_000, skip_tda=True, hawkes_params=(0.09, 0.023, 0.04))
     vocab, flow_dir = eng._micro_vocab_series(df, micro)
     # Persistent positive flow → Crowding on the high-activity bar; flow_dir is +1.
     assert flow_dir[-1] == 1.0
@@ -126,24 +132,32 @@ def test_micro_vocab_classifier_tags():
 def test_type_a_absorption_then_sweep_sequence():
     # Build 30 flat bars; bar 15 = Absorption (high vol, ~0 move), bar 17 = Sweep
     # (high vol, +1% move). The Sweep bar must inherit Absorption → Type A vocab.
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta, timezone
+
     n = 30
     t0 = datetime(2025, 1, 1, tzinfo=timezone.utc)
     rows = []
     base = 30000.0
     for i in range(n):
         o = base
-        c = base * (1.01 if i == 17 else 1.0)   # only the sweep bar moves +1%
-        rows.append({"time": t0 + timedelta(hours=4 * i), "open": o, "high": max(o, c),
-                     "low": min(o, c), "close": c, "volume": 100})
+        c = base * (1.01 if i == 17 else 1.0)  # only the sweep bar moves +1%
+        rows.append(
+            {
+                "time": t0 + timedelta(hours=4 * i),
+                "open": o,
+                "high": max(o, c),
+                "low": min(o, c),
+                "close": c,
+                "volume": 100,
+            }
+        )
     df = pd.DataFrame(rows)
     taker_vol = np.full(n, 100.0)
-    taker_vol[15] = 10_000.0   # absorption bar: high activity
-    taker_vol[17] = 10_000.0   # sweep bar: high activity
-    taker_net = np.full(n, 50.0)   # positive flow (flow_dir +1, matches +1% sweep)
+    taker_vol[15] = 10_000.0  # absorption bar: high activity
+    taker_vol[17] = 10_000.0  # sweep bar: high activity
+    taker_net = np.full(n, 50.0)  # positive flow (flow_dir +1, matches +1% sweep)
     micro = {"taker_net": taker_net, "taker_vol": taker_vol, "lob_imb": np.full(n, np.nan)}
-    eng = PaperStrategyEngine(total_nav_usdt=100_000, skip_tda=True,
-                              hawkes_params=(0.09, 0.023, 0.04))
+    eng = PaperStrategyEngine(total_nav_usdt=100_000, skip_tda=True, hawkes_params=(0.09, 0.023, 0.04))
     vocab, _ = eng._micro_vocab_series(df, micro)
     assert "Absorption" in vocab[15]
     assert "Sweep" in vocab[17]
@@ -155,22 +169,29 @@ def test_s2_opens_when_all_conditions_align():
     # End-to-end proof that S2 places an order when every gate is satisfied:
     # CUSUM-Short triggered + H1 (cold pass-through) + Type-A vocab {Absorption,Sweep}.
     from datetime import datetime, timezone
+
     from sel_v2.strategies.cusum_short import CUSUMTrigger
 
-    eng = PaperStrategyEngine(total_nav_usdt=100_000, skip_tda=True,
-                              hawkes_params=(0.09, 0.023, 0.04))
+    eng = PaperStrategyEngine(total_nav_usdt=100_000, skip_tda=True, hawkes_params=(0.09, 0.023, 0.04))
     assert eng._s2_enabled
     # Make H1 intensity high so it clears even once a threshold builds.
     for k in range(50):
         eng._s2_tracker.add_event(1_000_000.0 + k * 0.01)
 
-    trig = CUSUMTrigger(triggered=True, direction="LONG", cusum_positive=3.0,
-                        cusum_negative=0.0, threshold=1.0, intensity_coeff=3.0)
+    trig = CUSUMTrigger(
+        triggered=True, direction="LONG", cusum_positive=3.0, cusum_negative=0.0, threshold=1.0, intensity_coeff=3.0
+    )
     ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
     before = len(eng.accounts.subaccount_2.open_positions)
-    eng._maybe_open_s2(t_unix=1_000_001.0, trig=trig, state="Surging",
-                       mark=30_000.0, ts=ts,
-                       vocab={"Absorption", "Sweep"}, flow_dir=1.0)
+    eng._maybe_open_s2(
+        t_unix=1_000_001.0,
+        trig=trig,
+        state="Surging",
+        mark=30_000.0,
+        ts=ts,
+        vocab={"Absorption", "Sweep"},
+        flow_dir=1.0,
+    )
     after = len(eng.accounts.subaccount_2.open_positions)
     assert after == before + 1, "S2 did not open a position despite all gates satisfied"
     # Type A = reversal → opposite the CUSUM (LONG) direction → SHORT.

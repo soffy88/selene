@@ -1,4 +1,5 @@
 """§26.2 Section 4: 策略 1 表現."""
+
 from __future__ import annotations
 
 from typing import Any

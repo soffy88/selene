@@ -32,9 +32,9 @@ from typing import Optional
 import asyncpg
 import numpy as np
 
+from sel_v2.observation_tools.vpin import VPINCalculator
 from sel_v2.offline.chan_lens import (
     CONSOLIDATION_CONFIGS,
-    RETEST_WINDOW_BARS,
     classify_retests,
     detect_breakouts,
     detect_divergences,
@@ -52,11 +52,8 @@ from sel_v2.offline.lens_common import (
     surging_legs,
     welch_t_one_sided,
 )
-from sel_v2.observation_tools.vpin import VPINCalculator
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("lens_study")
 
 SYMBOL = os.environ.get("SYMBOLS", "BTC-USDT")
@@ -65,9 +62,7 @@ ANALYSIS_DIR = Path(__file__).resolve().parents[2] / "analysis"
 MIN_GROUP_N = 5  # below this a test is UNDERPOWERED, not failed
 END_SOON_BARS = 3  # H-CHAN2: leg end within 3 bars
 FP_WINDOW_BARS = 6  # H-ICT2b: signal followed by leg end within 6 bars
-CONSOLIDATION_LIKE = (
-    "Drifting_Calm",
-)  # adapted regime; Coiling tested separately when present
+CONSOLIDATION_LIKE = ("Drifting_Calm",)  # adapted regime; Coiling tested separately when present
 TRENDING_STATES = ("Surging", "Drifting_Charged", "Critical")
 TICK_BATCH = 500_000
 VPIN_RERUN_NOTE = (
@@ -83,8 +78,7 @@ async def _load_joined(pool):
     """bars ⋈ annotation on exact timestamps (leg_census._load pattern, plus
     volume / transition_via / degraded)."""
     bar_rows = await pool.fetch(
-        "SELECT time, high, low, close, volume FROM v2_bars_4h "
-        "WHERE symbol=$1 ORDER BY time ASC",
+        "SELECT time, high, low, close, volume FROM v2_bars_4h WHERE symbol=$1 ORDER BY time ASC",
         SYMBOL,
     )
     ann_rows = await pool.fetch(
@@ -140,22 +134,15 @@ async def _run_vpin_pilot(pool, times, volume) -> dict:
     v_bucket0 = bar_vol_30d / 30.0 / 50.0
 
     row = await pool.fetchrow(
-        "SELECT min(timestamp) AS lo, max(timestamp) AS hi, sum(size) AS vol "
-        "FROM v2_ticks WHERE symbol=$1",
+        "SELECT min(timestamp) AS lo, max(timestamp) AS hi, sum(size) AS vol FROM v2_ticks WHERE symbol=$1",
         SYMBOL,
     )
     if row is None or row["lo"] is None:
         return {"available": False}
     tick_lo, tick_hi, tick_vol = row["lo"], row["hi"], float(row["vol"])
-    overlap_bar_vol = float(
-        sum(v for t, v in zip(times, volume) if tick_lo <= t <= tick_hi)
-    )
+    overlap_bar_vol = float(sum(v for t, v in zip(times, volume, strict=False) if tick_lo <= t <= tick_hi))
     ratio = tick_vol / overlap_bar_vol if overlap_bar_vol > 0 else float("nan")
-    v_bucket = (
-        v_bucket0 * ratio
-        if np.isfinite(ratio) and not 0.5 <= ratio <= 2.0
-        else v_bucket0
-    )
+    v_bucket = v_bucket0 * ratio if np.isfinite(ratio) and not 0.5 <= ratio <= 2.0 else v_bucket0
 
     calc = VPINCalculator(v_bucket=v_bucket)
     series: list[tuple] = []
@@ -175,9 +162,7 @@ async def _run_vpin_pilot(pool, times, volume) -> dict:
         if not rows:
             break
         for r in rows:
-            for b in calc.on_tick(
-                r["timestamp"], float(r["price"]), float(r["size"]), r["side"]
-            ):
+            for b in calc.on_tick(r["timestamp"], float(r["price"]), float(r["size"]), r["side"]):
                 series.append((b.close_ts, calc.vpin, calc.bvc_vpin))
                 durations.append(b.duration_s / 60.0)
         last_ts, last_id = rows[-1]["timestamp"], rows[-1]["trade_id"]
@@ -238,9 +223,7 @@ def _test_h_ict1a(series, times, volume, calc) -> dict:
     bar_ts = [t for t in times]
     tick_era_start = series[0][0]
     era_idx = [
-        i
-        for i, t in enumerate(bar_ts)
-        if t >= tick_era_start and i < n - 6 and np.isfinite(sigma[i]) and sigma[i] > 0
+        i for i, t in enumerate(bar_ts) if t >= tick_era_start and i < n - 6 and np.isfinite(sigma[i]) and sigma[i] > 0
     ]
     if len(era_idx) < 30:
         return {"status": "PENDING", "reason": "too few tick-era bars"}
@@ -300,16 +283,8 @@ def test_h_chan1(high, low, close, atr) -> dict:
         events = detect_breakouts(high, low, close, atr, min_bars, mult)
         outcomes = classify_retests(events, high, low, close)
         counts = {c: sum(1 for o in outcomes if o.retest_class == c) for c in "ABC"}
-        a = [
-            o.fwd_ret_24h
-            for o in outcomes
-            if o.retest_class == "A" and o.fwd_ret_24h is not None
-        ]
-        c = [
-            o.fwd_ret_24h
-            for o in outcomes
-            if o.retest_class == "C" and o.fwd_ret_24h is not None
-        ]
+        a = [o.fwd_ret_24h for o in outcomes if o.retest_class == "A" and o.fwd_ret_24h is not None]
+        c = [o.fwd_ret_24h for o in outcomes if o.retest_class == "C" and o.fwd_ret_24h is not None]
         truncated = sum(1 for o in outcomes if o.fwd_ret_24h is None)
         res = {
             "events": len(events),
@@ -345,7 +320,7 @@ def test_h_chan2(states, via, close) -> dict:
     legs = surging_legs(states, via, close)
     cands, testable = detect_divergences(legs, close)
     cand_bars = {c.bar_idx for c in cands}
-    legs_by_id = {l.leg_id: l for l in legs}
+    legs_by_id = {leg.leg_id: leg for leg in legs}
     rows = []  # (is_candidate, ends_soon) per bar of testable legs (entry bar skipped)
     for lid in testable:
         leg = legs_by_id[lid]
@@ -408,11 +383,7 @@ def test_h_chan3(states, overlap, sigma_pct) -> dict:
             "rate_lo": rate_lo,
             "p": fisher_one_sided(tbl),
         }
-    res["verdict_3a"] = (
-        "adapted-pass"
-        if (res["calm"]["p"] < 0.10 or res["low_sigma"]["p"] < 0.10)
-        else "adapted-fail"
-    )
+    res["verdict_3a"] = "adapted-pass" if (res["calm"]["p"] < 0.10 or res["low_sigma"]["p"] < 0.10) else "adapted-fail"
     return res
 
 
@@ -462,7 +433,7 @@ def test_h_chan3b(states, overlap, close) -> dict:
 def test_h_ict2a(states, via, close, struct_states) -> dict:
     """Leg-level modal structure vs Surging leg direction; Clopper-Pearson CI.
     Two counting rules: RANGE-as-disagreement and RANGE-excluded."""
-    legs = [l for l in surging_legs(states, via, close) if l.direction != 0]
+    legs = [leg for leg in surging_legs(states, via, close) if leg.direction != 0]
     per_leg = []
     for leg in legs:
         seg = struct_states[leg.start_idx : leg.end_idx + 1]
@@ -472,7 +443,7 @@ def test_h_ict2a(states, via, close, struct_states) -> dict:
         per_leg.append((leg, modal, modal == want))
     n = len(per_leg)
     k = sum(1 for _l, _m, ok in per_leg if ok)
-    non_range = [(l, m, ok) for l, m, ok in per_leg if m != "RANGE"]
+    non_range = [(_leg, m, ok) for _leg, m, ok in per_leg if m != "RANGE"]
     k2, n2 = sum(1 for _l, _m, ok in non_range if ok), len(non_range)
     # bar-level (secondary, serially dependent)
     bar_n = bar_k = 0
@@ -496,17 +467,13 @@ def test_h_ict2a(states, via, close, struct_states) -> dict:
 
 def test_h_ict2b(states, via, close, struct_events, chan2) -> dict:
     """CHoCH vs CHAN-2 divergence: lead time to Exhaustion leg ends + FP rates."""
-    legs = [l for l in chan2["legs"] if l.end_via == "Exhaustion"]
+    legs = [leg for leg in chan2["legs"] if leg.end_via == "Exhaustion"]
     cands = chan2["candidates"]
     ev_by_idx = [(e.idx, e.kind) for e in struct_events]
     pairs, table_rows = [], []
     for leg in legs:
         counter = "CHOCH_DOWN" if leg.direction == 1 else "CHOCH_UP"
-        choch_in = [
-            i
-            for i, k in ev_by_idx
-            if k == counter and leg.start_idx <= i <= leg.end_idx
-        ]
+        choch_in = [i for i, k in ev_by_idx if k == counter and leg.start_idx <= i <= leg.end_idx]
         div_in = [c.bar_idx for c in cands if c.leg_id == leg.leg_id]
         end_bar = leg.end_idx + 1  # the transition bar
         lead_c = end_bar - choch_in[-1] if choch_in else None
@@ -518,7 +485,7 @@ def test_h_ict2b(states, via, close, struct_events, chan2) -> dict:
     if len(pairs) >= 6:
         from scipy.stats import wilcoxon
 
-        c_leads, d_leads = zip(*pairs)
+        c_leads, d_leads = zip(*pairs, strict=False)
         try:
             stat, p = wilcoxon(c_leads, d_leads)
             res.update({"wilcoxon_p": float(p)})
@@ -549,11 +516,7 @@ def test_h_ict2b(states, via, close, struct_events, chan2) -> dict:
         choch_sigs.append(
             (
                 leg,
-                [
-                    i
-                    for i, k in ev_by_idx
-                    if k == counter and leg.start_idx <= i <= leg.end_idx
-                ],
+                [i for i, k in ev_by_idx if k == counter and leg.start_idx <= i <= leg.end_idx],
             )
         )
         div_sigs.append((leg, [c.bar_idx for c in cands if c.leg_id == leg.leg_id]))
@@ -572,7 +535,7 @@ def _hdr(title: str, times, n: int) -> list[str]:
     return [
         f"# {title}",
         "",
-        f"- 生成:`python -m sel_v2.offline.lens_study`(确定性:seed=42,整文件覆写)",
+        "- 生成:`python -m sel_v2.offline.lens_study`(确定性:seed=42,整文件覆写)",
         f"- 数据:`v2_bars_4h ⋈ v2_state_annotation`,{SYMBOL},"
         f"{times[0]:%Y-%m-%d} → {times[-1]:%Y-%m-%d},{n} bars(逐 bar 精确对齐)",
         "- 纪律:observation-only;不碰 `states/**`/`strategies/**`;三视角同数据可并排对比",
@@ -635,14 +598,10 @@ def _build_sel_report(times, close, states, via, degraded, legs) -> str:
     crit = [i for i, s in enumerate(states) if s == "Critical"]
     lines += [
         "",
-        f"- 腿驻留(bars):median={np.median(dwell):.0f},min={min(dwell)},max={max(dwell)}"
-        if dwell
-        else "- 无腿",
+        f"- 腿驻留(bars):median={np.median(dwell):.0f},min={min(dwell)},max={max(dwell)}" if dwell else "- 无腿",
         f"- Critical bars:{len(crit)}"
         + (
-            "("
-            + ", ".join(f"{times[i]:%Y-%m-%d}" for i in crit[:8])
-            + (", …)" if len(crit) > 8 else ")")
+            "(" + ", ".join(f"{times[i]:%Y-%m-%d}" for i in crit[:8]) + (", …)" if len(crit) > 8 else ")")
             if crit
             else ""
         ),
@@ -689,9 +648,7 @@ def _build_chan_report(times, close, chan1, chan2, chan3, chan3b, overlap) -> st
             f"- A 类均值前向收益:{_fmtpct(res['mean_a'])};C 类:{_fmtpct(res['mean_c'])}",
         ]
         if res["verdict"] == "UNDERPOWERED":
-            lines.append(
-                f"- **UNDERPOWERED**(min(n_A={res['n_a']}, n_C={res['n_c']}) < {MIN_GROUP_N})——不下结论"
-            )
+            lines.append(f"- **UNDERPOWERED**(min(n_A={res['n_a']}, n_C={res['n_c']}) < {MIN_GROUP_N})——不下结论")
         else:
             lo, hi = res["ci90"]
             lines += [
@@ -708,9 +665,7 @@ def _build_chan_report(times, close, chan1, chan2, chan3, chan3b, overlap) -> st
         f"- 2×2(bar 级,序列相依 → p 偏乐观):{chan2['table']}",
     ]
     if "p" in chan2:
-        lines.append(
-            f"- Fisher 单侧 p={chan2['p']:.4f} → **verdict:{chan2['verdict']}**"
-        )
+        lines.append(f"- Fisher 单侧 p={chan2['p']:.4f} → **verdict:{chan2['verdict']}**")
     else:
         lines.append(f"- **{chan2['verdict']}**(候选 <{MIN_GROUP_N})")
     lines += [
@@ -748,15 +703,11 @@ def _build_chan_report(times, close, chan1, chan2, chan3, chan3b, overlap) -> st
         domain_labels.append(("coiling", f"Coiling(n={chan3['n_coiling']})"))
     for key, label in domain_labels:
         d = chan3[key]
-        lines.append(
-            f"| {label} | {d['rate_hi'] * 100:.1f}% | {d['rate_lo'] * 100:.1f}% | {d['p']:.4f} |"
-        )
+        lines.append(f"| {label} | {d['rate_hi'] * 100:.1f}% | {d['rate_lo'] * 100:.1f}% | {d['p']:.4f} |")
     lines += ["", f"- **verdict(3a,改编):{chan3['verdict_3a']}**", ""]
     lines += ["### H-CHAN3b 分歧样本(高 overlap 且 sel 处趋势态)", ""]
     if chan3b["verdict"] == "UNDERPOWERED":
-        lines.append(
-            f"- **UNDERPOWERED**(X={chan3b['n_x']},同态对照={chan3b['n_ctrl_same_state']})"
-        )
+        lines.append(f"- **UNDERPOWERED**(X={chan3b['n_x']},同态对照={chan3b['n_ctrl_same_state']})")
     else:
         lines += [
             f"- X(n={chan3b['n_x']})前向 6-bar 波动 median={chan3b['median_x']:.5f};"
@@ -771,9 +722,7 @@ def _build_chan_report(times, close, chan1, chan2, chan3, chan3b, overlap) -> st
         "",
         "## 现读(最新 bar)",
         "",
-        f"- overlap_ratio = {hi_now:.3f}"
-        if hi_now is not None
-        else "- overlap_ratio = n/a(swing 不足)",
+        f"- overlap_ratio = {hi_now:.3f}" if hi_now is not None else "- overlap_ratio = n/a(swing 不足)",
         f"- 高于 p70?{'是' if hi_now is not None and hi_now > chan3['p70'] else '否/未知'}",
         "",
     ]
@@ -784,9 +733,7 @@ def _fmtpct(x: Optional[float]) -> str:
     return f"{x * 100:+.2f}%" if x is not None else "n/a"
 
 
-def _build_ict_report(
-    times, close, states, legs, struct_states, struct_events, ict2a, ict2b, vpin
-) -> str:
+def _build_ict_report(times, close, states, legs, struct_states, struct_events, ict2a, ict2b, vpin) -> str:
     n = len(close)
     from collections import Counter
 
@@ -813,17 +760,14 @@ def _build_ict_report(
         "|---:|---:|---|---|",
     ]
     for leg, modal, ok in ict2a["per_leg"]:
-        lines.append(
-            f"| {leg.leg_id} | {'+1' if leg.direction == 1 else '-1'} | {modal} | {'✓' if ok else '✗'} |"
-        )
+        lines.append(f"| {leg.leg_id} | {'+1' if leg.direction == 1 else '-1'} | {modal} | {'✓' if ok else '✗'} |")
     lo, hi = ict2a["ci"]
     lo2, hi2 = ict2a["ci_range_excl"]
     lines += [
         "",
         f"- RANGE 计不一致:**{ict2a['k']}/{ict2a['n']} = "
         f"{ict2a['k'] / max(1, ict2a['n']) * 100:.0f}%**,CP 95% CI [{lo * 100:.0f}%, {hi * 100:.0f}%]",
-        f"- 剔除 RANGE 众数腿:{ict2a['k_range_excl']}/{ict2a['n_range_excl']},"
-        f"CI [{lo2 * 100:.0f}%, {hi2 * 100:.0f}%]",
+        f"- 剔除 RANGE 众数腿:{ict2a['k_range_excl']}/{ict2a['n_range_excl']},CI [{lo2 * 100:.0f}%, {hi2 * 100:.0f}%]",
         f"- bar 级(辅助,序列相依):{(ict2a['bar_rate'] or 0) * 100:.1f}%(n={ict2a['bar_n']})",
         f"- **n={ict2a['n']} 的 CI 宽 ±~25pp——>70% 只能以点估计评估,不作显著性声明**",
         "",
@@ -852,8 +796,7 @@ def _build_ict_report(
     dh, dm = ict2b["fp_table"]["div"]
     lines += [
         f"- FP(Surging 内信号,{FP_WINDOW_BARS} bar 内未跟腿终结):CHoCH {cm}/{ch + cm},"
-        f"背驰 {dm}/{dh + dm}"
-        + (f";Fisher p={ict2b['fp_fisher_p']:.3f}" if "fp_fisher_p" in ict2b else ""),
+        f"背驰 {dm}/{dh + dm}" + (f";Fisher p={ict2b['fp_fisher_p']:.3f}" if "fp_fisher_p" in ict2b else ""),
         "",
         "## ICT-1 VPIN pilot"
         + (
@@ -897,11 +840,7 @@ def _build_ict_report(
         "## 现读(最新 bar)",
         "",
         f"- 结构态 = {struct_states[-1]};最近事件:"
-        + (
-            f"{struct_events[-1].kind} @ {times[struct_events[-1].idx]:%Y-%m-%d}"
-            if struct_events
-            else "无"
-        ),
+        + (f"{struct_events[-1].kind} @ {times[struct_events[-1].idx]:%Y-%m-%d}" if struct_events else "无"),
         "",
     ]
     return "\n".join(lines)
@@ -952,29 +891,21 @@ def _build_verdict(
         "| 假设 | 统计量 | 裸 p | BH q | 判定 |",
         "|---|---|---:|---:|---|",
     ]
-    fam_q = {name: q for (name, _p), q in zip(family, qs)}
+    fam_q = {name: q for (name, _p), q in zip(family, qs, strict=False)}
     for name, res in chan1.items():
         tag = f"H-CHAN1[{name}]"
         if res["verdict"] == "UNDERPOWERED":
-            lines.append(
-                f"| {tag} | n_A={res['n_a']}, n_C={res['n_c']} | — | — | UNDERPOWERED |"
-            )
+            lines.append(f"| {tag} | n_A={res['n_a']}, n_C={res['n_c']} | — | — | UNDERPOWERED |")
         else:
             q = fam_q.get(tag, float("nan"))
             note = " ⚠FDR失守" if res["p"] < 0.10 <= q else ""
-            lines.append(
-                f"| {tag} | Welch t={res['t']:.2f} | {res['p']:.4f} | {q:.4f} | {res['verdict']}{note} |"
-            )
+            lines.append(f"| {tag} | Welch t={res['t']:.2f} | {res['p']:.4f} | {q:.4f} | {res['verdict']}{note} |")
     if "p" in chan2:
         q = fam_q.get("H-CHAN2", float("nan"))
         note = " ⚠FDR失守" if chan2["p"] < 0.10 <= q else ""
-        lines.append(
-            f"| H-CHAN2 | Fisher | {chan2['p']:.4f} | {q:.4f} | {chan2['verdict']}{note} |"
-        )
+        lines.append(f"| H-CHAN2 | Fisher | {chan2['p']:.4f} | {q:.4f} | {chan2['verdict']}{note} |")
     else:
-        lines.append(
-            f"| H-CHAN2 | 候选={chan2['n_candidates']} | — | — | {chan2['verdict']} |"
-        )
+        lines.append(f"| H-CHAN2 | 候选={chan2['n_candidates']} | — | — | {chan2['verdict']} |")
     chan3_rows = [("calm", "H-CHAN3a[calm]"), ("low_sigma", "H-CHAN3a[low_sigma]")]
     if "coiling" in chan3:
         chan3_rows.append(("coiling", "H-CHAN3a[coiling]"))
@@ -1027,17 +958,11 @@ def _build_verdict(
     for leg in legs:
         m, ok = modal_by_leg.get(leg.leg_id, ("—", False))
         lc, _ld = lead_by_leg.get(leg.leg_id, (None, None))
-        div_cell = (
-            f"{div_by_leg[leg.leg_id]} 个候选"
-            if leg.leg_id in div_by_leg
-            else "不可测(无前腿)"
-        )
+        div_cell = f"{div_by_leg[leg.leg_id]} 个候选" if leg.leg_id in div_by_leg else "不可测(无前腿)"
         lines.append(
             f"| {leg.leg_id} | {'+1' if leg.direction == 1 else leg.direction}/{leg.end_via or '—'} "
             f"| {div_cell} "
-            f"| {m}{'✓' if ok else '✗'}"
-            + (f",CHoCH lead {lc}" if lc is not None else "")
-            + " |"
+            f"| {m}{'✓' if ok else '✗'}" + (f",CHoCH lead {lc}" if lc is not None else "") + " |"
         )
 
     # go/no-go per the user-agreed rule: only a CLEAR fail per the pool's 失败标准 stays offline
@@ -1064,9 +989,7 @@ def _build_verdict(
         "|---|---|---|",
     ]
     reasons = {
-        "CHAN-1 (chan_retest)": "; ".join(
-            f"{k}:{v['verdict']}" for k, v in chan1.items()
-        ),
+        "CHAN-1 (chan_retest)": "; ".join(f"{k}:{v['verdict']}" for k, v in chan1.items()),
         "CHAN-2 (chan_divergence)": chan2["verdict"],
         "CHAN-3 (chan_pivot)": f"3a:{chan3['verdict_3a']} / 3b:{chan3b['verdict']}",
         "ICT-2 (swing_structure)": f"一致率 {ict2a['k']}/{ict2a['n']}",
@@ -1078,9 +1001,9 @@ def _build_verdict(
         "",
         "## Live 冻结参数(唯一出处;观察工具引用本文档)",
         "",
-        f"- CHAN-1 盘整参数组:主 `K18`(18 bar, 3.0×ATR),敏感性 `K30`(30 bar, 4.0×ATR)——live 用主参数组",
+        "- CHAN-1 盘整参数组:主 `K18`(18 bar, 3.0×ATR),敏感性 `K30`(30 bar, 4.0×ATR)——live 用主参数组",
         f"- CHAN-3 overlap 阈值:**p70 = {chan3['p70']:.3f}**(2yr 全样本,in-sample,live 冻结)",
-        f"- ICT-2 zigzag:1.5×ATR(14)(与 CHAN-3 共享,substate 同参)",
+        "- ICT-2 zigzag:1.5×ATR(14)(与 CHAN-3 共享,substate 同参)",
         f"- ICT-1 VPIN:V_bucket **自适应**(监控服务启动时按 min(30d, 可用) tick 量自举,"
         f"= 日均 tick 量/50;本次研究日取值 {vpin.get('v_bucket', float('nan')):,.1f} tick 口径),"
         f"信号阈值 = 滚动 p95,warmup 100 桶;`history_days` 入 metadata(Month-3 评估剔除 <30d)",
@@ -1098,9 +1021,7 @@ async def run(skip_ticks: bool = False) -> dict:
     dsn = os.environ["DB_URL"].replace("postgresql+asyncpg://", "postgresql://")
     pool = await asyncpg.create_pool(dsn, min_size=1, max_size=3)
     try:
-        times, high, low, close, volume, states, via, degraded = await _load_joined(
-            pool
-        )
+        times, high, low, close, volume, states, via, degraded = await _load_joined(pool)
         n = len(close)
         logger.info("loaded %d aligned bars for %s", n, SYMBOL)
 
@@ -1129,12 +1050,8 @@ async def run(skip_ticks: bool = False) -> dict:
             vpin = await _run_vpin_pilot(pool, times, volume)
 
         reports = {
-            "lens_sel_v1.md": _build_sel_report(
-                times, close, states, via, degraded, legs
-            ),
-            "lens_chan_v1.md": _build_chan_report(
-                times, close, chan1, chan2, chan3, chan3b, overlap
-            ),
+            "lens_sel_v1.md": _build_sel_report(times, close, states, via, degraded, legs),
+            "lens_chan_v1.md": _build_chan_report(times, close, chan1, chan2, chan3, chan3b, overlap),
             "lens_ict_v1.md": _build_ict_report(
                 times,
                 close,

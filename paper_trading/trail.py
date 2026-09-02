@@ -1,4 +1,5 @@
 """DecisionTrail record + DecisionTrailBuilder — Wave 4."""
+
 from __future__ import annotations
 
 from collections import deque
@@ -7,14 +8,14 @@ from datetime import datetime
 from typing import Optional
 
 from decision.config import DecisionConfig
-from paper_trading.schema import AccountState, Decision, SimulatedFill
 from paper_trading.risk import RiskCheckResult
+from paper_trading.schema import AccountState, Decision, SimulatedFill
 from sel_engine.paper_interface.schema import StateOutput
-
 
 # ---------------------------------------------------------------------------
 # DecisionTrail dataclass
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class DecisionTrail:
@@ -23,13 +24,13 @@ class DecisionTrail:
     # Time
     time: datetime
     symbol: str
-    config_hash: str             # YAML config version
-    using_claude_default: bool   # True when using Claude-derived rules (not Wiki-confirmed)
+    config_hash: str  # YAML config version
+    using_claude_default: bool  # True when using Claude-derived rules (not Wiki-confirmed)
 
     # State context
     current_state: Optional[str]
     previous_state: Optional[str]
-    state_history: list          # last N states (oldest first)
+    state_history: list  # last N states (oldest first)
     state_reason: str
 
     # Feature snapshot (complete at decision time)
@@ -52,9 +53,9 @@ class DecisionTrail:
     realized_pnl_usdt: float
 
     # Decision result
-    proposed_action: str         # from DecisionEngine (before risk gate)
-    final_action: str            # after risk gate
-    rule_id: str                 # which YAML rule matched
+    proposed_action: str  # from DecisionEngine (before risk gate)
+    final_action: str  # after risk gate
+    rule_id: str  # which YAML rule matched
     risk_triggered: Optional[str]  # None if risk passed, else rule name
     risk_details: str
 
@@ -71,7 +72,7 @@ class DecisionTrail:
     state_none_reason: Optional[str] = None  # StateNoneReason.value when state=None
 
     # Rule 2 diagnostics (populated when signal_lag fires)
-    risk_rule_2_subtype: Optional[str] = None       # "missing_data" | "no_match"
+    risk_rule_2_subtype: Optional[str] = None  # "missing_data" | "no_match"
     state_none_reason_in_lag: Optional[dict] = None  # {"missing_data": N, "no_match": N, "cold_start": N}
 
     # Alert flag: True when candidate B suppresses close and operator notification is required
@@ -81,6 +82,7 @@ class DecisionTrail:
 # ---------------------------------------------------------------------------
 # DecisionTrailBuilder
 # ---------------------------------------------------------------------------
+
 
 class DecisionTrailBuilder:
     """Accumulates per-bar state and assembles DecisionTrail records."""
@@ -136,8 +138,8 @@ class DecisionTrailBuilder:
 
         total_features = len(feature_fields) + 2  # +2 for absorption_ratio, OI_hurst
         non_none = sum(1 for f in feature_fields if f is not None)
-        non_none += (1 if absorption_ratio is not None else 0)
-        non_none += (1 if OI_hurst is not None else 0)
+        non_none += 1 if absorption_ratio is not None else 0
+        non_none += 1 if OI_hurst is not None else 0
         feature_completeness = non_none / total_features
 
         return DecisionTrail(

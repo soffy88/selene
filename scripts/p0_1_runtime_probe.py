@@ -67,7 +67,7 @@ def _base_env() -> dict[str, str]:
 
 def _expect_fail(name: str, env: dict[str, str], match: str) -> dict:
     result = _run(env)
-    text = f"{result.get('stderr','')} {result.get('stdout','')}"
+    text = f"{result.get('stderr', '')} {result.get('stdout', '')}"
     ok = result["returncode"] != 0 and match.lower() in text.lower()
     return {"name": name, "status": "PASS" if ok else "FAIL", "result": result, "match": match}
 
@@ -112,7 +112,13 @@ def _docker_negatives() -> dict:
     ok = proc.returncode != 0 and "unrecognized exec_mode" in text.lower()
     return {
         "name": "docker_unknown_mode",
-        "status": "PASS" if ok else ("BLOCKED" if proc.returncode in (125, 127) or "Unable to find" in text or "pull access" in text.lower() else "FAIL"),
+        "status": "PASS"
+        if ok
+        else (
+            "BLOCKED"
+            if proc.returncode in (125, 127) or "Unable to find" in text or "pull access" in text.lower()
+            else "FAIL"
+        ),
         "returncode": proc.returncode,
         "stderr": (proc.stderr or "")[-1500:],
         "stdout": (proc.stdout or "")[-1500:],

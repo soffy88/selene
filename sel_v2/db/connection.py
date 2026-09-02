@@ -10,6 +10,7 @@ Usage:
         rows = await conn.fetch(...)
     await close_pools()
 """
+
 from __future__ import annotations
 
 import logging
@@ -54,13 +55,9 @@ async def init_pools(
     global _selene_pool, _helixa_pool
 
     logger.info("Initializing SELENE_POOL (%s)", _selene_url())
-    _selene_pool = await asyncpg.create_pool(
-        _selene_url(), min_size=selene_min, max_size=selene_max
-    )
+    _selene_pool = await asyncpg.create_pool(_selene_url(), min_size=selene_min, max_size=selene_max)
     logger.info("Initializing HELIXA_POOL (%s)", _helixa_url())
-    _helixa_pool = await asyncpg.create_pool(
-        _helixa_url(), min_size=helixa_min, max_size=helixa_max
-    )
+    _helixa_pool = await asyncpg.create_pool(_helixa_url(), min_size=helixa_min, max_size=helixa_max)
     logger.info("Both pools ready")
 
 

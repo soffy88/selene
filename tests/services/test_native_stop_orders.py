@@ -5,16 +5,15 @@ or the feed freezes/gaps — exactly when a leveraged perp gets liquidated. Thes
 cover the exchange-native stop capability and that a live fill places one (best-effort,
 with a loud alert when it can't).
 """
-import asyncio
 
-import pytest
+import asyncio
 
 from services.execution.adapters.base import BaseAdapter, OrderResult
 from services.execution.adapters.binance import BinanceAdapter
 from services.execution.adapters.okx import OKXAdapter
 
-
 # ── Binance STOP_MARKET ─────────────────────────────────────────────────────
+
 
 def test_binance_stop_builds_stop_market(monkeypatch):
     adp = BinanceAdapter("k", "s", testnet=True)
@@ -51,9 +50,10 @@ def test_binance_stop_error_returns_failure(monkeypatch):
 
 # ── OKX conditional algo stop ───────────────────────────────────────────────
 
+
 def test_okx_stop_uses_algo_endpoint(monkeypatch):
     adp = OKXAdapter("k", "s", "pass", testnet=True)
-    adp._ct_val = {"BTC-USDT-SWAP": 0.01}   # skip the network ctVal load
+    adp._ct_val = {"BTC-USDT-SWAP": 0.01}  # skip the network ctVal load
     captured = {}
 
     async def fake_request(method, path, payload=None):
@@ -68,11 +68,12 @@ def test_okx_stop_uses_algo_endpoint(monkeypatch):
     pay = captured["payload"]
     assert pay["ordType"] == "conditional"
     assert pay["slTriggerPx"] == "60000.0"
-    assert pay["slOrdPx"] == "-1"          # market on trigger
+    assert pay["slOrdPx"] == "-1"  # market on trigger
     assert pay["reduceOnly"] == "true"
 
 
 # ── Base default: unsupported, no throw ─────────────────────────────────────
+
 
 def test_base_default_reports_unsupported():
     class Dummy(BaseAdapter):
@@ -89,6 +90,7 @@ def test_base_default_reports_unsupported():
 
 
 # ── execution wiring: _place_protective_stop ────────────────────────────────
+
 
 class _StubRec:
     def __init__(self, side, stop_loss, qty=1.0, filled_qty=1.0):
@@ -114,6 +116,7 @@ class _StubAdapter:
 
 def test_protective_stop_placed_opposite_side(monkeypatch):
     import services.execution.main as m
+
     monkeypatch.setattr(m, "_stop_orders", {}, raising=False)
     adp = _StubAdapter(ok=True)
     rec = _StubRec(side="BUY", stop_loss=60000.0)
@@ -126,6 +129,7 @@ def test_protective_stop_placed_opposite_side(monkeypatch):
 
 def test_protective_stop_failure_alerts_and_keeps_position(monkeypatch):
     import services.execution.main as m
+
     monkeypatch.setattr(m, "_stop_orders", {}, raising=False)
     alerts = []
 
@@ -142,11 +146,12 @@ def test_protective_stop_failure_alerts_and_keeps_position(monkeypatch):
     placed = asyncio.run(m._place_protective_stop(adp, rec))
     assert placed is False
     assert rec.id not in m._stop_orders
-    assert len(alerts) == 1   # a high-severity risk alert was emitted
+    assert len(alerts) == 1  # a high-severity risk alert was emitted
 
 
 def test_no_stop_when_stop_loss_absent(monkeypatch):
     import services.execution.main as m
+
     monkeypatch.setattr(m, "_stop_orders", {}, raising=False)
     adp = _StubAdapter(ok=True)
     rec = _StubRec(side="BUY", stop_loss=0.0)

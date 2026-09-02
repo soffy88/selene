@@ -4,6 +4,7 @@ OI persister: reads open interest from OKX every 5 min and persists to sel_oi_hi
 OKX endpoint: GET /api/v5/public/open-interest?instId=BTC-USDT-SWAP&instType=SWAP
 At bar close, the most recent entry in sel_oi_history is used as OI feature value.
 """
+
 import asyncio
 import logging
 from datetime import datetime, timezone
@@ -71,9 +72,10 @@ async def run_oi_persister(
     """Persist OI snapshot every 5 min to sel_oi_history."""
     if pool is None:
         from shared.db.connections import get_pg
+
         pool = await get_pg()
 
-    from sel_engine.db.writer import write_oi_snapshot, write_funding_snapshot
+    from sel_engine.db.writer import write_funding_snapshot, write_oi_snapshot
 
     async with aiohttp.ClientSession() as session:
         logger.info("oi_persister started for %s", symbol)

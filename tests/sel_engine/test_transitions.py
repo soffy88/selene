@@ -8,6 +8,7 @@ Tests for Wave 3 state engine components:
 
 All tests use synthetic data — no DB or Redis connections required.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -16,12 +17,11 @@ from typing import Optional
 import pytest
 
 from sel_engine.features.schema import FeatureVector
-from sel_engine.states.schema import StateLabel, StateNoneReason, StateRecord
-from sel_engine.states.transition import DwellFilter, CascadeCooling, LegalityChecker, DWELL_TIMES
-from sel_engine.states.health import HealthMonitor, EXPECTED_RATE_RANGES
 from sel_engine.states.engine import StateEngine
+from sel_engine.states.health import HealthMonitor
+from sel_engine.states.schema import StateLabel, StateNoneReason, StateRecord
 from sel_engine.states.thresholds import RollingQuantileCalculator
-
+from sel_engine.states.transition import CascadeCooling, DwellFilter, LegalityChecker
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -91,6 +91,7 @@ def _flat_fv_sequence(n: int, base_time: Optional[datetime] = None) -> list[Feat
 
 # ── DwellFilter ────────────────────────────────────────────────────────────────
 
+
 class TestDwellFilter:
     """Minimum dwell time enforcement."""
 
@@ -112,21 +113,15 @@ class TestDwellFilter:
         filt = DwellFilter()
         last_confirmed = StateLabel.DRIFTING_CALM  # simulate some prior state
 
-        confirmed_record = None
         for i in range(6):
             rec = _make_record(StateLabel.COILING, time=_t(i))
             result = filt.apply(rec, last_confirmed)
             if i < 5:
                 # Still in dwell — should hold DRIFTING_CALM
-                assert result.state == StateLabel.DRIFTING_CALM, (
-                    f"Bar {i}: expected DRIFTING_CALM, got {result.state}"
-                )
+                assert result.state == StateLabel.DRIFTING_CALM, f"Bar {i}: expected DRIFTING_CALM, got {result.state}"
             else:
                 # 6th bar (index 5) — should confirm COILING
-                confirmed_record = result
-                assert result.state == StateLabel.COILING, (
-                    f"Bar {i}: expected COILING, got {result.state}"
-                )
+                assert result.state == StateLabel.COILING, f"Bar {i}: expected COILING, got {result.state}"
 
     def test_counter_resets_on_state_change(self):
         """Switching from COILING to SURGING_UP resets the consecutive counter."""
@@ -206,6 +201,7 @@ class TestDwellFilter:
 
 # ── CascadeCooling ─────────────────────────────────────────────────────────────
 
+
 class TestCascadeCooling:
     """Cascade cooling period: 6H suppression of CRITICAL after CASCADE."""
 
@@ -236,9 +232,7 @@ class TestCascadeCooling:
         cascade_result = results[0]
         assert cascade_result.state == StateLabel.CASCADE
         for i, r in enumerate(results[1:], start=1):
-            assert r.state != StateLabel.CRITICAL, (
-                f"Hour {i}: CRITICAL should have been suppressed"
-            )
+            assert r.state != StateLabel.CRITICAL, f"Hour {i}: CRITICAL should have been suppressed"
             assert "CASCADE_COOLING" in r.reason
 
     def test_critical_allowed_on_bar_7(self):
@@ -310,6 +304,7 @@ class TestCascadeCooling:
         )
         assert "CASCADE_COOLING" in result.reason
         from sel_engine.states.schema import StateNoneReason
+
         assert result.none_reason == StateNoneReason.NO_MATCH
 
     def test_cascade_cooling_with_prior_holds_state(self):
@@ -326,6 +321,7 @@ class TestCascadeCooling:
 
 
 # ── LegalityChecker ────────────────────────────────────────────────────────────
+
 
 class TestLegalityChecker:
     """State transition legality."""
@@ -410,6 +406,7 @@ class TestLegalityChecker:
 
 # ── HealthMonitor ──────────────────────────────────────────────────────────────
 
+
 class TestHealthMonitor:
     """State counts, rates, warnings."""
 
@@ -492,8 +489,12 @@ class TestHealthMonitor:
         # 3 state-change events: 2 legal, 1 illegal
         seq = [
             _make_record(StateLabel.DRIFTING_CALM, time=_t(0), is_legal_transition=True, transition_from=None),
-            _make_record(StateLabel.COILING, time=_t(1), is_legal_transition=True, transition_from=StateLabel.DRIFTING_CALM),
-            _make_record(StateLabel.SURGING_UP, time=_t(2), is_legal_transition=False, transition_from=StateLabel.CASCADE),
+            _make_record(
+                StateLabel.COILING, time=_t(1), is_legal_transition=True, transition_from=StateLabel.DRIFTING_CALM
+            ),
+            _make_record(
+                StateLabel.SURGING_UP, time=_t(2), is_legal_transition=False, transition_from=StateLabel.CASCADE
+            ),
         ]
         for r in seq:
             monitor.record(r)
@@ -506,8 +507,12 @@ class TestHealthMonitor:
         monitor = HealthMonitor()
         recs = [
             _make_record(StateLabel.CASCADE, time=_t(0), reason="CASCADE:..."),
-            _make_record(StateLabel.DRIFTING_CALM, time=_t(1), reason="CASCADE_COOLING:Drifting_Calm(critical suppressed...)"),
-            _make_record(StateLabel.DRIFTING_CALM, time=_t(2), reason="CASCADE_COOLING:Drifting_Calm(critical suppressed...)"),
+            _make_record(
+                StateLabel.DRIFTING_CALM, time=_t(1), reason="CASCADE_COOLING:Drifting_Calm(critical suppressed...)"
+            ),
+            _make_record(
+                StateLabel.DRIFTING_CALM, time=_t(2), reason="CASCADE_COOLING:Drifting_Calm(critical suppressed...)"
+            ),
             _make_record(StateLabel.COILING, time=_t(3), reason="COILING:..."),
         ]
         for r in recs:
@@ -548,6 +553,7 @@ class TestHealthMonitor:
 
 
 # ── StateEngine end-to-end ─────────────────────────────────────────────────────
+
 
 class TestStateEngineEndToEnd:
     """Full pipeline integration test."""
@@ -594,13 +600,11 @@ class TestStateEngineEndToEnd:
             time=base + timedelta(hours=self.WINDOW),
             symbol="BTCUSDT",
             close=50000.0,
-            delta_p_pct=50.0,    # extreme → abs_delta_p_pct > 97th
-            LV=1.0,              # extreme → LV > 95th (CASCADE secondary)
+            delta_p_pct=50.0,  # extreme → abs_delta_p_pct > 97th
+            LV=1.0,  # extreme → LV > 95th (CASCADE secondary)
         )
         rec = engine.process(extreme)
-        assert rec.state == StateLabel.CASCADE, (
-            f"Expected CASCADE, got {rec.state} (reason: {rec.reason})"
-        )
+        assert rec.state == StateLabel.CASCADE, f"Expected CASCADE, got {rec.state} (reason: {rec.reason})"
 
     def test_health_report_generated(self):
         """health_report() runs without error after processing bars."""
@@ -648,8 +652,8 @@ class TestStateEngineEndToEnd:
             time=base + timedelta(hours=self.WINDOW),
             symbol="BTCUSDT",
             close=50000.0,
-            delta_p_pct=50.0,   # extreme → CASCADE primary
-            LV=1.0,             # extreme → CASCADE secondary
+            delta_p_pct=50.0,  # extreme → CASCADE primary
+            LV=1.0,  # extreme → CASCADE secondary
         )
         cascade_rec = engine.process(cascade_fv)
         assert cascade_rec.state == StateLabel.CASCADE

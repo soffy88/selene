@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from sel_v2.scheduler.bar_runner import BarRunner, _SIGMA_WINDOW
+from sel_v2.scheduler.bar_runner import _SIGMA_WINDOW, BarRunner
 
 
 def _runner(lob_depth_series=None, entropy_series=None, n=None):
@@ -21,12 +21,7 @@ def _runner(lob_depth_series=None, entropy_series=None, n=None):
     nan = np.full(n, np.nan)
     df = pd.DataFrame(
         {
-            "time": pd.to_datetime(
-                [
-                    pd.Timestamp("2024-01-01") + pd.Timedelta(hours=4 * i)
-                    for i in range(n)
-                ]
-            ),
+            "time": pd.to_datetime([pd.Timestamp("2024-01-01") + pd.Timedelta(hours=4 * i) for i in range(n)]),
             "close": closes,
         }
     )
@@ -79,9 +74,7 @@ def test_entropy_pctile_populated_and_ranked():
     feat = runner.build_features(n - 1)
     assert feat.entropy_4h == pytest.approx(0.1)
     assert feat.entropy_pctile is not None
-    assert (
-        feat.entropy_pctile <= 0.05
-    )  # low entropy → low rank → Coiling's entropy_low can fire
+    assert feat.entropy_pctile <= 0.05  # low entropy → low rank → Coiling's entropy_low can fire
 
 
 def test_entropy_none_leaves_pctile_none():
@@ -159,12 +152,7 @@ def test_critical_a_full_reachable_end_to_end():
 
     df = pd.DataFrame(
         {
-            "time": pd.to_datetime(
-                [
-                    pd.Timestamp("2024-01-01") + pd.Timedelta(hours=4 * i)
-                    for i in range(n)
-                ]
-            ),
+            "time": pd.to_datetime([pd.Timestamp("2024-01-01") + pd.Timedelta(hours=4 * i) for i in range(n)]),
             "close": closes,
         }
     )

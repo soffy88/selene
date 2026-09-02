@@ -4,9 +4,9 @@ Unit tests for BarCloseRunner.
 Tests use mocks for DB pool and Redis; they do NOT hit real infrastructure.
 Integration tests (requiring a real DB + Redis) are skipped in CI.
 """
+
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,8 +15,8 @@ import pytest
 
 from sel_engine.states.schema import StateNoneReason
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _make_pool(existing_bar: bool = False) -> MagicMock:
     """Return a mock asyncpg pool. existing_bar=True simulates idempotency check hit."""
@@ -24,10 +24,12 @@ def _make_pool(existing_bar: bool = False) -> MagicMock:
     conn = AsyncMock()
     conn.fetchrow = AsyncMock(return_value=MagicMock() if existing_bar else None)
     conn.fetch = AsyncMock(return_value=[])
-    pool.acquire = MagicMock(return_value=AsyncMock(
-        __aenter__=AsyncMock(return_value=conn),
-        __aexit__=AsyncMock(return_value=False),
-    ))
+    pool.acquire = MagicMock(
+        return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=conn),
+            __aexit__=AsyncMock(return_value=False),
+        )
+    )
     return pool, conn
 
 
@@ -35,10 +37,11 @@ def _make_redis(h_samples=None, depth_samples=None, tf_accum=None) -> MagicMock:
     redis = AsyncMock()
     redis.lrange = AsyncMock(return_value=h_samples or [])
     if depth_samples is not None:
-        redis.lrange = AsyncMock(side_effect=lambda key, *a: (
-            [json.dumps(s).encode() for s in depth_samples]
-            if "depth" in key else (h_samples or [])
-        ))
+        redis.lrange = AsyncMock(
+            side_effect=lambda key, *a: (
+                [json.dumps(s).encode() for s in depth_samples] if "depth" in key else (h_samples or [])
+            )
+        )
     redis.get = AsyncMock(return_value=str(tf_accum).encode() if tf_accum else None)
     redis.set = AsyncMock()
     redis.incr = AsyncMock()
@@ -48,6 +51,7 @@ def _make_redis(h_samples=None, depth_samples=None, tf_accum=None) -> MagicMock:
 BAR_TIME = datetime(2026, 4, 28, 13, 0, 0, tzinfo=timezone.utc)
 
 # ── Test 1: missing collector data → MISSING_DATA ────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_scheduler_handles_missing_data():
@@ -96,6 +100,7 @@ async def test_scheduler_handles_missing_data():
         patch("sel_engine.scheduler.bar_close_runner.write_state_record", fake_write_state),
     ):
         from sel_engine.scheduler.bar_close_runner import BarCloseRunner
+
         runner = BarCloseRunner(symbol="BTCUSDT", pool=pool, redis=redis)
         await runner.run_bar(BAR_TIME)
 
@@ -110,6 +115,7 @@ async def test_scheduler_handles_missing_data():
 
 
 # ── Test 2: idempotency ───────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_scheduler_idempotent_on_same_bar():
@@ -127,6 +133,7 @@ async def test_scheduler_idempotent_on_same_bar():
 
     with patch("sel_engine.scheduler.bar_close_runner.write_state_record", fake_write_state):
         from sel_engine.scheduler.bar_close_runner import BarCloseRunner
+
         runner = BarCloseRunner(symbol="BTCUSDT", pool=pool, redis=redis)
         await runner.run_bar(BAR_TIME)
 
@@ -135,6 +142,7 @@ async def test_scheduler_idempotent_on_same_bar():
 
 
 # ── Test 3: skip incomplete bar (data_lag) ───────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_scheduler_skips_incomplete_bar():
@@ -158,6 +166,7 @@ async def test_scheduler_skips_incomplete_bar():
         patch("sel_engine.scheduler.bar_close_runner.write_state_record", fake_write_state),
     ):
         from sel_engine.scheduler.bar_close_runner import BarCloseRunner
+
         runner = BarCloseRunner(symbol="BTCUSDT", pool=pool, redis=redis)
         await runner.run_bar(BAR_TIME)
 
@@ -165,6 +174,7 @@ async def test_scheduler_skips_incomplete_bar():
 
 
 # ── Test 4: Postgres column case-folding — reader must use lowercase keys ─────
+
 
 @pytest.mark.asyncio
 async def test_read_H_history_uses_lowercase_key():
@@ -177,14 +187,14 @@ async def test_read_H_history_uses_lowercase_key():
     pool = MagicMock()
     conn = AsyncMock()
     conn.fetch = AsyncMock(return_value=[{"h": 0.73}])
-    pool.acquire = MagicMock(return_value=AsyncMock(
-        __aenter__=AsyncMock(return_value=conn),
-        __aexit__=AsyncMock(return_value=False),
-    ))
-
-    result = await read_H_history(
-        pool, "BTCUSDT", datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc), limit=1
+    pool.acquire = MagicMock(
+        return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=conn),
+            __aexit__=AsyncMock(return_value=False),
+        )
     )
+
+    result = await read_H_history(pool, "BTCUSDT", datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc), limit=1)
     assert result == [0.73], f"Expected [0.73], got {result}"
 
 
@@ -197,14 +207,15 @@ async def test_read_tf_history_uses_lowercase_key():
     pool = MagicMock()
     conn = AsyncMock()
     conn.fetch = AsyncMock(return_value=[{"tf": 123456789.0}])
-    pool.acquire = MagicMock(return_value=AsyncMock(
-        __aenter__=AsyncMock(return_value=conn),
-        __aexit__=AsyncMock(return_value=False),
-    ))
+    pool.acquire = MagicMock(
+        return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=conn),
+            __aexit__=AsyncMock(return_value=False),
+        )
+    )
 
     from sel_engine.scheduler.bar_close_runner import BarCloseRunner
+
     runner = BarCloseRunner(symbol="BTCUSDT", pool=pool, redis=AsyncMock())
-    result = await runner._read_tf_history(
-        datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
-    )
+    result = await runner._read_tf_history(datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc))
     assert result == [123456789.0], f"Expected [123456789.0], got {result}"

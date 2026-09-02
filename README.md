@@ -50,4 +50,6 @@ python -m selene.security.verify_redaction --root .
 
 ## License
 
-`OWNER_BLOCKED` — the owner has not selected a license. See `LICENSE`.
+All rights reserved. No license is granted at this time.
+
+The owner has not selected a license. See `LICENSE`. This repository is not released for copying, modification, or distribution.

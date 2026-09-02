@@ -13,13 +13,13 @@ Design principles (§15.2):
 
 Each position records entry context for DB persistence (v2_trades).
 """
+
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Literal, Optional
-
 
 Direction = Literal["LONG", "SHORT"]
 
@@ -36,8 +36,8 @@ MAX_CONCURRENT_S2: int = 2
 # free (mid-price, no fee/slippage/funding), so reported paper PnL was optimistic
 # by at least round-trip fees + funding. Cost is charged when a notional unit is
 # exited; entry+exit is accounted round-trip at that point.
-TAKER_FEE_PCT: float = 0.0004                      # 4 bps per side (taker)
-HALF_SPREAD_PCT: float = (2.0 / 10_000.0) / 2.0    # half of a 2 bps spread, per side
+TAKER_FEE_PCT: float = 0.0004  # 4 bps per side (taker)
+HALF_SPREAD_PCT: float = (2.0 / 10_000.0) / 2.0  # half of a 2 bps spread, per side
 ONE_SIDE_COST_PCT: float = TAKER_FEE_PCT + HALF_SPREAD_PCT
 
 # Perpetual funding settles every 8h; the v2 engine steps 4H bars, so one bar is
@@ -56,12 +56,13 @@ def round_trip_cost_usdt(notional_usdt: float) -> float:
 @dataclass
 class Position:
     """One open paper position."""
+
     id: str
-    strategy: str            # 'strategy_1' / 'strategy_2'
-    sub_account: str         # 'subaccount_1' / 'subaccount_2'
+    strategy: str  # 'strategy_1' / 'strategy_2'
+    sub_account: str  # 'subaccount_1' / 'subaccount_2'
     direction: Direction
     entry_price: float
-    size_usdt: float         # notional in USDT (no leverage)
+    size_usdt: float  # notional in USDT (no leverage)
     leverage: float
     instrument: str
     entry_time: datetime
@@ -87,9 +88,7 @@ class Position:
         positive, shorts receive; pro-rated by FUNDING_BAR_FACTOR because a 4H bar
         is half an 8H settlement period."""
         sign = 1.0 if self.direction == "LONG" else -1.0
-        self.accrued_funding_usdt += (
-            sign * funding_rate * FUNDING_BAR_FACTOR * self.notional_usdt
-        )
+        self.accrued_funding_usdt += sign * funding_rate * FUNDING_BAR_FACTOR * self.notional_usdt
 
     def unrealized_pnl_pct(self, mark_price: float) -> float:
         if self.direction == "LONG":
@@ -103,6 +102,7 @@ class Position:
 @dataclass
 class ClosedPosition:
     """Audit record for a closed position."""
+
     position: Position
     exit_price: float
     exit_time: datetime
@@ -119,8 +119,9 @@ class SubAccount:
     Tracks NAV, open positions, and closed history.
     Thread-safety is the caller's responsibility (single-threaded replay assumed).
     """
-    name: str           # 'subaccount_1' / 'subaccount_2'
-    strategy: str       # 'strategy_1' / 'strategy_2'
+
+    name: str  # 'subaccount_1' / 'subaccount_2'
+    strategy: str  # 'strategy_1' / 'strategy_2'
     initial_nav: float
     max_concurrent: int
 
@@ -160,7 +161,7 @@ class SubAccount:
         self,
         direction: Direction,
         entry_price: float,
-        size_pct: float,          # fraction of current nav to commit
+        size_pct: float,  # fraction of current nav to commit
         leverage: float,
         instrument: str,
         entry_time: datetime,
@@ -310,6 +311,7 @@ def leverage_pnl(leverage: float, pnl_pct: float) -> float:
 
 # ── Dual sub-account engine ───────────────────────────────────────────────────
 
+
 @dataclass
 class DualSubAccountEngine:
     """
@@ -320,6 +322,7 @@ class DualSubAccountEngine:
         pos = engine.subaccount_1.open_position(...)
         engine.subaccount_2.open_position(...)
     """
+
     total_nav_usdt: float
 
     subaccount_1: SubAccount = field(init=False)
@@ -340,10 +343,7 @@ class DualSubAccountEngine:
         )
 
     def total_equity(self, mark_price: float) -> float:
-        return (
-            self.subaccount_1.equity(mark_price)
-            + self.subaccount_2.equity(mark_price)
-        )
+        return self.subaccount_1.equity(mark_price) + self.subaccount_2.equity(mark_price)
 
     def cascade_close_all(
         self,

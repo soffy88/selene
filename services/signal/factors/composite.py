@@ -14,8 +14,8 @@ Factor weights (must sum to 1.0):
 """
 
 import json
-import math
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -55,9 +55,7 @@ class FactorScores:
 
     technical_rsi: float = 0.0  # RSI normalized: oversold → +1, overbought → -1
     technical_ema: float = 0.0  # EMA alignment: full bull → +1, full bear → -1
-    funding_zscore: float = (
-        0.0  # funding Z-score: very negative → +1 (long), very positive → -1
-    )
+    funding_zscore: float = 0.0  # funding Z-score: very negative → +1 (long), very positive → -1
     oi_momentum: float = 0.0  # OI change: rising OI in uptrend → +1
     lsr_divergence: float = 0.0  # crowd vs smart money divergence
     onchain: float = 0.0  # net exchange inflow/outflow
@@ -138,9 +136,7 @@ def score_funding_zscore(current_rate: float, rate_history: list[float]) -> floa
     return round(-max(-1.0, min(1.0, z / 3.0)), 4)
 
 
-def score_oi_momentum(
-    oi_change_pct: Optional[float], price_change_pct: Optional[float]
-) -> float:
+def score_oi_momentum(oi_change_pct: Optional[float], price_change_pct: Optional[float]) -> float:
     """
     OI momentum: rising OI with rising price = confirmed uptrend = bullish.
     Rising OI with falling price = confirmed downtrend = bearish.
@@ -193,9 +189,7 @@ class MultiFactorScorer:
         self,
         direction: str,  # "LONG" or "SHORT"
         factors: FactorScores,
-        n_samples: Optional[
-            int
-        ] = None,  # override sample count; default uses _n_samples
+        n_samples: Optional[int] = None,  # override sample count; default uses _n_samples
     ) -> CompositeScore:
         """
         Compute composite score for a given direction.
@@ -227,10 +221,7 @@ class MultiFactorScorer:
         ci_half = self._ci_half(win_prob, n)
 
         # Dominant factor
-        contributions = {
-            k: abs(EFFECTIVE_WEIGHTS.get(k, 0) * getattr(factors, k, 0))
-            for k in scores_dict
-        }
+        contributions = {k: abs(EFFECTIVE_WEIGHTS.get(k, 0) * getattr(factors, k, 0)) for k in scores_dict}
         dominant = max(contributions, key=contributions.get)
 
         return CompositeScore(
@@ -255,7 +246,7 @@ class MultiFactorScorer:
 
         z = 1.96
         denominator = 1 + z**2 / n
-        center = (p + z**2 / (2 * n)) / denominator
+        (p + z**2 / (2 * n)) / denominator
         half = z * np.sqrt(p * (1 - p) / n + z**2 / (4 * n**2)) / denominator
         return round(float(half), 4)
 
@@ -279,9 +270,7 @@ async def load_calibration(redis_client) -> Optional[tuple[float, float]]:
         return None
 
 
-async def save_calibration(
-    redis_client, center: float, scale: float, n_samples: int = 0
-) -> None:
+async def save_calibration(redis_client, center: float, scale: float, n_samples: int = 0) -> None:
     """由 backtest 或 WFO 模块写入学习后的 calibration。"""
     payload = {
         "center": float(center),
@@ -297,7 +286,7 @@ DEFAULT_CALIBRATION = (0.0, 2.5)
 def _platt_nll(scores: list[float], outcomes: list[int], c: float, s: float) -> float:
     """Negative log-likelihood of sigmoid((x-c)*s) vs binary outcomes."""
     nll = 0.0
-    for x, y in zip(scores, outcomes):
+    for x, y in zip(scores, outcomes, strict=False):
         p = 1.0 / (1.0 + math.exp(-(x - c) * s))
         p = min(max(p, 1e-6), 1 - 1e-6)
         nll -= y * math.log(p) + (1 - y) * math.log(1 - p)
@@ -357,8 +346,6 @@ def platt_fit(scores: list[float], outcomes: list[int]) -> tuple[float, float]:
 # key: onchain:state:{symbol}  由 services/onchain/main.py 写入。
 # 无数据时返回 0.0（中性），不影响现有评分逻辑。
 
-import json as _json
-
 
 async def get_onchain_factor(symbol: str) -> float:
     """
@@ -372,7 +359,7 @@ async def get_onchain_factor(symbol: str) -> float:
         raw = await r.get(f"onchain:state:{symbol}")
         if not raw:
             return 0.0
-        state = _json.loads(raw)
+        state = json.loads(raw)
         return float(state.get("regime_adj_score", state.get("onchain_score", 0.0)))
     except Exception as e:
         logger.warning(f"get_onchain_factor {symbol}: {e}")
@@ -389,6 +376,6 @@ async def get_onchain_composite(symbol: str) -> dict:
 
         r = await get_redis()
         raw = await r.get(f"onchain:state:{symbol}")
-        return _json.loads(raw) if raw else {}
+        return json.loads(raw) if raw else {}
     except Exception:
         return {}

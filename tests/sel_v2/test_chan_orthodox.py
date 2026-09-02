@@ -15,7 +15,6 @@ from sel_v2.offline.chan_orthodox import (
 )
 from sel_v2.offline.lens_common import SurgingLeg
 
-
 # ── inclusion merge ──────────────────────────────────────────────────────────
 
 
@@ -69,7 +68,7 @@ def test_fractals_and_strokes_on_clean_zigzag():
     strokes = build_strokes(bars, fx)
     assert len(strokes) >= 2
     # alternating directions, apex separation respected, causal confirm
-    for a, b in zip(strokes, strokes[1:]):
+    for a, b in zip(strokes, strokes[1:], strict=False):
         assert a.direction == -b.direction
         assert b.end_m - b.start_m >= MIN_APEX_SEPARATION
     for s in strokes:

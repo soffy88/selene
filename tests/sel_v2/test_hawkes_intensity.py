@@ -1,6 +1,6 @@
 """Unit tests for sel_v2.strategies.hawkes_intensity (H1)."""
+
 import math
-import time
 from unittest.mock import patch
 
 import numpy as np
@@ -13,12 +13,13 @@ from sel_v2.strategies.hawkes_intensity import (
 )
 
 # These are the Wave-1 H2 calibration values injected via conftest mock.
-_MOCK_MU    = 0.093136
+_MOCK_MU = 0.093136
 _MOCK_ALPHA = 0.023899
-_MOCK_BETA  = 0.043163
+_MOCK_BETA = 0.043163
 
 
 # ── HawkesParams ──────────────────────────────────────────────────────────────
+
 
 def test_branching_ratio():
     p = HawkesParams(mu=0.1, alpha=0.3, beta=0.6)
@@ -36,9 +37,9 @@ def test_from_h2_reference():
     Verify returned params match the mocked DB values exactly.
     """
     p = HawkesParams.from_h2_reference()
-    assert p.mu    == pytest.approx(_MOCK_MU,    rel=1e-6)
+    assert p.mu == pytest.approx(_MOCK_MU, rel=1e-6)
     assert p.alpha == pytest.approx(_MOCK_ALPHA, rel=1e-6)
-    assert p.beta  == pytest.approx(_MOCK_BETA,  rel=1e-6)
+    assert p.beta == pytest.approx(_MOCK_BETA, rel=1e-6)
     # Branching ratio from calibrated values is sub-critical (eta ≈ 0.55)
     assert 0.0 < p.branching_ratio < 1.0
 
@@ -54,6 +55,7 @@ def test_from_h2_reference_raises_on_missing_params():
 
 
 # ── HawkesIntensityTracker ────────────────────────────────────────────────────
+
 
 def test_baseline_intensity_no_events():
     p = HawkesParams(mu=0.5, alpha=0.3, beta=0.4)
@@ -142,12 +144,13 @@ def test_update_params_preserves_consistency():
 def test_default_constructor_uses_h2_reference():
     """HawkesIntensityTracker() with no args must use from_h2_reference() values."""
     tracker = HawkesIntensityTracker()
-    assert tracker.params.mu    == pytest.approx(_MOCK_MU,    rel=1e-6)
+    assert tracker.params.mu == pytest.approx(_MOCK_MU, rel=1e-6)
     assert tracker.params.alpha == pytest.approx(_MOCK_ALPHA, rel=1e-6)
-    assert tracker.params.beta  == pytest.approx(_MOCK_BETA,  rel=1e-6)
+    assert tracker.params.beta == pytest.approx(_MOCK_BETA, rel=1e-6)
 
 
 # ── GMM estimation ────────────────────────────────────────────────────────────
+
 
 def test_fit_gmm_insufficient_data_fallback():
     # fit_gmm falls back to from_h2_reference() when N < 10
@@ -177,6 +180,7 @@ def test_fit_gmm_estimated_intensity_positive():
 
 
 # ── RollingIntensityThreshold ────────────────────────────────────────────────
+
 
 def test_threshold_none_when_cold():
     th = RollingIntensityThreshold(window_seconds=3600, quantile=0.70)

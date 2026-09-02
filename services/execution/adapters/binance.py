@@ -22,19 +22,24 @@ from datetime import datetime
 from typing import Optional
 
 import aiohttp
+
 # websockets is lazy-imported inside subscribe_fills (keeps the module import-safe
 # where the optional WS lib isn't installed, e.g. unit-test/CI environments).
-
 from services.execution.adapters.base import (
-    BaseAdapter, OrderResult, CancelResult, PositionResult, FillEvent,
-    _sanitize_client_id, _is_duplicate_order,
+    BaseAdapter,
+    CancelResult,
+    FillEvent,
+    OrderResult,
+    PositionResult,
+    _is_duplicate_order,
+    _sanitize_client_id,
 )
 
 logger = logging.getLogger("adapter.binance")
 
 # REST
-LIVE_BASE   = "https://fapi.binance.com"
-TEST_BASE   = "https://testnet.binancefuture.com"
+LIVE_BASE = "https://fapi.binance.com"
+TEST_BASE = "https://testnet.binancefuture.com"
 
 # WebSocket
 LIVE_WS_BASE = "wss://fstream.binance.com"
@@ -42,10 +47,9 @@ TEST_WS_BASE = "wss://stream.binancefuture.com"
 
 
 class BinanceAdapter(BaseAdapter):
-
     def __init__(self, api_key: str, api_secret: str, testnet: bool = False):
         super().__init__(api_key, api_secret, testnet)
-        self._base    = TEST_BASE   if testnet else LIVE_BASE
+        self._base = TEST_BASE if testnet else LIVE_BASE
         self._ws_base = TEST_WS_BASE if testnet else LIVE_WS_BASE
         self._session: Optional[aiohttp.ClientSession] = None
         self._listen_key: Optional[str] = None
@@ -56,20 +60,19 @@ class BinanceAdapter(BaseAdapter):
 
     async def _sess(self) -> aiohttp.ClientSession:
         if not self._session or self._session.closed:
-            self._session = aiohttp.ClientSession(
-                headers={"X-MBX-APIKEY": self.api_key}
-            )
+            self._session = aiohttp.ClientSession(headers={"X-MBX-APIKEY": self.api_key})
         return self._session
 
     def _sign(self, params: dict) -> str:
         qs = urllib.parse.urlencode(params)
-        return hmac.new(
-            self.api_secret.encode(), qs.encode(), hashlib.sha256
-        ).hexdigest()
+        return hmac.new(self.api_secret.encode(), qs.encode(), hashlib.sha256).hexdigest()
 
     async def _request(
-        self, method: str, path: str,
-        params: dict = None, signed: bool = True,
+        self,
+        method: str,
+        path: str,
+        params: dict = None,
+        signed: bool = True,
         retries: int = 3,
     ) -> Optional[dict]:
         params = params or {}
@@ -78,13 +81,14 @@ class BinanceAdapter(BaseAdapter):
             params["signature"] = self._sign(params)
 
         url = self._base + path
-        s   = await self._sess()
+        s = await self._sess()
 
         for attempt in range(retries):
             try:
                 async with getattr(s, method.lower())(
-                    url, params=params if method == "GET" else None,
-                    data=params  if method != "GET" else None,
+                    url,
+                    params=params if method == "GET" else None,
+                    data=params if method != "GET" else None,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as r:
                     data = await r.json()
@@ -92,12 +96,12 @@ class BinanceAdapter(BaseAdapter):
                         return data
                     # Rate limit
                     if r.status == 429:
-                        await asyncio.sleep(2 ** attempt)
+                        await asyncio.sleep(2**attempt)
                         continue
                     logger.error(f"Binance {method} {path} → {r.status}: {data}")
                     return None
             except Exception as e:
-                logger.warning(f"Request attempt {attempt+1}/{retries}: {e}")
+                logger.warning(f"Request attempt {attempt + 1}/{retries}: {e}")
                 await asyncio.sleep(1)
         return None
 
@@ -116,16 +120,16 @@ class BinanceAdapter(BaseAdapter):
     ) -> OrderResult:
         cl_ord_id = _sanitize_client_id(client_order_id)
         params = {
-            "symbol":   symbol,
-            "side":     side.upper(),
-            "type":     order_type.upper(),
+            "symbol": symbol,
+            "side": side.upper(),
+            "type": order_type.upper(),
             "quantity": f"{qty:.6f}".rstrip("0").rstrip("."),
         }
         if cl_ord_id:
             params["newClientOrderId"] = cl_ord_id
         if order_type.upper() == "LIMIT":
-            params["price"]        = f"{price:.4f}"
-            params["timeInForce"]  = time_in_force
+            params["price"] = f"{price:.4f}"
+            params["timeInForce"] = time_in_force
         if reduce_only:
             params["reduceOnly"] = "true"
 
@@ -147,14 +151,11 @@ class BinanceAdapter(BaseAdapter):
 
         # 立即成交（MARKET or IOC）
         filled_price = float(data.get("avgPrice", 0) or 0)
-        filled_qty   = float(data.get("executedQty", 0) or 0)
-        fee          = 0.0  # fee comes in via userData stream
+        filled_qty = float(data.get("executedQty", 0) or 0)
+        fee = 0.0  # fee comes in via userData stream
 
         status = data.get("status", "NEW")
-        logger.info(
-            f"place_order OK: {symbol} {side} {qty} @ {price} "
-            f"→ {status} exchange_id={data['orderId']}"
-        )
+        logger.info(f"place_order OK: {symbol} {side} {qty} @ {price} → {status} exchange_id={data['orderId']}")
         return OrderResult(
             success=True,
             exchange_id=str(data["orderId"]),
@@ -178,10 +179,10 @@ class BinanceAdapter(BaseAdapter):
         """Exchange-native STOP_MARKET (reduce-only) — survives a service/feed outage."""
         cl_ord_id = _sanitize_client_id(client_order_id)
         params = {
-            "symbol":    symbol,
-            "side":      side.upper(),
-            "type":      "STOP_MARKET",
-            "quantity":  f"{qty:.6f}".rstrip("0").rstrip("."),
+            "symbol": symbol,
+            "side": side.upper(),
+            "type": "STOP_MARKET",
+            "quantity": f"{qty:.6f}".rstrip("0").rstrip("."),
             "stopPrice": f"{stop_price:.4f}",
         }
         if reduce_only:
@@ -210,9 +211,14 @@ class BinanceAdapter(BaseAdapter):
         )
 
     async def _get_order_by_client_id(self, symbol: str, cl_ord_id: str) -> Optional[OrderResult]:
-        data = await self._request("GET", "/fapi/v1/order", {
-            "symbol": symbol, "origClientOrderId": cl_ord_id,
-        })
+        data = await self._request(
+            "GET",
+            "/fapi/v1/order",
+            {
+                "symbol": symbol,
+                "origClientOrderId": cl_ord_id,
+            },
+        )
         if not data or "code" in data:
             return None
         return OrderResult(
@@ -229,9 +235,14 @@ class BinanceAdapter(BaseAdapter):
     # ── 撤单 ──────────────────────────────────────────
 
     async def cancel_order(self, symbol: str, exchange_id: str) -> CancelResult:
-        data = await self._request("DELETE", "/fapi/v1/order", {
-            "symbol": symbol, "orderId": exchange_id,
-        })
+        data = await self._request(
+            "DELETE",
+            "/fapi/v1/order",
+            {
+                "symbol": symbol,
+                "orderId": exchange_id,
+            },
+        )
         if not data or "code" in data:
             err = (data or {}).get("msg", "cancel failed")
             return CancelResult(success=False, error=err)
@@ -240,9 +251,14 @@ class BinanceAdapter(BaseAdapter):
     # ── 查单 ──────────────────────────────────────────
 
     async def get_order(self, symbol: str, exchange_id: str) -> OrderResult:
-        data = await self._request("GET", "/fapi/v1/order", {
-            "symbol": symbol, "orderId": exchange_id,
-        })
+        data = await self._request(
+            "GET",
+            "/fapi/v1/order",
+            {
+                "symbol": symbol,
+                "orderId": exchange_id,
+            },
+        )
         if not data or "code" in data:
             return OrderResult(success=False, error="query failed")
         return OrderResult(
@@ -265,22 +281,30 @@ class BinanceAdapter(BaseAdapter):
             qty = float(p.get("positionAmt", 0))
             if abs(qty) < 1e-8:
                 continue
-            results.append(PositionResult(
-                symbol=p["symbol"],
-                side="LONG" if qty > 0 else "SHORT",
-                size=abs(qty),
-                entry_price=float(p.get("entryPrice", 0)),
-                unrealized_pnl=float(p.get("unRealizedProfit", 0)),
-                leverage=float(p.get("leverage", 1)),
-            ))
+            results.append(
+                PositionResult(
+                    symbol=p["symbol"],
+                    side="LONG" if qty > 0 else "SHORT",
+                    size=abs(qty),
+                    entry_price=float(p.get("entryPrice", 0)),
+                    unrealized_pnl=float(p.get("unRealizedProfit", 0)),
+                    leverage=float(p.get("leverage", 1)),
+                )
+            )
         return results
 
     # ── 盘口（滑点估算用）────────────────────────────
 
     async def get_orderbook(self, symbol: str, depth: int = 20) -> dict:
-        data = await self._request("GET", "/fapi/v1/depth", {
-            "symbol": symbol, "limit": depth,
-        }, signed=False)
+        data = await self._request(
+            "GET",
+            "/fapi/v1/depth",
+            {
+                "symbol": symbol,
+                "limit": depth,
+            },
+            signed=False,
+        )
         if not data:
             return {"bids": [], "asks": []}
         return {
@@ -296,8 +320,8 @@ class BinanceAdapter(BaseAdapter):
             return {"total_equity": 0, "available": 0, "margin_used": 0}
         return {
             "total_equity": float(data.get("totalWalletBalance", 0)),
-            "available":    float(data.get("availableBalance", 0)),
-            "margin_used":  float(data.get("totalInitialMargin", 0)),
+            "available": float(data.get("availableBalance", 0)),
+            "margin_used": float(data.get("totalInitialMargin", 0)),
         }
 
     # ── Listen Key 管理 ──────────────────────────────
@@ -311,8 +335,7 @@ class BinanceAdapter(BaseAdapter):
         while True:
             await asyncio.sleep(1800)
             if self._listen_key:
-                await self._request("PUT", "/fapi/v1/listenKey",
-                                    {"listenKey": self._listen_key}, signed=False)
+                await self._request("PUT", "/fapi/v1/listenKey", {"listenKey": self._listen_key}, signed=False)
 
     # ── WebSocket userData stream（成交回报核心）────────
 
@@ -322,7 +345,8 @@ class BinanceAdapter(BaseAdapter):
         解析 ORDER_TRADE_UPDATE 事件 → FillEvent → 通知 execution/main.py。
         断线自动指数退避重连。
         """
-        import websockets   # lazy: optional WS lib, only needed for the live fill stream
+        import websockets  # lazy: optional WS lib, only needed for the live fill stream
+
         asyncio.create_task(self._keepalive_listen_key())
         retry = 5
 
@@ -358,34 +382,34 @@ class BinanceAdapter(BaseAdapter):
 
         if event == "ORDER_TRADE_UPDATE":
             o = msg.get("o", {})
-            status      = o.get("X")   # order status
-            exec_type   = o.get("x")   # execution type: TRADE / NEW / CANCELED
+            status = o.get("X")  # order status
+            exec_type = o.get("x")  # execution type: TRADE / NEW / CANCELED
             exchange_id = str(o.get("i", ""))
-            symbol      = o.get("s", "")
-            side        = o.get("S", "")   # BUY / SELL
-            last_qty    = float(o.get("l", 0))   # last filled qty
-            last_price  = float(o.get("L", 0))   # last filled price
-            fee         = float(o.get("n", 0))   # commission
+            symbol = o.get("s", "")
+            side = o.get("S", "")  # BUY / SELL
+            last_qty = float(o.get("l", 0))  # last filled qty
+            last_price = float(o.get("L", 0))  # last filled price
+            fee = float(o.get("n", 0))  # commission
 
             if exec_type != "TRADE" or last_qty <= 0:
                 return
 
             # 累积部分成交
             acc = self._partial_fills.setdefault(exchange_id, {"qty": 0.0, "notional": 0.0})
-            acc["qty"]     += last_qty
+            acc["qty"] += last_qty
             acc["notional"] += last_qty * last_price
 
             is_final = status in ("FILLED",)
 
             fill = FillEvent(
-                exchange_id  = exchange_id,
-                symbol       = symbol,
-                side         = side,
-                filled_qty   = last_qty,
-                filled_price = last_price,
-                fee          = fee,
-                is_final     = is_final,
-                ts           = datetime.utcnow(),
+                exchange_id=exchange_id,
+                symbol=symbol,
+                side=side,
+                filled_qty=last_qty,
+                filled_price=last_price,
+                fee=fee,
+                is_final=is_final,
+                ts=datetime.utcnow(),
             )
             await self._emit_fill(fill)
 

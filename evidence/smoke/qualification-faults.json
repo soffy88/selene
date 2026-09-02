@@ -1,0 +1,88 @@
+{
+  "generated_at": "2026-09-01T23:53:46.598500+00:00",
+  "status": "PASS",
+  "docker": true,
+  "duplicate_external_side_effects": 0,
+  "cases": [
+    {
+      "name": "duplicate_message",
+      "status": "PASS",
+      "detail": {
+        "submits": 1
+      }
+    },
+    {
+      "name": "timeout_no_resubmit",
+      "status": "PASS",
+      "detail": {
+        "status": "acked",
+        "submits": 2,
+        "before": 2
+      }
+    },
+    {
+      "name": "out_of_order_fills",
+      "status": "PASS",
+      "detail": {
+        "state": "FILLED",
+        "filled_qty": 2.0
+      }
+    },
+    {
+      "name": "partial_fill",
+      "status": "PASS",
+      "detail": {
+        "state": "PARTIALLY_FILLED",
+        "filled_qty": 0.75
+      }
+    },
+    {
+      "name": "process_restart_inflight",
+      "status": "PASS",
+      "detail": {
+        "state": "QUARANTINED"
+      }
+    },
+    {
+      "name": "process_restart_open",
+      "status": "PASS",
+      "detail": {
+        "state": "OPEN"
+      }
+    },
+    {
+      "name": "ledger_restart",
+      "status": "PASS",
+      "detail": {
+        "found": "acked"
+      }
+    }
+  ],
+  "infra": [
+    {
+      "name": "restart_qual-postgres",
+      "returncode": 0
+    },
+    {
+      "name": "restart_qual-redis",
+      "returncode": 0
+    },
+    {
+      "name": "wait_after_restart",
+      "returncode": 0
+    },
+    {
+      "name": "postgres_recover",
+      "returncode": 0,
+      "stdout": "1",
+      "status": "PASS"
+    },
+    {
+      "name": "redis_recover",
+      "returncode": 0,
+      "stdout": "PONG",
+      "status": "PASS"
+    }
+  ],
+  "exec_mode": "PAPER"
+}

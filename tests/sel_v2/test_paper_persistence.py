@@ -6,12 +6,13 @@ the persistence wiring without a DB: a deterministic trade id (idempotent across
 the engine's full-history replays) and that _persist_results maps positions to
 the writer correctly.
 """
+
 import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from sel_v2.paper.paper_engine import PaperEngine, _trade_id
-from sel_v2.strategies.sub_account import Position, ClosedPosition
+from sel_v2.strategies.sub_account import ClosedPosition, Position
 
 
 def test_trade_id_is_deterministic_and_distinct():
@@ -19,9 +20,9 @@ def test_trade_id_is_deterministic_and_distinct():
     a = _trade_id("strategy_1", "subaccount_1", t, "LONG", 30000.0)
     b = _trade_id("strategy_1", "subaccount_1", t, "LONG", 30000.0)
     c = _trade_id("strategy_1", "subaccount_1", t, "SHORT", 30000.0)
-    assert a == b           # idempotent across replays
-    assert a != c           # different trade → different id
-    assert len(a) == 36     # uuid string
+    assert a == b  # idempotent across replays
+    assert a != c  # different trade → different id
+    assert len(a) == 36  # uuid string
 
 
 class _RecordingWriter:
@@ -39,10 +40,18 @@ class _RecordingWriter:
 
 
 def _pos(**kw):
-    base = dict(id="x", strategy="strategy_1", sub_account="subaccount_1",
-                direction="LONG", entry_price=30000.0, size_usdt=1000.0,
-                leverage=2.0, instrument="BTC-USDT",
-                entry_time=datetime(2026, 1, 1, tzinfo=timezone.utc), entry_state="Critical")
+    base = dict(
+        id="x",
+        strategy="strategy_1",
+        sub_account="subaccount_1",
+        direction="LONG",
+        entry_price=30000.0,
+        size_usdt=1000.0,
+        leverage=2.0,
+        instrument="BTC-USDT",
+        entry_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        entry_state="Critical",
+    )
     base.update(kw)
     return Position(**base)
 
@@ -50,9 +59,14 @@ def _pos(**kw):
 def _make_engine():
     open_pos = _pos(id="o1", entry_price=31000.0)
     closed_inner = _pos(id="c1", entry_price=30000.0)
-    closed = ClosedPosition(position=closed_inner, exit_price=30500.0,
-                            exit_time=datetime(2026, 1, 2, tzinfo=timezone.utc),
-                            exit_reason="EXIT_FULL", pnl_usdt=33.3, pnl_pct=0.0166)
+    closed = ClosedPosition(
+        position=closed_inner,
+        exit_price=30500.0,
+        exit_time=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        exit_reason="EXIT_FULL",
+        pnl_usdt=33.3,
+        pnl_pct=0.0166,
+    )
     a1 = SimpleNamespace(open_positions=[open_pos], closed_positions=[closed])
     a2 = SimpleNamespace(open_positions=[], closed_positions=[])
     accounts = SimpleNamespace(subaccount_1=a1, subaccount_2=a2)
@@ -66,10 +80,10 @@ def test_persist_results_maps_positions_and_states():
     asyncio.run(pe._persist_results(eng))
 
     w = pe._writer
-    assert w.state_calls == 1                      # state history persisted
-    assert len(w.trades) == 2                      # one closed + one open
+    assert w.state_calls == 1  # state history persisted
+    assert len(w.trades) == 2  # one closed + one open
 
-    by_state = {t["entry_state"]: t for t in w.trades}
+    {t["entry_state"]: t for t in w.trades}
     # Closed trade carries exit fields
     closed = next(t for t in w.trades if t["exit_price"] is not None)
     assert closed["exit_reason"] == "EXIT_FULL"

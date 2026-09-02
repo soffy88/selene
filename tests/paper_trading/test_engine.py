@@ -1,6 +1,8 @@
 """Tests for DecisionEngine."""
-import pytest
+
 from datetime import datetime, timezone
+
+import pytest
 
 from decision.config import load_config
 from paper_trading.engine import DecisionEngine
@@ -11,10 +13,10 @@ from paper_trading.schema import (
     PositionSide,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def cfg():
@@ -59,6 +61,7 @@ _T = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
 # ---------------------------------------------------------------------------
 # Test cases
 # ---------------------------------------------------------------------------
+
 
 class TestDecisionEngineColdStart:
     def test_cold_start_returns_no_action(self, engine, cfg):

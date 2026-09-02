@@ -67,9 +67,7 @@ class SweepSignal:
     details: dict = field(default_factory=dict)
 
 
-def adaptive_percentile(
-    history, value: float, q: float, min_obs: int = MIN_PCTILE_OBS
-) -> Optional[bool]:
+def adaptive_percentile(history, value: float, q: float, min_obs: int = MIN_PCTILE_OBS) -> Optional[bool]:
     """Is `value` beyond the `q` quantile of `history`? Returns None (not False) when there
     are fewer than `min_obs` finite samples — the three-state discipline the codebase uses:
     a not-yet-warm feed abstains rather than asserting a signal. For q ≥ 0.5 the test is
@@ -102,9 +100,7 @@ def detect_absorption(
     tf_net = abs(taker_net) / taker_vol
     price_response = abs(price_delta_abs) / atr
     effort_high = adaptive_percentile(tf_net_history, tf_net, ABSORPTION_TF_Q)
-    result_low = adaptive_percentile(
-        price_response_history, price_response, ABSORPTION_PR_Q
-    )
+    result_low = adaptive_percentile(price_response_history, price_response, ABSORPTION_PR_Q)
     present = effort_high is True and result_low is True
     direction: Optional[Side] = None
     if present and taker_net != 0:
@@ -166,9 +162,7 @@ def detect_sweep(
             direction="down",
             details={"touch_low": touch_low, "low_48h": low_48h},
         )
-    return SweepSignal(
-        present=False, details={"swept_high": swept_high, "swept_low": swept_low}
-    )
+    return SweepSignal(present=False, details={"swept_high": swept_high, "swept_low": swept_low})
 
 
 def _cusum_side(cusum_direction: Optional[str]) -> Optional[Side]:
@@ -194,12 +188,7 @@ def classify_entry_type(
         return None
 
     # Type A (reversal): both reversal signatures present AND aligned with the CUSUM side.
-    if (
-        absorption.present
-        and absorption.direction == side
-        and sweep.present
-        and sweep.direction == side
-    ):
+    if absorption.present and absorption.direction == side and sweep.present and sweep.direction == side:
         return "A"
 
     # Type B (momentum): persistent same-direction taker flow and NO absorption to fade it.

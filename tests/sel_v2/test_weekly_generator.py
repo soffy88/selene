@@ -1,14 +1,11 @@
 """
 Tests for WeeklyGenerator — v2.0 §26.2 field completeness and structure.
 """
+
 from __future__ import annotations
 
 import os
-import re
 import tempfile
-from datetime import datetime, timezone
-
-import pytest
 
 from sel_v2.reports.weekly_generator import WeeklyGenerator
 
@@ -28,8 +25,12 @@ def _make_full_data(week: str = "2026-W18") -> dict:
             },
             "state_switches": {"Critical": 1},
             "transitions": [
-                {"from_state": "Drifting_Calm", "to_state": "Critical",
-                 "timestamp": "2026-04-29 12:00", "trigger_condition": "σ > 90 pctile"},
+                {
+                    "from_state": "Drifting_Calm",
+                    "to_state": "Critical",
+                    "timestamp": "2026-04-29 12:00",
+                    "trigger_condition": "σ > 90 pctile",
+                },
             ],
             "total_hours": 168.0,
         },
@@ -45,23 +46,31 @@ def _make_full_data(week: str = "2026-W18") -> dict:
             "vocab_counts": {"Sweep": 3, "Absorption": 1},
         },
         "strategy1_perf": {
-            "entries": 1, "exits": 1, "avg_hold_hours": 36.0,
+            "entries": 1,
+            "exits": 1,
+            "avg_hold_hours": 36.0,
             "time_stop_triggers": 0,
-            "total_pnl_usdt": 12.5, "win_rate_pct": 100.0,
-            "avg_win_usdt": 12.5, "avg_loss_usdt": None,
+            "total_pnl_usdt": 12.5,
+            "win_rate_pct": 100.0,
+            "avg_win_usdt": 12.5,
+            "avg_loss_usdt": None,
             "max_single_drawdown_usdt": -4.2,
-            "critical_reduce_count": 0, "cascade_exit_count": 0,
+            "critical_reduce_count": 0,
+            "cascade_exit_count": 0,
             "stop_loss_count": 0,
         },
         "strategy2_perf": {
-            "entries": 0, "exits": 0,
+            "entries": 0,
+            "exits": 0,
         },
         "coordination_events": {
             "reverse_hedge_count": 0,
             "independent_same_direction_count": 1,
         },
         "anomalies": {
-            "data_gaps": [], "api_errors": [], "decision_anomalies": [],
+            "data_gaps": [],
+            "api_errors": [],
+            "decision_anomalies": [],
         },
         "account_state": {
             "sub_account_1_usdt": 8_000.0,
@@ -76,6 +85,7 @@ def _make_full_data(week: str = "2026-W18") -> dict:
 
 
 # ── Structure tests ───────────────────────────────────────────────────────────
+
 
 def test_generate_markdown_returns_string():
     gen = WeeklyGenerator()
@@ -159,6 +169,7 @@ def test_na_values_present_when_no_data():
 
 
 # ── File write tests ──────────────────────────────────────────────────────────
+
 
 def test_write_to_disk_creates_file():
     with tempfile.TemporaryDirectory() as tmp:

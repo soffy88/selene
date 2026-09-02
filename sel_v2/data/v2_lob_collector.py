@@ -1,19 +1,18 @@
 import asyncio
 import json
 import logging
-import os
 import math
+import os
 from datetime import datetime, timezone
+
 import aiohttp
 import asyncpg
 
+from sel_v2.data.binance_rest import BINANCE_PROXY, fetch_json, to_binance_symbol
+from sel_v2.data.insert_guard import InsertFailureLimitExceeded, InsertGuard
 from sel_v2.db.migrations import apply_schema
-from sel_v2.data.insert_guard import InsertGuard, InsertFailureLimitExceeded
-from sel_v2.data.binance_rest import fetch_json, to_binance_symbol, BINANCE_PROXY
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("v2_lob_collector")
 
 _guard = InsertGuard("v2_lob_snapshots")
@@ -59,9 +58,7 @@ async def collect_lob(pool):
                 continue
             if book and book.get("bids") and book.get("asks"):
                 # Binance depth 'T' = book transaction time (ms); fall back to now.
-                ts_ms = int(
-                    book.get("T") or datetime.now(timezone.utc).timestamp() * 1000
-                )
+                ts_ms = int(book.get("T") or datetime.now(timezone.utc).timestamp() * 1000)
                 ts = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
                 bids = book["bids"]
                 asks = book["asks"]
@@ -84,9 +81,7 @@ async def collect_lob(pool):
                     if insert_count == 1:
                         logger.info("INSERT row 1 to v2_lob_snapshots")
                     if insert_count % 100 == 0:
-                        logger.info(
-                            f"v2_lob_snapshots cumulative inserts: {insert_count}"
-                        )
+                        logger.info(f"v2_lob_snapshots cumulative inserts: {insert_count}")
                 except Exception as db_e:
                     _guard.fail(db_e)
             await asyncio.sleep(LOB_POLL_S)

@@ -12,6 +12,7 @@ candles and funding history in exactly the shape WFOEngine.run() consumes:
 Network I/O is isolated in `_get_json`; the row-shaping logic (`_parse_klines`,
 `_parse_funding`) is pure and unit-tested.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -28,9 +29,18 @@ _FUNDING_MAX = 1000
 
 # interval string -> milliseconds, for backward pagination.
 _INTERVAL_MS = {
-    "1m": 60_000, "3m": 180_000, "5m": 300_000, "15m": 900_000, "30m": 1_800_000,
-    "1h": 3_600_000, "2h": 7_200_000, "4h": 14_400_000, "6h": 21_600_000,
-    "8h": 28_800_000, "12h": 43_200_000, "1d": 86_400_000,
+    "1m": 60_000,
+    "3m": 180_000,
+    "5m": 300_000,
+    "15m": 900_000,
+    "30m": 1_800_000,
+    "1h": 3_600_000,
+    "2h": 7_200_000,
+    "4h": 14_400_000,
+    "6h": 21_600_000,
+    "8h": 28_800_000,
+    "12h": 43_200_000,
+    "1d": 86_400_000,
 }
 
 
@@ -39,23 +49,22 @@ def _parse_klines(raw: list[list]) -> list[dict]:
     Binance row: [openTime, open, high, low, close, volume, closeTime, ...]."""
     out = []
     for k in raw:
-        out.append({
-            "open_time": int(k[0]),
-            "open": float(k[1]),
-            "high": float(k[2]),
-            "low": float(k[3]),
-            "close": float(k[4]),
-            "volume": float(k[5]),
-        })
+        out.append(
+            {
+                "open_time": int(k[0]),
+                "open": float(k[1]),
+                "high": float(k[2]),
+                "low": float(k[3]),
+                "close": float(k[4]),
+                "volume": float(k[5]),
+            }
+        )
     return out
 
 
 def _parse_funding(raw: list[dict]) -> list[dict]:
     """Map Binance fundingRate records to {funding_time, funding_rate}."""
-    return [
-        {"funding_time": int(r["fundingTime"]), "funding_rate": float(r["fundingRate"])}
-        for r in raw
-    ]
+    return [{"funding_time": int(r["fundingTime"]), "funding_rate": float(r["fundingRate"])} for r in raw]
 
 
 class MarketDataRESTClient:
@@ -70,7 +79,10 @@ class MarketDataRESTClient:
                 return await resp.json()
 
     async def fetch_klines(
-        self, symbol: str, interval: str = "1h", limit: int = 1000,
+        self,
+        symbol: str,
+        interval: str = "1h",
+        limit: int = 1000,
     ) -> list[dict]:
         """Fetch up to `limit` most-recent klines, paging backward when
         limit > the per-request cap. Returned ascending by open_time."""
@@ -103,7 +115,9 @@ class MarketDataRESTClient:
         return [collected[t] for t in sorted(collected)]
 
     async def fetch_funding_history(
-        self, symbol: str, limit: int = _FUNDING_MAX,
+        self,
+        symbol: str,
+        limit: int = _FUNDING_MAX,
     ) -> list[dict]:
         """Fetch funding-rate history (most recent `limit` settlements),
         ascending by funding_time."""

@@ -28,18 +28,12 @@ import numpy as np
 from sel_v2.paper.paper_engine import PaperEngine
 from sel_v2.paper.strategy_engine import PaperStrategyEngine
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("state_annotator")
 
 SYMBOL = os.environ.get("SYMBOLS", "BTC-USDT")
-REPORT_PATH = (
-    Path(__file__).resolve().parents[1] / "reports" / "state_annotation_baseline_v1.md"
-)
-DEATH_MODE_THRESHOLD = (
-    0.95  # a single state ≥ this share → STOP (v1.0 death-mode signal)
-)
+REPORT_PATH = Path(__file__).resolve().parents[1] / "reports" / "state_annotation_baseline_v1.md"
+DEATH_MODE_THRESHOLD = 0.95  # a single state ≥ this share → STOP (v1.0 death-mode signal)
 
 
 def _feature_split(features) -> tuple[list[str], list[str]]:
@@ -80,9 +74,7 @@ async def annotate() -> dict:
         await pe._load_strategy_params()
         df = await pe._load_bars_df()
         if df is None or len(df) < 30:
-            raise SystemExit(
-                f"not enough bars to annotate (have {0 if df is None else len(df)})"
-            )
+            raise SystemExit(f"not enough bars to annotate (have {0 if df is None else len(df)})")
 
         try:
             import ripser  # noqa: F401
@@ -165,16 +157,12 @@ async def annotate() -> dict:
         top_state, top_n = dist.most_common(1)[0]
         top_share = top_n / total
 
-        report = _build_report(
-            dist, total, dwell, degraded_count, top_state, top_share, n
-        )
+        report = _build_report(dist, total, dwell, degraded_count, top_state, top_share, n)
         print(report)  # always emit to stdout (raw), even if the repo path is read-only
         try:
             REPORT_PATH.write_text(report)
             logger.info("report written to %s", REPORT_PATH)
-        except (
-            OSError
-        ) as exc:  # container mounts /app read-only — stdout still carries it
+        except OSError as exc:  # container mounts /app read-only — stdout still carries it
             logger.warning("could not write report file (%s): %s", REPORT_PATH, exc)
 
         result = {

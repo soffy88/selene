@@ -4,19 +4,19 @@ Tests for WeeklyReportGenerator — Wave 5.
 All tests use synthetic trail data via make_trail().
 No DB, no network, no async.
 """
+
 from __future__ import annotations
 
 import os
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import pytest
 
 from paper_trading.trail import DecisionTrail
 from reports.generator import WeeklyReportGenerator
-from sel_engine.states.health import HealthMonitor, HealthReport
-from sel_engine.states.schema import StateLabel, StateRecord
+from sel_engine.states.health import HealthReport
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -88,8 +88,13 @@ def _make_health_report(
 ) -> HealthReport:
     """Build a minimal HealthReport for tests."""
     all_states = [
-        "Coiling", "Surging_Up", "Surging_Down",
-        "Drifting_Calm", "Drifting_Charged", "Critical", "Cascade",
+        "Coiling",
+        "Surging_Up",
+        "Surging_Down",
+        "Drifting_Calm",
+        "Drifting_Charged",
+        "Critical",
+        "Cascade",
     ]
     counts = {s: 0 for s in all_states}
     if state_counts:
@@ -119,8 +124,13 @@ def _make_week_of_trails() -> list[DecisionTrail]:
     """Build 168 synthetic trails (one per hour for a week)."""
     trails = []
     state_cycle = [
-        "Coiling", "Coiling", "Surging_Up", "Drifting_Calm", "Drifting_Calm",
-        "Cascade", "Drifting_Charged",
+        "Coiling",
+        "Coiling",
+        "Surging_Up",
+        "Drifting_Calm",
+        "Drifting_Calm",
+        "Cascade",
+        "Drifting_Charged",
     ]
     for i in range(168):
         state = state_cycle[i % len(state_cycle)]
@@ -158,6 +168,7 @@ def _make_week_of_trails() -> list[DecisionTrail]:
 # Fixtures
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture()
 def generator(tmp_path):
     return WeeklyReportGenerator(), str(tmp_path)
@@ -183,6 +194,7 @@ def health(week_trails):
 # ──────────────────────────────────────────────────────────────────────────────
 # Tests
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class TestGenerateBasic:
     """Test 1: generate() returns a file path that exists."""
@@ -222,8 +234,13 @@ class TestStateDistribution:
         path = gen.generate(week_trails, health, WEEK_ISO, str(tmp_path))
         content = open(path).read()
         for state in [
-            "Coiling", "Surging_Up", "Surging_Down",
-            "Drifting_Calm", "Drifting_Charged", "Critical", "Cascade",
+            "Coiling",
+            "Surging_Up",
+            "Surging_Down",
+            "Drifting_Calm",
+            "Drifting_Charged",
+            "Critical",
+            "Cascade",
         ]:
             assert state in content, f"State {state} missing from distribution table"
 
@@ -231,8 +248,7 @@ class TestStateDistribution:
         """States with 0 occurrences should still appear."""
         # Only Coiling trails — other states should show 0%
         single_state_trails = [
-            make_trail(offset_hours=i, current_state="Coiling", final_action="no_action")
-            for i in range(10)
+            make_trail(offset_hours=i, current_state="Coiling", final_action="no_action") for i in range(10)
         ]
         small_health = _make_health_report(state_counts={"Coiling": 10})
         gen = WeeklyReportGenerator()
@@ -371,10 +387,7 @@ class TestMissingFillPrice:
     """Test 11: Missing fill_price fields handled gracefully (no crash)."""
 
     def test_no_crash_with_none_fill_price(self, tmp_path, health):
-        trails = [
-            make_trail(offset_hours=i, fill_price=None, fill_size_usdt=None)
-            for i in range(20)
-        ]
+        trails = [make_trail(offset_hours=i, fill_price=None, fill_size_usdt=None) for i in range(20)]
         gen = WeeklyReportGenerator()
         # Should not raise
         path = gen.generate(trails, _make_health_report(), WEEK_ISO, str(tmp_path))

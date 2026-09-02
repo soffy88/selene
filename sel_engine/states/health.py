@@ -3,9 +3,10 @@ Wave 3 — HealthMonitor + HealthReport.
 
 Expected state rate ranges are PLACEHOLDERS pending spec finalisation.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -14,13 +15,13 @@ from .schema import StateLabel, StateNoneReason, StateRecord
 # ── Expected "healthy" rate ranges (fraction of active bars) ──────────────────
 # PLACEHOLDER — verify expected ranges with v1.0.md §10.5 when available
 EXPECTED_RATE_RANGES: dict[str, tuple[float, float]] = {
-    "Coiling":          (0.10, 0.25),   # PLACEHOLDER — verify with v1.0.md §10.5 when available
-    "Surging_Up":       (0.05, 0.15),   # PLACEHOLDER — verify with v1.0.md §10.5 when available
-    "Surging_Down":     (0.05, 0.15),   # PLACEHOLDER — verify with v1.0.md §10.5 when available
-    "Drifting_Calm":    (0.20, 0.45),   # PLACEHOLDER — verify with v1.0.md §10.5 when available
-    "Drifting_Charged": (0.05, 0.20),   # PLACEHOLDER — verify with v1.0.md §10.5 when available
-    "Critical":         (0.02, 0.10),   # PLACEHOLDER — verify with v1.0.md §10.5 when available
-    "Cascade":          (0.001, 0.03),  # PLACEHOLDER — verify with v1.0.md §10.5 when available
+    "Coiling": (0.10, 0.25),  # PLACEHOLDER — verify with v1.0.md §10.5 when available
+    "Surging_Up": (0.05, 0.15),  # PLACEHOLDER — verify with v1.0.md §10.5 when available
+    "Surging_Down": (0.05, 0.15),  # PLACEHOLDER — verify with v1.0.md §10.5 when available
+    "Drifting_Calm": (0.20, 0.45),  # PLACEHOLDER — verify with v1.0.md §10.5 when available
+    "Drifting_Charged": (0.05, 0.20),  # PLACEHOLDER — verify with v1.0.md §10.5 when available
+    "Critical": (0.02, 0.10),  # PLACEHOLDER — verify with v1.0.md §10.5 when available
+    "Cascade": (0.001, 0.03),  # PLACEHOLDER — verify with v1.0.md §10.5 when available
 }
 
 
@@ -30,17 +31,17 @@ class HealthReport:
     period_end: datetime
     total_bars: int
     cold_start_bars: int
-    missing_data_bars: int                 # WIKI_REQUIRED feature absent, post-warmup
-    no_match_bars: int                     # all data present but no condition matched
-    active_bars: int                       # bars with a confirmed state (not None)
+    missing_data_bars: int  # WIKI_REQUIRED feature absent, post-warmup
+    no_match_bars: int  # all data present but no condition matched
+    active_bars: int  # bars with a confirmed state (not None)
     state_counts: dict[str, int]
-    state_rates: dict[str, float]          # fraction of active_bars
-    legal_transition_rate: float           # fraction of state-change events that are legal
-    illegal_transition_types: dict[str, int]   # e.g. {"CASCADE->SURGING_UP": 3}
-    avg_dwell_times: dict[str, float]      # mean consecutive bars spent in each state
-    cascade_cooling_events: int            # how many times Critical was suppressed by cooling
-    in_healthy_range: bool                 # True if all state rates match EXPECTED_RATE_RANGES
-    health_warnings: list[str]             # human-readable issues
+    state_rates: dict[str, float]  # fraction of active_bars
+    legal_transition_rate: float  # fraction of state-change events that are legal
+    illegal_transition_types: dict[str, int]  # e.g. {"CASCADE->SURGING_UP": 3}
+    avg_dwell_times: dict[str, float]  # mean consecutive bars spent in each state
+    cascade_cooling_events: int  # how many times Critical was suppressed by cooling
+    in_healthy_range: bool  # True if all state rates match EXPECTED_RATE_RANGES
+    health_warnings: list[str]  # human-readable issues
 
 
 class HealthMonitor:
@@ -130,9 +131,7 @@ class HealthMonitor:
         illegal_transitions = [t for t in transitions if not t.is_legal_transition]
         illegal_count = len(illegal_transitions)
         legal_count = total_transitions - illegal_count
-        legal_transition_rate = (
-            legal_count / total_transitions if total_transitions > 0 else 1.0
-        )
+        legal_transition_rate = legal_count / total_transitions if total_transitions > 0 else 1.0
 
         illegal_transition_types: dict[str, int] = {}
         for t in illegal_transitions:
@@ -144,39 +143,29 @@ class HealthMonitor:
         avg_dwell_times = self._compute_avg_dwell(records)
 
         # Cascade cooling events in window
-        cooling_events = sum(
-            1 for r in records if r.reason.startswith("CASCADE_COOLING:")
-        )
+        cooling_events = sum(1 for r in records if r.reason.startswith("CASCADE_COOLING:"))
 
         # Health warnings
         health_warnings: list[str] = []
         in_healthy_range = True
 
         if active_bars < 720:
-            health_warnings.append(
-                f"[INSUFFICIENT_DATA: warmup] active_bars={active_bars} < 720"
-            )
+            health_warnings.append(f"[INSUFFICIENT_DATA: warmup] active_bars={active_bars} < 720")
             in_healthy_range = False
 
         if total_bars > 0:
             missing_data_pct = missing_data_bars / total_bars
             if missing_data_pct > 0.1:
-                health_warnings.append(
-                    f"[DEGRADED: collector_data_missing {missing_data_pct:.1%}]"
-                )
+                health_warnings.append(f"[DEGRADED: collector_data_missing {missing_data_pct:.1%}]")
                 in_healthy_range = False
 
         for lbl_str, (lo, hi) in EXPECTED_RATE_RANGES.items():
             rate = state_rates.get(lbl_str, 0.0)
             if rate < lo:
-                health_warnings.append(
-                    f"{lbl_str} rate {rate:.4f} below expected [{lo}, {hi}]"
-                )
+                health_warnings.append(f"{lbl_str} rate {rate:.4f} below expected [{lo}, {hi}]")
                 in_healthy_range = False
             elif rate > hi:
-                health_warnings.append(
-                    f"{lbl_str} rate {rate:.4f} above expected [{lo}, {hi}]"
-                )
+                health_warnings.append(f"{lbl_str} rate {rate:.4f} above expected [{lo}, {hi}]")
                 in_healthy_range = False
 
         return HealthReport(

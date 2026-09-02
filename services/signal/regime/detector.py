@@ -4,8 +4,8 @@ Identifies 5 market regimes using ADX, ATR ratio, EMA alignment.
 This is the key v4 upgrade: same signal in different regimes has
 very different win rates.
 """
+
 import logging
-import math
 from collections import deque
 from typing import Optional
 
@@ -15,15 +15,15 @@ logger = logging.getLogger(__name__)
 
 # Regime-specific parameters (from ADR table in v4 spec)
 REGIME_PARAMS = {
-    Regime.TRENDING_UP:    {"atr_mult": 2.5, "kelly": 0.6, "max_lev": 2.5, "max_hold_h": 48},
-    Regime.TRENDING_DOWN:  {"atr_mult": 2.5, "kelly": 0.6, "max_lev": 2.5, "max_hold_h": 48},
-    Regime.RANGING:        {"atr_mult": 1.5, "kelly": 0.4, "max_lev": 1.5, "max_hold_h": 24},
-    Regime.HIGH_VOLATILITY:{"atr_mult": 3.0, "kelly": 0.3, "max_lev": 1.0, "max_hold_h": 8},
-    Regime.ACCUMULATION:   {"atr_mult": 2.0, "kelly": 0.5, "max_lev": 2.0, "max_hold_h": 72},
-    Regime.UNKNOWN:        {"atr_mult": 2.0, "kelly": 0.4, "max_lev": 1.5, "max_hold_h": 24},
+    Regime.TRENDING_UP: {"atr_mult": 2.5, "kelly": 0.6, "max_lev": 2.5, "max_hold_h": 48},
+    Regime.TRENDING_DOWN: {"atr_mult": 2.5, "kelly": 0.6, "max_lev": 2.5, "max_hold_h": 48},
+    Regime.RANGING: {"atr_mult": 1.5, "kelly": 0.4, "max_lev": 1.5, "max_hold_h": 24},
+    Regime.HIGH_VOLATILITY: {"atr_mult": 3.0, "kelly": 0.3, "max_lev": 1.0, "max_hold_h": 8},
+    Regime.ACCUMULATION: {"atr_mult": 2.0, "kelly": 0.5, "max_lev": 2.0, "max_hold_h": 72},
+    Regime.UNKNOWN: {"atr_mult": 2.0, "kelly": 0.4, "max_lev": 1.5, "max_hold_h": 24},
 }
 
-BUFFER = 50   # candles needed for regime calculation
+BUFFER = 50  # candles needed for regime calculation
 
 
 class RegimeDetector:
@@ -41,11 +41,11 @@ class RegimeDetector:
     def __init__(self, symbol: str):
         self.symbol = symbol
         self._closes: deque = deque(maxlen=250)
-        self._highs:  deque = deque(maxlen=250)
-        self._lows:   deque = deque(maxlen=250)
+        self._highs: deque = deque(maxlen=250)
+        self._lows: deque = deque(maxlen=250)
 
         self._regime: Regime = Regime.UNKNOWN
-        self._regime_bars: int = 0    # how many bars in current regime
+        self._regime_bars: int = 0  # how many bars in current regime
         self._min_bars_before_switch = 3  # hysteresis: need 3 bars to confirm switch
 
     def update(self, high: float, low: float, close: float) -> Regime:
@@ -72,14 +72,14 @@ class RegimeDetector:
 
     def _classify(self) -> Regime:
         closes = list(self._closes)
-        highs  = list(self._highs)
-        lows   = list(self._lows)
+        highs = list(self._highs)
+        lows = list(self._lows)
 
-        adx    = _calc_adx(highs, lows, closes, period=14)
-        atr    = _calc_atr(highs, lows, closes, period=14)
+        adx = _calc_adx(highs, lows, closes, period=14)
+        atr = _calc_atr(highs, lows, closes, period=14)
         atr_30 = _calc_atr(highs, lows, closes, period=30)
-        ema20  = _ema(closes, 20)
-        ema50  = _ema(closes, 50)
+        ema20 = _ema(closes, 20)
+        ema50 = _ema(closes, 50)
         ema200 = _ema(closes, 200) if len(closes) >= 200 else None
 
         # Anomalous volatility: ATR > 2x its 30d baseline
@@ -127,6 +127,7 @@ class RegimeDetector:
 
 # ── Technical helpers (pure functions, no external deps) ─────────────────────
 
+
 def _ema(closes: list[float], period: int) -> Optional[float]:
     if len(closes) < period:
         return None
@@ -143,8 +144,8 @@ def _calc_atr(highs: list, lows: list, closes: list, period: int = 14) -> Option
         return None
     import numpy as np
     from oprim import atr
-    return atr(np.array(highs, dtype=float), np.array(lows, dtype=float),
-               np.array(closes, dtype=float), period=period)
+
+    return atr(np.array(highs, dtype=float), np.array(lows, dtype=float), np.array(closes, dtype=float), period=period)
 
 
 def _calc_adx(highs: list, lows: list, closes: list, period: int = 14) -> Optional[float]:
@@ -154,22 +155,22 @@ def _calc_adx(highs: list, lows: list, closes: list, period: int = 14) -> Option
 
     plus_dm_list, minus_dm_list, tr_list = [], [], []
     for i in range(1, len(closes)):
-        up   = highs[i] - highs[i-1]
-        down = lows[i-1] - lows[i]
+        up = highs[i] - highs[i - 1]
+        down = lows[i - 1] - lows[i]
         plus_dm_list.append(up if up > down and up > 0 else 0)
         minus_dm_list.append(down if down > up and down > 0 else 0)
-        tr = max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1]))
+        tr = max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
         tr_list.append(tr)
 
     def wilder_smooth(values, n):
         s = sum(values[:n])
         result = [s]
         for v in values[n:]:
-            s = s - s/n + v
+            s = s - s / n + v
             result.append(s)
         return result
 
-    tr_s  = wilder_smooth(tr_list, period)
+    tr_s = wilder_smooth(tr_list, period)
     pdm_s = wilder_smooth(plus_dm_list, period)
     mdm_s = wilder_smooth(minus_dm_list, period)
 
@@ -179,7 +180,7 @@ def _calc_adx(highs: list, lows: list, closes: list, period: int = 14) -> Option
             continue
         pdi = 100 * pdm_s[i] / tr_s[i]
         mdi = 100 * mdm_s[i] / tr_s[i]
-        dx  = 100 * abs(pdi - mdi) / (pdi + mdi) if (pdi + mdi) > 0 else 0
+        dx = 100 * abs(pdi - mdi) / (pdi + mdi) if (pdi + mdi) > 0 else 0
         dx_list.append(dx)
 
     if len(dx_list) < period:

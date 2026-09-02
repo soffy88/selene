@@ -1,4 +1,5 @@
 """§26.2 Section 6: 協調層事件."""
+
 from __future__ import annotations
 
 from typing import Any

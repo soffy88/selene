@@ -4,6 +4,7 @@ ReportScheduler — Wave 5.
 Called each bar; triggers WeeklyReportGenerator on ISO week boundary
 (Monday 00:00 UTC).
 """
+
 from __future__ import annotations
 
 from datetime import datetime

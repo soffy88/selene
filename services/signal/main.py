@@ -22,50 +22,50 @@ from datetime import datetime
 
 from fastapi import FastAPI
 
-from shared.db.connections import get_pg, get_redis, redis_health
-from shared.events.streams import (
-    STREAM_MARKET_CANDLES,
-    STREAM_MARKET_RAW,
-    STREAM_SIGNAL_SCORED,
-    STREAM_ORDER_LIFECYCLE,
-    CG_SIGNAL,
-    encode,
-    decode,
-    run_forever,
-)
-from shared.models.signal import (
-    ScoredSignal,
-    SignalType,
-    Direction,
-    Regime,
-)
-from services.signal.regime.detector import RegimeDetector, REGIME_PARAMS
 from services.signal.factors.composite import (
-    MultiFactorScorer,
     FactorScores,
-    score_rsi,
-    score_ema_alignment,
-    score_funding_zscore,
-    score_oi_momentum,
-    score_lsr_divergence,
+    MultiFactorScorer,
     get_onchain_factor,
     load_calibration,
-    save_calibration,
     platt_fit,
+    save_calibration,
+    score_ema_alignment,
+    score_funding_zscore,
+    score_lsr_divergence,
+    score_oi_momentum,
+    score_rsi,
 )
+from services.signal.ic_health import ic_health_scalar
+from services.signal.regime.detector import RegimeDetector
 
 # ── 新增：HMM Regime + EWMA权重学习 ──────────────────────
 from services.signal.regime.hmm_detector import (
     HMMRegimeDetector,
-    get_hmm_regime,
     fuse_regimes,
+    get_hmm_regime,
 )
 from services.signal.weight_learner import (
     WeightLearner,
-    read_dynamic_weights,
     get_learner_status,
+    read_dynamic_weights,
 )
-from services.signal.ic_health import ic_health_scalar
+from shared.db.connections import get_pg, get_redis, redis_health
+from shared.events.streams import (
+    CG_SIGNAL,
+    STREAM_MARKET_CANDLES,
+    STREAM_MARKET_RAW,
+    STREAM_ORDER_LIFECYCLE,
+    STREAM_SIGNAL_SCORED,
+    decode,
+    encode,
+    run_forever,
+)
+from shared.models.signal import (
+    Direction,
+    Regime,
+    ScoredSignal,
+    SignalType,
+)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -447,10 +447,7 @@ class SignalService:
 
         # 价格时效:candle 断供时 market.raw 仍会触发评分,不能拿过期收盘价当现价
         bar_close_ts = mkt.get("bar_close_ts")
-        if (
-            bar_close_ts
-            and time.time() - bar_close_ts > CANDLE_INTERVAL_SECS + STALE_CANDLE_SECS
-        ):
+        if bar_close_ts and time.time() - bar_close_ts > CANDLE_INTERVAL_SECS + STALE_CANDLE_SECS:
             return
 
         # 冷却检查
@@ -525,8 +522,7 @@ class SignalService:
         if ic_scalar < 1.0:
             kelly_f = round(kelly_f * ic_scalar, 4)
             logger.info(
-                f"IC-decay throttle {symbol}: ic={_ic_stats.get('ic')} "
-                f"n={_ic_stats.get('n')} kelly×{ic_scalar}"
+                f"IC-decay throttle {symbol}: ic={_ic_stats.get('ic')} n={_ic_stats.get('n')} kelly×{ic_scalar}"
             )
 
         # 判断方向（基于综合得分）
@@ -560,13 +556,9 @@ class SignalService:
 
         # 构建 ScoredSignal
         detector = self._get_detector(symbol)
-        atr = detector.params.get("atr_mult", 2.0) * (
-            mkt.get("high", price) - mkt.get("low", price)
-        )
+        atr = detector.params.get("atr_mult", 2.0) * (mkt.get("high", price) - mkt.get("low", price))
         stop_loss = price - atr if direction == Direction.LONG else price + atr
-        take_profit = (
-            price + atr * 1.5 if direction == Direction.LONG else price - atr * 1.5
-        )
+        take_profit = price + atr * 1.5 if direction == Direction.LONG else price - atr * 1.5
 
         signal = ScoredSignal(
             symbol=symbol,
@@ -598,9 +590,7 @@ class SignalService:
         signal_dict["ic_scalar"] = ic_scalar  # IC-decay throttle applied to sizing
         # 保留 raw 评分用于后续 calibration refit
         signal_dict["raw"] = best_score.raw
-        await r.xadd(
-            STREAM_SIGNAL_SCORED, encode(signal_dict), maxlen=10000, approximate=True
-        )
+        await r.xadd(STREAM_SIGNAL_SCORED, encode(signal_dict), maxlen=10000, approximate=True)
 
         # 缓存到 Redis（供 gateway 展示）
         await r.hset("cw4:signals:recent", signal.id, json.dumps(signal_dict))
@@ -609,8 +599,9 @@ class SignalService:
 
         # 持久化到 TimescaleDB
         try:
-            from shared.db.connections import get_pg
             import uuid as _uuid
+
+            from shared.db.connections import get_pg
 
             pg = await get_pg()
             async with pg.acquire() as conn:
@@ -660,9 +651,7 @@ class SignalService:
         if ic["n"] >= 10:
             await r.hset("cw4:ic_stats", symbol, json.dumps(ic))
 
-    def _compute_data_quality(
-        self, factors: "FactorScores", indicators: dict, mkt: dict
-    ) -> float:
+    def _compute_data_quality(self, factors: "FactorScores", indicators: dict, mkt: dict) -> float:
         """
         数据质量评分（0~1）：
           - 50% 来自核心指标完整性（RSI / EMA20 / EMA50 / EMA200 / funding_history）
@@ -680,11 +669,7 @@ class SignalService:
         import dataclasses
 
         _UNIMPLEMENTED = {"social", "orderbook"}
-        d = {
-            k: v
-            for k, v in dataclasses.asdict(factors).items()
-            if k not in _UNIMPLEMENTED
-        }
+        d = {k: v for k, v in dataclasses.asdict(factors).items() if k not in _UNIMPLEMENTED}
         nonzero = sum(1 for v in d.values() if abs(float(v)) > 1e-6)
         factor_score = nonzero / len(d) if d else 0.0
 
@@ -732,9 +717,7 @@ class SignalService:
         except Exception:
             pass
 
-    def _apply_dynamic_weights(
-        self, factors: FactorScores, weights: dict[str, float]
-    ) -> FactorScores:
+    def _apply_dynamic_weights(self, factors: FactorScores, weights: dict[str, float]) -> FactorScores:
         """
         用 EWMA 学习到的动态权重调节各因子值。
         动态权重影响的是因子的相对重要性（通过缩放因子值实现）。
@@ -742,6 +725,7 @@ class SignalService:
         比例：dyn_w / base_w 表示相对于基础权重的倍数。
         """
         import dataclasses
+
         from services.signal.weight_learner import BASE_WEIGHTS
 
         d = dataclasses.asdict(factors)
@@ -766,8 +750,9 @@ async def calibration_refit_loop():
     每 6 小时从 PG 拉近 30 天成交 (score, pnl) 对，拟合 Platt calibration。
     样本不足时跳过，保持既有参数。
     """
+    from datetime import datetime, timedelta, timezone
+
     from shared.db.connections import get_pg
-    from datetime import datetime, timezone, timedelta
 
     r = await get_redis()
     pg = await get_pg()
@@ -791,11 +776,7 @@ async def calibration_refit_loop():
                     since,
                 )
             scores = [float(row["raw"]) for row in rows if row["raw"] is not None]
-            outcomes = [
-                1 if float(row["realized_pnl"] or 0) > 0 else 0
-                for row in rows
-                if row["raw"] is not None
-            ]
+            outcomes = [1 if float(row["realized_pnl"] or 0) > 0 else 0 for row in rows if row["raw"] is not None]
             if len(scores) >= 30:
                 c, s = platt_fit(scores, outcomes)
                 _svc._scorer.update_calibration(c, s)
@@ -866,9 +847,7 @@ async def consume_loop():
                 try:
                     ev = decode(fields)
                     if ev.get("event") == "closed" or ev.get("state") == "CLOSED":
-                        _svc.record_signal_outcome(
-                            ev.get("signal_id", ""), _to_float(ev.get("exit_price"))
-                        )
+                        _svc.record_signal_outcome(ev.get("signal_id", ""), _to_float(ev.get("exit_price")))
                     await r.xack(STREAM_ORDER_LIFECYCLE, CG, msg_id)
                 except Exception as e:
                     logger.error(f"lifecycle: {e}", exc_info=True)
@@ -902,25 +881,21 @@ async def lifespan(app: FastAPI):
 
     # onchain→signal 桥：消费 signal.raw 里 onchain-sentinel 的鲸鱼流更新，收到即刷新
     # 该 symbol 的链上因子缓存。否则 signal.raw 是只产不消的孤儿流。(audit P1-a)
-    from services.signal.onchain.bridge import consume_onchain_factor_updates
     from services.signal.factors.composite import get_onchain_factor
+    from services.signal.onchain.bridge import consume_onchain_factor_updates
 
     async def _onchain_rescore(symbol: str):
         _svc._onchain_cache[symbol] = await get_onchain_factor(symbol)
 
     onchain_bridge_task = asyncio.create_task(
-        run_forever(
-            "onchain_bridge", lambda: consume_onchain_factor_updates(_onchain_rescore)
-        )
+        run_forever("onchain_bridge", lambda: consume_onchain_factor_updates(_onchain_rescore))
     )
 
     # 主消费循环（run_forever:Redis 断连不再永久杀死消费任务,2026-07-12 事故）
     consume_task = asyncio.create_task(run_forever("consume_loop", consume_loop))
 
     # Calibration 定期 refit（每6小时）
-    cal_task = asyncio.create_task(
-        run_forever("calibration_refit", calibration_refit_loop)
-    )
+    cal_task = asyncio.create_task(run_forever("calibration_refit", calibration_refit_loop))
 
     logger.info(
         f"Signal service ready | HMM symbols={symbols} | WeightLearner ON | CalibrationRefit ON | OnchainBridge ON"
@@ -942,6 +917,7 @@ async def metrics():
     """Prometheus exposition: service liveness + redis reachability.
     Scraped by the central observability stack (Prometheus/Grafana)."""
     from fastapi.responses import PlainTextResponse
+
     from shared.metrics import render_prometheus
 
     out = [

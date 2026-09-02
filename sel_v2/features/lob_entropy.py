@@ -37,9 +37,7 @@ from typing import Optional
 import numpy as np
 
 ENTROPY_VARIANCE_WINDOW_BARS = 6  # 24h at 4H bar cadence (GL1 D2 default window)
-ENTROPY_VARIANCE_MIN_BARS = (
-    4  # adaptive-window floor (mirrors BarRunner._precompute_rolling_pctile)
-)
+ENTROPY_VARIANCE_MIN_BARS = 4  # adaptive-window floor (mirrors BarRunner._precompute_rolling_pctile)
 
 
 def rolling_entropy_variance(

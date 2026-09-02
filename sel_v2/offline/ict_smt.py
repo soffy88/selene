@@ -70,7 +70,7 @@ def _scan_one_side(
     """Divergent highs (direction=-1, uses tops) or lows (+1, pass bottoms +
     the same comparison flipped via `direction`)."""
     out: list[SMTEvent] = []
-    for prev, cur in zip(tops_a, tops_a[1:]):
+    for prev, cur in zip(tops_a, tops_a[1:], strict=False):
         a_prev, a_cur = close_a[prev.end_idx], close_a[cur.end_idx]
         a_extends = a_cur > a_prev if direction == -1 else a_cur < a_prev
         if not a_extends:

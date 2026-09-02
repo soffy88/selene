@@ -1,5 +1,5 @@
-import asyncio
 import argparse
+import asyncio
 import logging
 import os
 from datetime import datetime, timezone
@@ -64,10 +64,13 @@ async def run_checks(db_url=None):
             # 1. v2_bars_4h count >= 180
             try:
                 bar_count = await conn.fetchval("SELECT count(*) FROM v2_bars_4h")
-                results.append({
-                    **_CHECKS[0], "ok": bar_count >= 180,
-                    "detail": f"count={bar_count}",
-                })
+                results.append(
+                    {
+                        **_CHECKS[0],
+                        "ok": bar_count >= 180,
+                        "detail": f"count={bar_count}",
+                    }
+                )
             except Exception as e:  # noqa: BLE001
                 results.append({**_CHECKS[0], "ok": False, "detail": f"query failed: {e}"})
 
@@ -77,33 +80,41 @@ async def run_checks(db_url=None):
                 params = await conn.fetch("SELECT param_key FROM v2_strategy_params")
                 param_keys = {p["param_key"] for p in params}
                 missing = required - param_keys
-                results.append({
-                    **_CHECKS[1], "ok": not missing,
-                    "detail": f"loaded={len(param_keys)}" + (f", missing={missing}" if missing else ""),
-                })
+                results.append(
+                    {
+                        **_CHECKS[1],
+                        "ok": not missing,
+                        "detail": f"loaded={len(param_keys)}" + (f", missing={missing}" if missing else ""),
+                    }
+                )
             except Exception as e:  # noqa: BLE001
                 results.append({**_CHECKS[1], "ok": False, "detail": f"query failed: {e}"})
 
             # 3. v2_lob_snapshots count > 0
             try:
                 lob_count = await conn.fetchval("SELECT count(*) FROM v2_lob_snapshots")
-                results.append({
-                    **_CHECKS[2], "ok": lob_count > 0,
-                    "detail": f"count={lob_count}",
-                })
+                results.append(
+                    {
+                        **_CHECKS[2],
+                        "ok": lob_count > 0,
+                        "detail": f"count={lob_count}",
+                    }
+                )
             except Exception as e:  # noqa: BLE001
                 results.append({**_CHECKS[2], "ok": False, "detail": f"query failed: {e}"})
 
             # 4. helixa GRANT (non-blocking warning)
             try:
                 helixa_exists = await conn.fetchval(
-                    "SELECT 1 FROM information_schema.tables "
-                    "WHERE table_name = 'metadata' AND table_catalog = 'helixa'"
+                    "SELECT 1 FROM information_schema.tables WHERE table_name = 'metadata' AND table_catalog = 'helixa'"
                 )
-                results.append({
-                    **_CHECKS[3], "ok": bool(helixa_exists),
-                    "detail": "accessible" if helixa_exists else "not found (non-blocking)",
-                })
+                results.append(
+                    {
+                        **_CHECKS[3],
+                        "ok": bool(helixa_exists),
+                        "detail": "accessible" if helixa_exists else "not found (non-blocking)",
+                    }
+                )
             except Exception as e:  # noqa: BLE001
                 results.append({**_CHECKS[3], "ok": False, "detail": f"check failed: {e} (non-blocking)"})
     finally:

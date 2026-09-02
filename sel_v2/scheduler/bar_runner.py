@@ -19,15 +19,14 @@ Feature computation strategy:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import Optional
 
 import numpy as np
 import pandas as pd
 
-from sel_v2.features.lob_entropy import rolling_entropy_variance, is_rising_3bar
-from sel_v2.states.schema import BarFeatures, StateRecord
+from sel_v2.features.lob_entropy import is_rising_3bar, rolling_entropy_variance
 from sel_v2.states.recognizer import StateRecognizer
+from sel_v2.states.schema import BarFeatures, StateRecord
 
 logger = logging.getLogger(__name__)
 
@@ -74,12 +73,8 @@ class BarRunner:
         oi_series: Optional[np.ndarray] = None,
         funding_series: Optional[np.ndarray] = None,
         ofi_proxy_series: Optional[np.ndarray] = None,
-        lob_depth_series: Optional[
-            np.ndarray
-        ] = None,  # total top-of-book depth (bid+ask) per bar
-        entropy_series: Optional[
-            np.ndarray
-        ] = None,  # LOB Shannon entropy per bar (from v2_lob_snapshots)
+        lob_depth_series: Optional[np.ndarray] = None,  # total top-of-book depth (bid+ask) per bar
+        entropy_series: Optional[np.ndarray] = None,  # LOB Shannon entropy per bar (from v2_lob_snapshots)
     ) -> None:
         self._closes = closes
         self._timestamps = timestamps
@@ -108,36 +103,24 @@ class BarRunner:
             _FUNDING_PCTILE_WINDOW,
         )
         self._funding_persistent = self._precompute_funding_persistent(funding_series)
-        self._ofi_cumulative_pctile = self._precompute_rolling_pctile(
-            ofi_proxy_series, _OFI_PCTILE_WINDOW
-        )
+        self._ofi_cumulative_pctile = self._precompute_rolling_pctile(ofi_proxy_series, _OFI_PCTILE_WINDOW)
         # Rolling rank of top-of-book depth: a LOW percentile = a thin/exhausted book,
         # which (with σ extreme) is Cascade condition 1 (§5.7). Previously always None →
         # Cascade cond-1 was permanently unreachable (audit P1-3).
-        self._lob_depth_pctile = self._precompute_rolling_pctile(
-            lob_depth_series, _LOB_DEPTH_PCTILE_WINDOW
-        )
+        self._lob_depth_pctile = self._precompute_rolling_pctile(lob_depth_series, _LOB_DEPTH_PCTILE_WINDOW)
         # LOB entropy is collected (v2_lob_snapshots.entropy) but was never aggregated into a
         # bar feature, so entropy_pctile was 100% null and Coiling (which needs entropy_low)
         # could never confirm (audit follow-up B). Wire it through as a rolling rank.
         self._entropy_raw = entropy_series
-        self._entropy_pctile = self._precompute_rolling_pctile(
-            entropy_series, _ENTROPY_PCTILE_WINDOW
-        )
+        self._entropy_pctile = self._precompute_rolling_pctile(entropy_series, _ENTROPY_PCTILE_WINDOW)
         # Rolling variance of entropy_4h + 3-bar monotone rise: Critical A2 (GL1 T0.1).
         # entropy_4h/entropy_pctile were already wired (audit follow-up B above); A2 needed
         # the *trend* of the series, which was still permanently None (states/critical_logic.py).
-        self._entropy_variance = (
-            rolling_entropy_variance(entropy_series)
-            if entropy_series is not None
-            else None
-        )
+        self._entropy_variance = rolling_entropy_variance(entropy_series) if entropy_series is not None else None
 
     # ── Helixa feature precomputation ─────────────────────────────────────────
 
-    def _precompute_oi_change_rate(
-        self, oi: Optional[np.ndarray]
-    ) -> Optional[np.ndarray]:
+    def _precompute_oi_change_rate(self, oi: Optional[np.ndarray]) -> Optional[np.ndarray]:
         if oi is None:
             return None
         n = len(oi)
@@ -176,9 +159,7 @@ class BarRunner:
                 pctile[i] = float(np.mean(valid <= series[i]))
         return pctile
 
-    def _precompute_oi_acceleration(
-        self, rate: Optional[np.ndarray]
-    ) -> Optional[np.ndarray]:
+    def _precompute_oi_acceleration(self, rate: Optional[np.ndarray]) -> Optional[np.ndarray]:
         if rate is None:
             return None
         n = len(rate)
@@ -188,9 +169,7 @@ class BarRunner:
                 accel[i] = 1.0 if rate[i] > rate[i - 1] else 0.0
         return accel
 
-    def _precompute_funding_persistent(
-        self, funding: Optional[np.ndarray]
-    ) -> Optional[np.ndarray]:
+    def _precompute_funding_persistent(self, funding: Optional[np.ndarray]) -> Optional[np.ndarray]:
         if funding is None:
             return None
         n = len(funding)
@@ -264,20 +243,12 @@ class BarRunner:
             )
 
         sigma = float(self._sigma[i])
-        sigma_pctile = (
-            float(self._sigma_pctile[i]) if np.isfinite(self._sigma_pctile[i]) else 0.5
-        )
+        sigma_pctile = float(self._sigma_pctile[i]) if np.isfinite(self._sigma_pctile[i]) else 0.5
 
         # σ monotone 3 bars: bars i-2, i-1, i all have increasing σ
         sigma_monotone: Optional[bool] = None
-        if (
-            i >= 2
-            and np.isfinite(self._sigma[i - 2])
-            and np.isfinite(self._sigma[i - 1])
-        ):
-            sigma_monotone = bool(
-                self._sigma[i - 2] < self._sigma[i - 1] < self._sigma[i]
-            )
+        if i >= 2 and np.isfinite(self._sigma[i - 2]) and np.isfinite(self._sigma[i - 1]):
+            sigma_monotone = bool(self._sigma[i - 2] < self._sigma[i - 1] < self._sigma[i])
 
         # Price breakout vs last 6 bars (24h)
         price_breakout_up: Optional[bool] = None
@@ -336,9 +307,7 @@ class BarRunner:
         entropy_pctile = _f(self._entropy_pctile)
         entropy_variance = _f(self._entropy_variance)
         entropy_variance_rising: Optional[bool] = (
-            is_rising_3bar(self._entropy_variance, i)
-            if self._entropy_variance is not None
-            else None
+            is_rising_3bar(self._entropy_variance, i) if self._entropy_variance is not None else None
         )
 
         return BarFeatures(
@@ -385,7 +354,5 @@ class BarRunner:
             rec = self.process_bar(i)
             records.append(rec)
             if i % 500 == 0:
-                logger.info(
-                    "BarRunner: bar %d/%d  state=%s", i, self._n, rec.state.value
-                )
+                logger.info("BarRunner: bar %d/%d  state=%s", i, self._n, rec.state.value)
         return records

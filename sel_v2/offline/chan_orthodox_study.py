@@ -22,7 +22,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from collections import Counter
 from pathlib import Path
 
 import asyncpg
@@ -56,9 +55,7 @@ from sel_v2.offline.lens_study import (
     test_h_ict2a,
 )
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("chan_orthodox_study")
 
 REPORT_PATH = Path(__file__).resolve().parents[2] / "analysis" / "chan_orthodox_v1.md"
@@ -180,7 +177,7 @@ async def run() -> dict:
         if "p" in res:
             family.append((tag, res["p"]))
     qs = bh_adjust([p for _t, p in family]) if family else []
-    fam_q = {t: q for (t, _p), q in zip(family, qs)}
+    fam_q = {t: q for (t, _p), q in zip(family, qs, strict=False)}
 
     # ── verdicts ─────────────────────────────────────────────────────────────
     # CHAN-4 adds value only if it BEATS the zigzag baseline somewhere material
@@ -189,11 +186,7 @@ async def run() -> dict:
     chan4_wins = []
     if a_s > a_z:
         chan4_wins.append(f"腿方向一致率 {a_s}/{n_s} > 基线 {a_z}/{n_z}")
-    if (
-        "p_vol" in fwd_stroke
-        and "p_vol" in fwd_zz
-        and fwd_stroke["p_vol"] < fwd_zz["p_vol"]
-    ):
+    if "p_vol" in fwd_stroke and "p_vol" in fwd_zz and fwd_stroke["p_vol"] < fwd_zz["p_vol"]:
         chan4_wins.append("中枢重叠前向波动分离更强")
     chan4_verdict = "GO(优于代理)" if chan4_wins else "NO-GO(不优于既有 zigzag 代理)"
 
@@ -208,9 +201,7 @@ async def run() -> dict:
     mom_fp_rate = om / max(1, oh + om)
     chan5_wins = []
     if macd_2x2.get("p", 1.0) < mom_2x2.get("p", 1.0):
-        chan5_wins.append(
-            f"2x2 更显著(p {_fmt_p(macd_2x2.get('p'))} < {_fmt_p(mom_2x2.get('p'))})"
-        )
+        chan5_wins.append(f"2x2 更显著(p {_fmt_p(macd_2x2.get('p'))} < {_fmt_p(mom_2x2.get('p'))})")
     if macd_fp_rate < mom_fp_rate:
         chan5_wins.append(f"FP 率更低({macd_fp_rate:.0%} < {mom_fp_rate:.0%})")
     if chan5_better_lead:
@@ -226,7 +217,7 @@ async def run() -> dict:
     lines = [
         "# 正统缠论技术实证 v1(CHAN-4 分割对照 + CHAN-5 MACD 面积背驰)",
         "",
-        f"- 生成:`python -m sel_v2.offline.chan_orthodox_study`(seed=42,整文件覆写)",
+        "- 生成:`python -m sel_v2.offline.chan_orthodox_study`(seed=42,整文件覆写)",
         f"- 数据:与 lens 研究完全相同的 `v2_bars_4h ⋈ v2_state_annotation`,"
         f"{times[0]:%Y-%m-%d} → {times[-1]:%Y-%m-%d},{n} bars,Surging 腿 {len(legs)} 条",
         '- 来源:2024-2026 缠论"最新技术"扫描(czsc、chan.py、社区;学术零同行评审)。',
@@ -290,10 +281,8 @@ async def run() -> dict:
         "",
         "## 裁决与入池建议",
         "",
-        f"- **CHAN-4(正统分型/笔分割):{chan4_verdict}**"
-        + (f" —— {'; '.join(chan4_wins)}" if chan4_wins else ""),
-        f"- **CHAN-5(MACD 面积背驰):{chan5_verdict}**"
-        + (f" —— {'; '.join(chan5_wins)}" if chan5_wins else ""),
+        f"- **CHAN-4(正统分型/笔分割):{chan4_verdict}**" + (f" —— {'; '.join(chan4_wins)}" if chan4_wins else ""),
+        f"- **CHAN-5(MACD 面积背驰):{chan5_verdict}**" + (f" —— {'; '.join(chan5_wins)}" if chan5_wins else ""),
         "",
         '### 扫描中排除的"最新技术"(记录,不实证)',
         "",
@@ -301,8 +290,7 @@ async def run() -> dict:
         "(58 突破 / 13 腿)差 2-3 个数量级,不可行;Month-6+ 事件积累后可重议",
         "- **区间套 / segseg 级别递归 / 多级别联立**:维持拒收(违反 4H 单锚点公理)",
         "- **一/二类买卖点**:一买一卖维持拒收(抄底摸顶);二买依赖一买识别,连带",
-        "- **三类买卖点变体**(chan.py divergence_rate/min_zs_cnt 参数族):CHAN-1 几何"
-        "代理已明确 fail,不做变体挑参(纪律)",
+        "- **三类买卖点变体**(chan.py divergence_rate/min_zs_cnt 参数族):CHAN-1 几何代理已明确 fail,不做变体挑参(纪律)",
         '- **社区"背驰+中枢 100% 准确"类宣称**:自指定义不可证伪,反面教材',
         "",
     ]

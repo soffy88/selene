@@ -8,10 +8,10 @@ import numpy as np
 from .liquidity import compute_H_change_rate_std
 from .price import (
     compute_autocorr,
-    compute_sigma_p_d2,
     compute_price_slope_6h,
-    compute_sigma_slope_12h,
     compute_sigma_change_rate_std_6h,
+    compute_sigma_p_d2,
+    compute_sigma_slope_12h,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,10 +30,7 @@ def compute_LV(
     lv = depth_score * 0.5 + spread_score * 0.25
     Both inputs must be available; returns None otherwise.
     """
-    if any(
-        v is None
-        for v in (total_depth, total_depth_24h_mean, spread_bps, spread_bps_24h_mean)
-    ):
+    if any(v is None for v in (total_depth, total_depth_24h_mean, spread_bps, spread_bps_24h_mean)):
         return None
     if total_depth_24h_mean <= 0 or spread_bps_24h_mean <= 0:
         return None
@@ -169,9 +166,7 @@ def compute_all_derived(
     from .flow import compute_absorption_ratio
 
     return {
-        "LV": compute_LV(
-            total_depth, total_depth_24h_mean, spread_bps, spread_bps_24h_mean
-        ),
+        "LV": compute_LV(total_depth, total_depth_24h_mean, spread_bps, spread_bps_24h_mean),
         "absorption_ratio": compute_absorption_ratio(TF, delta_p_pct),
         "price_autocorr_12h": compute_autocorr(closes, 12),
         "price_autocorr_24h": compute_autocorr(closes, 24),

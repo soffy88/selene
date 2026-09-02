@@ -3,9 +3,10 @@ Wave 3 — DwellFilter, CascadeCooling, LegalityChecker.
 
 All transition tables and dwell times are PLACEHOLDERS pending spec finalisation.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 
 from .schema import StateLabel, StateNoneReason, StateRecord
@@ -13,13 +14,13 @@ from .schema import StateLabel, StateNoneReason, StateRecord
 # ── Minimum dwell times (1H bars) ────────────────────────────────────────────
 # PLACEHOLDER — verify with v1.0.md when available
 DWELL_TIMES: dict[Optional[StateLabel], int] = {
-    StateLabel.COILING:           6,   # PLACEHOLDER — verify with v1.0.md when available
-    StateLabel.SURGING_UP:        3,   # PLACEHOLDER — verify with v1.0.md when available
-    StateLabel.SURGING_DOWN:      3,   # PLACEHOLDER — verify with v1.0.md when available
-    StateLabel.DRIFTING_CALM:    12,   # PLACEHOLDER — verify with v1.0.md when available
-    StateLabel.DRIFTING_CHARGED:  6,   # PLACEHOLDER — verify with v1.0.md when available
-    StateLabel.CRITICAL:          1,   # PLACEHOLDER — verify with v1.0.md when available
-    StateLabel.CASCADE:           1,   # PLACEHOLDER — verify with v1.0.md when available
+    StateLabel.COILING: 6,  # PLACEHOLDER — verify with v1.0.md when available
+    StateLabel.SURGING_UP: 3,  # PLACEHOLDER — verify with v1.0.md when available
+    StateLabel.SURGING_DOWN: 3,  # PLACEHOLDER — verify with v1.0.md when available
+    StateLabel.DRIFTING_CALM: 12,  # PLACEHOLDER — verify with v1.0.md when available
+    StateLabel.DRIFTING_CHARGED: 6,  # PLACEHOLDER — verify with v1.0.md when available
+    StateLabel.CRITICAL: 1,  # PLACEHOLDER — verify with v1.0.md when available
+    StateLabel.CASCADE: 1,  # PLACEHOLDER — verify with v1.0.md when available
 }
 
 # ── Legal transition table ────────────────────────────────────────────────────

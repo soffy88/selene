@@ -1,4 +1,5 @@
 """Flow layer: TF (taker flow), OI (open interest), funding_rate."""
+
 import json
 import logging
 from typing import Optional
@@ -19,9 +20,7 @@ logger = logging.getLogger(__name__)
 REDIS_FUNDING_KEY_PREFIX = "cw4:funding_rates"
 
 
-async def get_funding_rate_from_redis(
-    redis: aioredis.Redis, symbol: str
-) -> Optional[float]:
+async def get_funding_rate_from_redis(redis: aioredis.Redis, symbol: str) -> Optional[float]:
     """Read current funding rate from Redis hash written by the data service."""
     try:
         raw = await redis.hget(REDIS_FUNDING_KEY_PREFIX, symbol)
@@ -38,9 +37,7 @@ async def get_funding_rate_from_redis(
         return None
 
 
-async def get_tf_from_redis(
-    redis: aioredis.Redis, symbol: str, bar_ts_iso: str
-) -> Optional[float]:
+async def get_tf_from_redis(redis: aioredis.Redis, symbol: str, bar_ts_iso: str) -> Optional[float]:
     """
     Read accumulated taker flow for the closing bar.
     # WIKI_REQUIRED: trade_flow_collector must write sel:tf_accum:{symbol}:{bar_ts_iso}
@@ -56,9 +53,7 @@ async def get_tf_from_redis(
         return None
 
 
-def compute_absorption_ratio(
-    TF: Optional[float], delta_p_pct: Optional[float]
-) -> Optional[float]:
+def compute_absorption_ratio(TF: Optional[float], delta_p_pct: Optional[float]) -> Optional[float]:
     """
     absorption_ratio = |TF| / |ΔP|.
     High value means large flow but little price movement (absorbed by passive liquidity).

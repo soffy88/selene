@@ -5,13 +5,13 @@ leaving a permanent hole in v2_bars_4h that desyncs every rolling-window feature
 engine needs ≥180 contiguous bars). It now recovers the bar from the official OKX candle and
 only logs an explicit GAP when even that fails.
 """
+
 import asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 import sel_v2.data.v2_bar_aggregator as agg
-
 
 START = datetime(2024, 1, 1, 4, 0, 0, tzinfo=timezone.utc)
 START_MS = int(START.timestamp() * 1000)
@@ -19,9 +19,9 @@ START_MS = int(START.timestamp() * 1000)
 
 # ── pure helpers ────────────────────────────────────────────────────────────
 
+
 def test_build_bar_row_ohlcv_and_vwap():
-    ticks = [{"price": 100.0, "size": 1.0}, {"price": 110.0, "size": 1.0},
-             {"price": 90.0, "size": 2.0}]
+    ticks = [{"price": 100.0, "size": 1.0}, {"price": 110.0, "size": 1.0}, {"price": 90.0, "size": 2.0}]
     row = agg.build_bar_row(ticks, START, "BTC-USDT")
     # (time, symbol, open, high, low, close, volume, vwap, tick_count)
     assert row[2] == 100.0 and row[3] == 110.0 and row[4] == 90.0 and row[5] == 90.0
@@ -48,7 +48,7 @@ def test_parse_rest_candle_matches_start_and_flags_recovered():
     row = agg.parse_rest_candle(candles, START, "BTC-USDT")
     assert row is not None
     assert row[2] == 100.0 and row[3] == 120.0 and row[5] == 110.0 and row[6] == 5.0
-    assert row[8] == 0   # tick_count=0 marks a REST-recovered bar
+    assert row[8] == 0  # tick_count=0 marks a REST-recovered bar
 
 
 def test_parse_rest_candle_none_when_no_match():
@@ -57,6 +57,7 @@ def test_parse_rest_candle_none_when_no_match():
 
 
 # ── aggregate_bar gap path ──────────────────────────────────────────────────
+
 
 class _Conn:
     def __init__(self, ticks):
@@ -83,6 +84,7 @@ class _Pool:
 
             async def __aexit__(self, *a):
                 return False
+
         return _Ctx()
 
 
@@ -117,7 +119,7 @@ def test_empty_bar_recovers_from_rest(monkeypatch):
     session = _Session(payload)
     asyncio.run(agg.aggregate_bar(_Pool(conn), START, START + timedelta(hours=4), session=session))
     assert session.called
-    assert len(conn.inserted) == 1          # the gap was filled, not skipped
+    assert len(conn.inserted) == 1  # the gap was filled, not skipped
     # inserted row carries tick_count=0 (REST-recovered)
     assert conn.inserted[0][-1] == 0
 
@@ -126,7 +128,7 @@ def test_empty_bar_no_session_logs_gap_and_skips(monkeypatch):
     monkeypatch.setattr(agg, "SYMBOL", "BTC-USDT")
     conn = _Conn(ticks=[])
     asyncio.run(agg.aggregate_bar(_Pool(conn), START, START + timedelta(hours=4), session=None))
-    assert conn.inserted == []              # nothing inserted, but it's an explicit GAP log now
+    assert conn.inserted == []  # nothing inserted, but it's an explicit GAP log now
 
 
 def test_normal_bar_uses_ticks_not_rest(monkeypatch):
@@ -134,5 +136,5 @@ def test_normal_bar_uses_ticks_not_rest(monkeypatch):
     conn = _Conn(ticks=[{"price": 100.0, "size": 1.0}, {"price": 102.0, "size": 1.0}])
     session = _Session({"code": "0", "data": []})
     asyncio.run(agg.aggregate_bar(_Pool(conn), START, START + timedelta(hours=4), session=session))
-    assert not session.called               # ticks present → no REST call
-    assert conn.inserted[0][-1] == 2        # tick_count=2
+    assert not session.called  # ticks present → no REST call
+    assert conn.inserted[0][-1] == 2  # tick_count=2

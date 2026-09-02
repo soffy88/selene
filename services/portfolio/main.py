@@ -13,30 +13,29 @@ import asyncio
 import json
 import logging
 import os
-import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 
 from fastapi import FastAPI
 
-from shared.db.connections import get_redis, get_pg, redis_health
+from services.portfolio.capital.kelly import CapitalAllocator
+from shared.db.connections import get_pg, get_redis, redis_health
 from shared.events.streams import (
-    STREAM_SIGNAL_SCORED,
-    STREAM_SIGNAL_SIZED,
     STREAM_ORDER_LIFECYCLE,
     STREAM_PORTFOLIO_STATE,
-    encode,
+    STREAM_SIGNAL_SCORED,
+    STREAM_SIGNAL_SIZED,
     decode,
+    encode,
     run_forever,
 )
-from shared.models.signal import ScoredSignal
 from shared.models.portfolio import (
     PortfolioState,
     Position,
     PositionSide,
     PositionStatus,
 )
-from services.portfolio.capital.kelly import CapitalAllocator
+from shared.models.signal import ScoredSignal
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -96,12 +95,8 @@ class PortfolioEngine:
             import math
 
             mean = sum(ret_history) / len(ret_history)
-            vol = math.sqrt(
-                sum((r - mean) ** 2 for r in ret_history) / len(ret_history)
-            )
-            self._allocator.update_strategy_volatility(
-                strategy, vol * 16
-            )  # 日化 → 年化
+            vol = math.sqrt(sum((r - mean) ** 2 for r in ret_history) / len(ret_history))
+            self._allocator.update_strategy_volatility(strategy, vol * 16)  # 日化 → 年化
 
         # Perpetual funding drag over the expected hold feeds the cost-adjusted Kelly.
         funding_rate = None
@@ -149,9 +144,7 @@ class PortfolioEngine:
         # 只靠启动时 DB 恢复(07-15 HOME/BTC 重复仓对账失效即此因)。
         if event in ("filled", "filled_immediately"):
             # 建仓
-            side = (
-                PositionSide.LONG if data.get("side") == "BUY" else PositionSide.SHORT
-            )
+            side = PositionSide.LONG if data.get("side") == "BUY" else PositionSide.SHORT
             pos = Position(
                 id=data.get("id", ""),
                 symbol=symbol,
@@ -219,18 +212,12 @@ class PortfolioEngine:
 
     # ── 构建 PortfolioState ───────────────────────────
     def build_state(self, unrealized: float) -> PortfolioState:
-        total_exposure = sum(
-            pos.entry_price * pos.quantity for pos in self._positions.values()
-        )
+        total_exposure = sum(pos.entry_price * pos.quantity for pos in self._positions.values())
         mtm_equity = self._equity + unrealized
         leverage = total_exposure / mtm_equity if mtm_equity > 0 else 0
 
         # Drawdown measured on MTM equity vs the high-water mark (item #5).
-        drawdown = (
-            (self._peak_equity - mtm_equity) / self._peak_equity
-            if self._peak_equity > 0
-            else 0.0
-        )
+        drawdown = (self._peak_equity - mtm_equity) / self._peak_equity if self._peak_equity > 0 else 0.0
         drawdown = max(drawdown, 0.0)
 
         # Risk fields that were previously left at 0 (item #17).
@@ -317,10 +304,7 @@ async def consume_loop():
                             approximate=True,
                         )
                     else:
-                        logger.info(
-                            f"DROP zero-sized {sized.get('symbol')} "
-                            f"kelly={sized.get('kelly_fraction')}"
-                        )
+                        logger.info(f"DROP zero-sized {sized.get('symbol')} kelly={sized.get('kelly_fraction')}")
                     await r.xack(STREAM_SIGNAL_SCORED, CG_PORTFOLIO, msg_id)
                 except Exception as e:
                     logger.error(f"size_signal: {e}", exc_info=True)
@@ -379,10 +363,7 @@ async def _persist_snapshot_and_curve(state_dict: dict):
                 "WHERE time >= now() - interval '90 days' "
                 "ORDER BY time::date, time DESC"
             )
-        points = [
-            {"time": row["day"].isoformat(), "value": float(row["total_equity"])}
-            for row in rows
-        ]
+        points = [{"time": row["day"].isoformat(), "value": float(row["total_equity"])} for row in rows]
         points.sort(key=lambda p: p["time"])
         await r.set("cw4:portfolio:equity_curve", json.dumps({"points": points}))
     except Exception as e:
@@ -404,9 +385,7 @@ async def state_publisher():
                 key = k.decode() if isinstance(k, bytes) else k
                 try:
                     val = json.loads(v.decode() if isinstance(v, bytes) else v)
-                    prices[key] = (
-                        val.get("price", 0) if isinstance(val, dict) else float(val)
-                    )
+                    prices[key] = val.get("price", 0) if isinstance(val, dict) else float(val)
                 except Exception:
                     pass
 
@@ -451,9 +430,7 @@ async def _recover_portfolio():
             # Determine session start: Redis key → fallback 2026-04-30 00:00 UTC
             sess_raw = await r.get("cw4:portfolio:session_start")
             if sess_raw:
-                session_start = datetime.fromisoformat(
-                    sess_raw.decode() if isinstance(sess_raw, bytes) else sess_raw
-                )
+                session_start = datetime.fromisoformat(sess_raw.decode() if isinstance(sess_raw, bytes) else sess_raw)
             else:
                 session_start = datetime(2026, 4, 30, 0, 0, 0)
 
@@ -466,14 +443,8 @@ async def _recover_portfolio():
                     "FROM orders WHERE state='MONITORING'"
                 )
                 for row in mon_rows:
-                    pos_side = (
-                        PositionSide.LONG
-                        if row["side"] == "BUY"
-                        else PositionSide.SHORT
-                    )
-                    signal_id = (
-                        str(row["signal_id"]) if row["signal_id"] else str(row["id"])
-                    )
+                    pos_side = PositionSide.LONG if row["side"] == "BUY" else PositionSide.SHORT
+                    signal_id = str(row["signal_id"]) if row["signal_id"] else str(row["id"])
                     pos = Position(
                         id=str(row["id"]),
                         symbol=row["symbol"],
@@ -559,6 +530,7 @@ async def metrics():
     """Prometheus exposition: service liveness + redis reachability.
     Scraped by the central observability stack (Prometheus/Grafana)."""
     from fastapi.responses import PlainTextResponse
+
     from shared.metrics import render_prometheus
 
     out = [

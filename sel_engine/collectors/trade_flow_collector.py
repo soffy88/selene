@@ -10,6 +10,7 @@ Redis key layout:
   sel:tf_accum:{symbol}:{bar_ts_iso}  →  float (net USDT notional, signed)
   sel:tf_trade_ids:{symbol}:{bar_ts_iso}  →  set of seen trade IDs (dedup)
 """
+
 import asyncio
 import logging
 from datetime import datetime, timezone
@@ -92,6 +93,7 @@ async def run_trade_flow_collector(
     """Main loop: poll trades every 5s and accumulate TF per 1H bar."""
     if redis is None:
         from shared.db.connections import get_redis
+
         redis = await get_redis()
 
     last_trade_id: list = [None]

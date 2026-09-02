@@ -7,12 +7,12 @@ All services use this module for Redis interaction.
 import asyncio
 import json
 import logging
-from typing import AsyncIterator, Callable, Optional
+from typing import Callable, Optional
 
 import redis.asyncio as aioredis
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
-from shared.events.streams import MAXLEN, encode, decode, StreamEvent
+from shared.events.streams import MAXLEN, StreamEvent, decode, encode
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ async def consume(
     # First: recover any pending messages from previous runs
     pending = await r.xreadgroup(group, consumer, {stream: "0"}, count=100)
     if pending:
-        for s, messages in pending:
+        for _s, messages in pending:
             for msg_id, fields in messages:
                 event = StreamEvent(
                     stream=stream,
@@ -117,12 +117,10 @@ async def consume(
     logger.info(f"Consumer '{consumer}' listening on '{stream}' (group='{group}')")
     while True:
         try:
-            results = await r.xreadgroup(
-                group, consumer, {stream: ">"}, count=batch_size, block=block_ms
-            )
+            results = await r.xreadgroup(group, consumer, {stream: ">"}, count=batch_size, block=block_ms)
             if not results:
                 continue
-            for s, messages in results:
+            for _s, messages in results:
                 for msg_id, fields in messages:
                     event = StreamEvent(
                         stream=stream,

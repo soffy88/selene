@@ -1,10 +1,9 @@
 """Unit tests for sel_v2.strategies.cusum_short."""
-import pytest
 
-from sel_v2.strategies.cusum_short import CUSUMShort, CUSUMTrigger
-
+from sel_v2.strategies.cusum_short import CUSUMShort
 
 # ── Basic accumulator behaviour ───────────────────────────────────────────────
+
 
 def test_no_trigger_below_threshold():
     c = CUSUMShort(drift_k=0.5)
@@ -41,12 +40,13 @@ def test_drift_prevents_small_noise_accumulation():
 
 def test_floor_at_zero():
     c = CUSUMShort(drift_k=0.5)
-    c.update(2.0)   # build up C-
-    r = c.update(-10.0)   # large negative z, resets C+ to 0
+    c.update(2.0)  # build up C-
+    r = c.update(-10.0)  # large negative z, resets C+ to 0
     assert r.cusum_positive == 0.0
 
 
 # ── Trigger behaviour ─────────────────────────────────────────────────────────
+
 
 def test_trigger_long_after_sustained_positive():
     """Large enough z should trigger LONG against cold threshold=2.0."""
@@ -87,6 +87,7 @@ def test_both_triggered_resolves_dominant():
 
 # ── Reset behaviour ───────────────────────────────────────────────────────────
 
+
 def test_reset_positive():
     c = CUSUMShort(drift_k=0.5)
     for _ in range(5):
@@ -117,6 +118,7 @@ def test_reset_all():
 
 # ── Intensity coefficient ──────────────────────────────────────────────────────
 
+
 def test_intensity_coeff_positive_on_trigger():
     c = CUSUMShort(drift_k=0.5)
     r = None
@@ -137,6 +139,7 @@ def test_intensity_coeff_capped_at_3():
 
 # ── State property ────────────────────────────────────────────────────────────
 
+
 def test_state_dict_keys():
     c = CUSUMShort()
     s = c.state
@@ -144,6 +147,7 @@ def test_state_dict_keys():
 
 
 # ── Cold-start threshold ──────────────────────────────────────────────────────
+
 
 def test_cold_threshold_is_2():
     c = CUSUMShort()
@@ -157,14 +161,15 @@ def test_cold_threshold_is_2():
 # its 20-peak minimum, and h stayed frozen at 2.0 forever (zero S1 entries over
 # 2 years of replay). Excursion-completion recording breaks that loop.
 
+
 def _run_excursion(c: CUSUMShort, t0: float, height: float) -> float:
     """Drive one positive excursion peaking at ~`height`, decaying back to 0.
     Returns the timestamp after the excursion."""
     t = t0
-    c.update(height + c.drift_k, t)      # C+ jumps to `height`
+    c.update(height + c.drift_k, t)  # C+ jumps to `height`
     while c.state["c_pos"] > 0:
         t += 1.0
-        c.update(0.0, t)                 # drift bleeds it back to 0
+        c.update(0.0, t)  # drift bleeds it back to 0
     return t + 1.0
 
 
@@ -174,11 +179,11 @@ def test_threshold_warms_up_without_any_trigger():
     c = CUSUMShort(drift_k=0.5, threshold_window_sec=10**9)
     t = 0.0
     for _ in range(25):
-        t = _run_excursion(c, t, height=1.0)   # all peaks ≈1.0, never > 2.0
+        t = _run_excursion(c, t, height=1.0)  # all peaks ≈1.0, never > 2.0
     r = c.update(0.0, t)
-    assert not r.triggered                      # sanity: nothing ever triggered
-    assert r.threshold != 2.0                   # cold default replaced…
-    assert 0.9 <= r.threshold <= 1.1            # …by p95 of the ~1.0 peaks
+    assert not r.triggered  # sanity: nothing ever triggered
+    assert r.threshold != 2.0  # cold default replaced…
+    assert 0.9 <= r.threshold <= 1.1  # …by p95 of the ~1.0 peaks
 
 
 def test_trigger_fires_against_adapted_threshold():
@@ -187,8 +192,8 @@ def test_trigger_fires_against_adapted_threshold():
     c = CUSUMShort(drift_k=0.5, threshold_window_sec=10**9)
     t = 0.0
     for _ in range(25):
-        t = _run_excursion(c, t, height=0.8)    # quiet regime: peaks ≈0.8 → h≈0.8
-    r = c.update(1.6, t)                        # C+ = 1.1 > adapted h, but < 2.0
+        t = _run_excursion(c, t, height=0.8)  # quiet regime: peaks ≈0.8 → h≈0.8
+    r = c.update(1.6, t)  # C+ = 1.1 > adapted h, but < 2.0
     assert r.triggered and r.direction == "LONG"
     assert r.threshold < 2.0
 
@@ -198,12 +203,12 @@ def test_excursion_peak_recorded_once_not_doubled_on_trigger():
     (recorded at completion), not two (old code also recorded at trigger)."""
     c = CUSUMShort(drift_k=0.5, threshold_window_sec=10**9)
     t = 0.0
-    c.update(5.0, t)                            # C+ = 4.5 > 2.0 → triggers
-    assert len(c._pos_peaks) == 0               # not recorded at trigger time
+    c.update(5.0, t)  # C+ = 4.5 > 2.0 → triggers
+    assert len(c._pos_peaks) == 0  # not recorded at trigger time
     while c.state["c_pos"] > 0:
         t += 1.0
         c.update(0.0, t)
-    assert len(c._pos_peaks) == 1               # recorded once, at completion
+    assert len(c._pos_peaks) == 1  # recorded once, at completion
 
 
 def test_no_timestamp_means_no_peak_recording():
@@ -212,6 +217,6 @@ def test_no_timestamp_means_no_peak_recording():
     c = CUSUMShort(drift_k=0.5)
     for _ in range(30):
         c.update(1.0)
-        c.update(-3.0)   # force decay-to-zero completions, but t=None
+        c.update(-3.0)  # force decay-to-zero completions, but t=None
     r = c.update(0.0)
     assert r.threshold == 2.0

@@ -23,11 +23,9 @@ Decision rules (v2.1 §2.2):
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import numpy as np
@@ -112,9 +110,7 @@ class ToolEvaluator:
                 await self._write_result(result)
         return results
 
-    async def _evaluate_one(
-        self, tool_id: str, phase: str, lookback_days: int
-    ) -> dict[str, Any]:
+    async def _evaluate_one(self, tool_id: str, phase: str, lookback_days: int) -> dict[str, Any]:
         """Evaluate a single tool. Returns result dict."""
         now = datetime.now(timezone.utc)
         period_start = now - timedelta(days=lookback_days)
@@ -139,16 +135,12 @@ class ToolEvaluator:
             "correlation_with_others": None,  # computed separately in _compute_correlations
             "sample_size": sample_size,
             "decision": decision,
-            "decision_reason": self._decision_reason(
-                lead_time_sec, fp_rate, sample_size
-            ),
+            "decision_reason": self._decision_reason(lead_time_sec, fp_rate, sample_size),
             "created_by": "cc",
             "created_at": now.isoformat(),
         }
 
-    async def _fetch_data(
-        self, tool_id: str, start: datetime, end: datetime
-    ) -> tuple[list[datetime], list[datetime]]:
+    async def _fetch_data(self, tool_id: str, start: datetime, end: datetime) -> tuple[list[datetime], list[datetime]]:
         """
         Fetch signal timestamps and state-transition timestamps from DB.
         Returns (signal_ts_list, state_event_ts_list).
@@ -157,9 +149,7 @@ class ToolEvaluator:
         if self._db is None:
             return [], []
 
-        vocab = next(
-            (v for v, t in _VOCAB_TO_TOOL.items() if t == tool_id), tool_id.lower()
-        )
+        vocab = next((v for v, t in _VOCAB_TO_TOOL.items() if t == tool_id), tool_id.lower())
         try:
             conn = self._db._conn
             if conn is None:
@@ -168,11 +158,7 @@ class ToolEvaluator:
             # Signal timestamps. ICT1/vpin only: exclude the <30d pilot era —
             # VPIN percentiles are unstable until the tick history window is
             # honest (candidate-pool ruling; events carry history_days for this).
-            extra = (
-                "AND (tool_metadata->>'history_days')::float >= 30"
-                if tool_id == "ICT1"
-                else ""
-            )
+            extra = "AND (tool_metadata->>'history_days')::float >= 30" if tool_id == "ICT1" else ""
             rows_sig = await conn.fetch(
                 f"""
                 SELECT timestamp FROM v2_inverse_vocab_events
@@ -210,9 +196,7 @@ class ToolEvaluator:
             logger.warning("ToolEvaluator fetch failed for %s: %s", tool_id, e)
             return [], []
 
-    def _compute_lead_time(
-        self, signals: list[datetime], state_events: list[datetime]
-    ) -> Optional[float]:
+    def _compute_lead_time(self, signals: list[datetime], state_events: list[datetime]) -> Optional[float]:
         """
         Compute median lead time in seconds: signal_ts → next state_event_ts.
         Returns None if insufficient data.
@@ -268,12 +252,7 @@ class ToolEvaluator:
             return "deprecate"
         if lead_time is not None and lead_time < 0:
             return "deprecate"
-        if (
-            lead_time is not None
-            and lead_time > 86400.0
-            and fp_rate is not None
-            and fp_rate < 0.30
-        ):
+        if lead_time is not None and lead_time > 86400.0 and fp_rate is not None and fp_rate < 0.30:
             return "upgrade"
         return "maintain"
 

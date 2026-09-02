@@ -153,10 +153,7 @@ async def _main() -> None:
             print(f"started epoch {epoch_id}")
         else:
             s = await status(pool)
-            print(
-                f"status={s.status} epoch_id={s.epoch_id} started_at={s.started_at} "
-                f"reason={s.reason!r}"
-            )
+            print(f"status={s.status} epoch_id={s.epoch_id} started_at={s.started_at} reason={s.reason!r}")
             if s.status == "DIRTY":
                 print(f"  fingerprint_at_start={s.fingerprint_at_start}")
                 print(f"  current_fingerprint ={s.current_fingerprint}")

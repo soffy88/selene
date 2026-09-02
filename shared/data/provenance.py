@@ -14,9 +14,7 @@ ALLOWED_LIVE = "observed_live"
 
 def assert_live_provenance(provenance: str | None) -> None:
     if provenance != ALLOWED_LIVE:
-        raise ProvenanceError(
-            f"live performance queries accept only provenance={ALLOWED_LIVE!r}, got {provenance!r}"
-        )
+        raise ProvenanceError(f"live performance queries accept only provenance={ALLOWED_LIVE!r}, got {provenance!r}")
 
 
 def live_state_history_predicate(column: str = "timestamp") -> str:

@@ -22,11 +22,7 @@ def test_construct_and_stats():
 def test_on_alert_no_channels_is_noop():
     hub = NotificationHub()
     # circuit_breaker alert with no channels must not raise or count a send.
-    asyncio.run(
-        hub._on_alert(
-            _event({"type": "circuit_breaker", "reason": "x", "daily_pnl": -1.0})
-        )
-    )
+    asyncio.run(hub._on_alert(_event({"type": "circuit_breaker", "reason": "x", "daily_pnl": -1.0})))
     assert hub.get_stats()["sent"] == 0
 
 
@@ -115,11 +111,5 @@ def test_on_order_ignores_intermediate_states():
     hub = NotificationHub()
     tg = _CaptureTG()
     hub._tg = tg
-    asyncio.run(
-        hub._on_order(
-            _order_event(
-                {"event": "submitted", "state": "SUBMITTING", "symbol": "BTCUSDT"}
-            )
-        )
-    )
+    asyncio.run(hub._on_order(_order_event({"event": "submitted", "state": "SUBMITTING", "symbol": "BTCUSDT"})))
     assert len(tg.sent) == 0

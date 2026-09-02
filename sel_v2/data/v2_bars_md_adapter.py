@@ -27,12 +27,8 @@ import os
 
 import asyncpg
 
-MD_DSN = os.environ.get(
-    "MD_DSN", "postgresql://selene_app:sel_app_2026@platform-postgres:5432/marketdata"
-)
-DB_URL = os.environ.get(
-    "DB_URL", "postgresql://selene_app:sel_app_2026@platform-postgres:5432/selene"
-)
+MD_DSN = os.environ.get("MD_DSN", "postgresql://selene_app:sel_app_2026@platform-postgres:5432/marketdata")
+DB_URL = os.environ.get("DB_URL", "postgresql://selene_app:sel_app_2026@platform-postgres:5432/selene")
 
 
 async def sync(md: asyncpg.Pool, sel: asyncpg.Pool) -> int:

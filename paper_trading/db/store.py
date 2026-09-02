@@ -1,4 +1,5 @@
 """AsyncPG persistence layer for paper trading data."""
+
 from __future__ import annotations
 
 from pathlib import Path

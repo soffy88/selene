@@ -3,14 +3,14 @@
 Covers the Platt-calibration holdout gate and adds coverage for previously
 untested pure modules: ic_health and hawkes_critical.
 """
+
 import math
 
 import numpy as np
 
-from services.signal.factors.composite import (
-    platt_fit, DEFAULT_CALIBRATION, _platt_grid_fit, _platt_nll)
-from services.signal.ic_health import ic_health_scalar
 from sel_v2.states.hawkes_critical import compute_hawkes_branching_ratio
+from services.signal.factors.composite import DEFAULT_CALIBRATION, _platt_nll, platt_fit
+from services.signal.ic_health import ic_health_scalar
 
 
 # ── Platt calibration holdout (item #16) ──
@@ -53,7 +53,7 @@ def test_platt_too_few_returns_default():
 
 # ── ic_health (previously untested) ──
 def test_ic_health_neutral_until_min_trades():
-    assert ic_health_scalar(0.0, n=5) == 1.0     # too few outcomes
+    assert ic_health_scalar(0.0, n=5) == 1.0  # too few outcomes
     assert ic_health_scalar(None, n=999) == 1.0  # no IC yet
 
 

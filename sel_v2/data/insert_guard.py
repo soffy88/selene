@@ -10,6 +10,7 @@ freshness watchdog surface the outage.
 
 A single success resets the counter, so transient/isolated errors don't trip it.
 """
+
 from __future__ import annotations
 
 import logging
@@ -42,10 +43,12 @@ class InsertGuard:
         self.total_failed += 1
         logger.error(
             "%s INSERT failed (%d consecutive, %d total): %s",
-            self.name, self.consecutive, self.total_failed, exc,
+            self.name,
+            self.consecutive,
+            self.total_failed,
+            exc,
         )
         if self.consecutive >= self.max_consecutive:
             raise InsertFailureLimitExceeded(
-                f"{self.name}: {self.consecutive} consecutive INSERT failures "
-                f"— aborting to surface the fault"
+                f"{self.name}: {self.consecutive} consecutive INSERT failures — aborting to surface the fault"
             ) from exc

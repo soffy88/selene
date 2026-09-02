@@ -1,0 +1,82 @@
+{
+  "I_HAVE_OOS_EVIDENCE": false,
+  "artifact": {
+    "artifact_digest": "sha256:99a04980fca4dfedce3f5aefe3a5cc3467a2d5eb945e816dde99ef5962bcbdba",
+    "artifact_id": "eeeeeef0-2261-4bcf-9d87-1e27948797f5",
+    "cost_model": {
+      "fee_bps": 4,
+      "slippage_bps": 1
+    },
+    "cpcv": {},
+    "data_manifest_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "embargo_range": {},
+    "expires_at": "2026-10-01T23:53:46Z",
+    "fail_reasons": [
+      "BLOCKED_INSUFFICIENT_DATA:oos_closed_trades",
+      "BLOCKED_INSUFFICIENT_DATA:oos_active_states"
+    ],
+    "feature_schema_version": "sel-v2",
+    "gate_verdict": "BLOCKED",
+    "generated_at": "2026-09-01T23:53:46Z",
+    "image_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "instruments": [
+      "BTCUSDT"
+    ],
+    "metrics": {
+      "bootstrap_sharpe_p5": -1.0,
+      "catastrophic_loss": 0,
+      "deflated_sharpe_prob": 0.0,
+      "lookahead_findings": 0,
+      "max_drawdown": 1.0,
+      "n_trades": 0,
+      "oos_active_states": 0,
+      "oos_closed_trades": 0,
+      "provenance": "observed_live",
+      "sharpe_after_cost": 0.0
+    },
+    "oos_range": {
+      "end": null,
+      "start": null
+    },
+    "producer": {
+      "i_have_oos_evidence": false,
+      "job": "oos-gap-report"
+    },
+    "risk_policy_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "schema_version": "oos-artifact-v1",
+    "search_trials": 0,
+    "strategy_commit": "e51c5d203cc75321447bd183be5ec0cae99677a8",
+    "strategy_config_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "train_range": {},
+    "venues": [
+      "binance"
+    ]
+  },
+  "block_reasons": [
+    "BLOCKED_INSUFFICIENT_DATA:oos_closed_trades",
+    "BLOCKED_INSUFFICIENT_DATA:oos_active_states"
+  ],
+  "evaluate_oos_gates": [
+    "BLOCKED_INSUFFICIENT_DATA:oos_closed_trades",
+    "sharpe_after_cost",
+    "deflated_sharpe_prob",
+    "bootstrap_sharpe_p5",
+    "max_drawdown",
+    "cpcv_missing",
+    "cpcv_pbo",
+    "oos_active_states"
+  ],
+  "gate_verdict": "BLOCKED",
+  "generated_at": "2026-09-01T23:53:46Z",
+  "n_backfill_excluded": 0,
+  "n_replay_excluded": 0,
+  "n_trades": 0,
+  "oos_closed_trades_min": 100,
+  "regimes": [],
+  "sources": [],
+  "status": "BLOCKED_INSUFFICIENT_DATA",
+  "time_range": {
+    "end": null,
+    "start": null
+  }
+}

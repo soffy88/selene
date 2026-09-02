@@ -26,6 +26,7 @@ Tristate discipline:
   None  = data unavailable — treated as "not confirmed" (conservative)
   Missing data alone is NEVER sufficient to trigger Critical.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -33,8 +34,8 @@ from typing import Optional
 
 from sel_v2.states.schema import BarFeatures
 
-
 # ── Tristate helpers ───────────────────────────────────────────────────────────
+
 
 def _and(a: Optional[bool], b: Optional[bool]) -> Optional[bool]:
     """Tristate AND: False if either False, True if both True, else None."""
@@ -55,6 +56,7 @@ def _or(a: Optional[bool], b: Optional[bool]) -> Optional[bool]:
 
 
 # ── Sub-condition evaluators ───────────────────────────────────────────────────
+
 
 def _eval_a1(features: BarFeatures) -> Optional[bool]:
     """
@@ -112,19 +114,21 @@ def _eval_c(features: BarFeatures) -> Optional[bool]:
 
 # ── Main evaluation ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class CriticalConditions:
     """Diagnostic breakdown of all Critical sub-conditions."""
+
     a1: Optional[bool]
     a2: Optional[bool]
-    a_full: Optional[bool]    # A1 AND A2 both True (2/2)
-    a_partial: Optional[bool] # A1 True, A2 not True (1/2)
+    a_full: Optional[bool]  # A1 AND A2 both True (2/2)
+    a_partial: Optional[bool]  # A1 True, A2 not True (1/2)
     b: Optional[bool]
     c: Optional[bool]
-    path1_met: bool            # A_full AND (B OR C)
-    path2_met: bool            # A_partial AND B AND C
-    met: bool                  # overall Critical entry decision
-    none_tags: list[str]       # which sub-conditions returned None
+    path1_met: bool  # A_full AND (B OR C)
+    path2_met: bool  # A_partial AND B AND C
+    met: bool  # overall Critical entry decision
+    none_tags: list[str]  # which sub-conditions returned None
 
 
 def evaluate_critical_entry(features: BarFeatures) -> CriticalConditions:
@@ -150,7 +154,7 @@ def evaluate_critical_entry(features: BarFeatures) -> CriticalConditions:
         if a2 is True:
             a_partial: Optional[bool] = False  # fully satisfied — partial doesn't apply
         else:
-            a_partial = True   # A1 met, A2 None or False
+            a_partial = True  # A1 met, A2 None or False
     elif a1 is False:
         a_partial = False  # σ part fails → neither full nor partial
     else:
@@ -175,9 +179,12 @@ def evaluate_critical_entry(features: BarFeatures) -> CriticalConditions:
         none_tags.append("C_tda_l1")
 
     return CriticalConditions(
-        a1=a1, a2=a2,
-        a_full=a_full, a_partial=a_partial,
-        b=b, c=c,
+        a1=a1,
+        a2=a2,
+        a_full=a_full,
+        a_partial=a_partial,
+        b=b,
+        c=c,
         path1_met=path1_met,
         path2_met=path2_met,
         met=met,

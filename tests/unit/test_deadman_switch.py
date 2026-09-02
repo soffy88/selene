@@ -1,5 +1,6 @@
 """Dead-man's-switch staleness logic (optimization item #10)."""
-from services.healthcheck.main import deadman_age, DEADMAN_STALE_S
+
+from services.healthcheck.main import DEADMAN_STALE_S, deadman_age
 
 
 def test_fresh_heartbeat_not_stale():

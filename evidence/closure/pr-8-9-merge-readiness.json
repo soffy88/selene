@@ -1,0 +1,60 @@
+{
+  "generated_at": "2026-09-01T23:59:00Z",
+  "status": "OWNER_BLOCKED",
+  "merged": false,
+  "shared_head": true,
+  "shared_branch": true,
+  "pr8": {
+    "number": 8,
+    "url": "https://github.com/soffy88/selene/pull/8",
+    "title": "[DO NOT MERGE until gate review] Wave EXEC-S:S2 挂单执行 shadow 层",
+    "headRefName": "feat/selene-md-adapter",
+    "headRefOid": "b0f8cb7c711ab4dae2622b19c0df31c5f8432d56",
+    "baseRefName": "main",
+    "baseRefOid": "24137634f777e7d993434faafc2d418e31f7b7b1",
+    "isolated_rebase_branch": "closure/pr8-rebase-main",
+    "rebase_onto": "origin/main",
+    "rebase_result": "already_contains_main",
+    "rebased_head": "b0f8cb7c711ab4dae2622b19c0df31c5f8432d56",
+    "local_ci": {
+      "ruff_format": "FAIL",
+      "ruff_format_files": 229,
+      "ruff_check": "FAIL",
+      "ruff_check_errors": 391,
+      "pytest": "PASS",
+      "pytest_summary": "1449 passed"
+    }
+  },
+  "pr9": {
+    "number": 9,
+    "url": "https://github.com/soffy88/selene/pull/9",
+    "title": "[DO NOT MERGE until 24h reconciliation] Wave S2G:S2 粒度修复 + 事件化 + 节流",
+    "headRefName": "feat/selene-md-adapter",
+    "headRefOid": "b0f8cb7c711ab4dae2622b19c0df31c5f8432d56",
+    "baseRefName": "wave/exec-s",
+    "baseRefOid": "b722f5d1558bfa7c00c426da5ef5f13d66acb1fa",
+    "isolated_rebase_branch": "closure/pr9-rebase-main",
+    "rebase_onto": "origin/main",
+    "rebase_result": "already_contains_main",
+    "rebased_head": "b0f8cb7c711ab4dae2622b19c0df31c5f8432d56",
+    "local_ci": {
+      "ruff_format": "FAIL",
+      "ruff_format_files": 229,
+      "ruff_check": "FAIL",
+      "ruff_check_errors": 391,
+      "pytest": "PASS",
+      "pytest_summary": "1449 passed"
+    }
+  },
+  "failed_gates": [
+    "SHARED_HEAD: PR #8 and #9 point at b0f8cb7c711ab4dae2622b19c0df31c5f8432d56",
+    "SHARED_BRANCH: both PRs use feat/selene-md-adapter; isolated rebase was not pushed to that branch",
+    "PR8_RUFF_FORMAT=FAIL (229 files)",
+    "PR8_RUFF_CHECK=FAIL (391 errors)",
+    "PR9_RUFF_FORMAT=FAIL (229 files)",
+    "PR9_RUFF_CHECK=FAIL (391 errors)",
+    "PR9_BASE=wave/exec-s (not main)",
+    "OWNER_MERGE_WINDOW"
+  ],
+  "note": "Do not merge. Isolated worktrees used for rebase+CI. feat/selene-md-adapter was not rewritten. Owner must split heads before any merge."
+}

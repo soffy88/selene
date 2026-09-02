@@ -10,10 +10,10 @@ plus a convenience that measures the deployed engine's per-bar CUSUM signal.
 
 Self-contained (numpy only); pointable at any signal series.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
@@ -40,7 +40,7 @@ def _avg_rank(a: np.ndarray) -> np.ndarray:
         j = i
         while j + 1 < n and sa[j + 1] == sa[i]:
             j += 1
-        ranks[order[i:j + 1]] = (i + j) / 2.0 + 1.0
+        ranks[order[i : j + 1]] = (i + j) / 2.0 + 1.0
         i = j + 1
     return ranks
 
@@ -56,9 +56,9 @@ def _spearman(x: np.ndarray, y: np.ndarray) -> float:
 
 @dataclass
 class SignalEdge:
-    ic: float          # Spearman rank correlation of signal vs forward return
-    hit_rate: float    # fraction of bars where sign(signal) == sign(fwd return)
-    n: int             # number of usable (aligned, non-NaN, non-zero-signal) bars
+    ic: float  # Spearman rank correlation of signal vs forward return
+    hit_rate: float  # fraction of bars where sign(signal) == sign(fwd return)
+    n: int  # number of usable (aligned, non-NaN, non-zero-signal) bars
     horizon: int
 
 
@@ -87,8 +87,9 @@ def evaluate_signal_edge(signal, closes, horizon: int = 1) -> SignalEdge:
     return SignalEdge(ic=ic, hit_rate=hit_rate, n=len(sig), horizon=horizon)
 
 
-def engine_cusum_signal_edge(df, horizon: int = 1, *, hawkes_params=(0.1, 0.3, 0.5),
-                             oi_series=None, funding_series=None, ofi_series=None) -> SignalEdge:
+def engine_cusum_signal_edge(
+    df, horizon: int = 1, *, hawkes_params=(0.1, 0.3, 0.5), oi_series=None, funding_series=None, ofi_series=None
+) -> SignalEdge:
     """Run the deployed engine over `df` and measure the edge of its per-bar
     CUSUM-Short z-signal (the momentum trigger that drives both strategies)
     against forward returns. A measurement hook for real data — interpret the IC,
@@ -96,7 +97,6 @@ def engine_cusum_signal_edge(df, horizon: int = 1, *, hawkes_params=(0.1, 0.3, 0
     from sel_v2.paper.strategy_engine import PaperStrategyEngine
 
     engine = PaperStrategyEngine(skip_hawkes=True, skip_tda=True, hawkes_params=hawkes_params)
-    signal = engine.bar_signal_series(
-        df, oi_series=oi_series, funding_series=funding_series, ofi_series=ofi_series)
+    signal = engine.bar_signal_series(df, oi_series=oi_series, funding_series=funding_series, ofi_series=ofi_series)
     closes = np.asarray(df["close"].values, dtype=float)
     return evaluate_signal_edge(signal, closes, horizon)

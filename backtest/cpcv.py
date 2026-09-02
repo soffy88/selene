@@ -4,6 +4,7 @@ Wraps oskill.cpcv_pipeline to produce the distribution of OOS path Sharpes a
 single-path WFO replay cannot estimate, and derives a Probability-of-Backtest-
 Overfitting proxy (the fraction of CPCV paths that are unprofitable OOS).
 """
+
 from __future__ import annotations
 
 import math
@@ -32,9 +33,15 @@ def pbo_from_stats(mean: float, std: float) -> float:
     return _normal_cdf(-mean / std)
 
 
-def run_cpcv(n_total: int, backtest_fn: Callable, *,
-             n_folds: int = 6, n_test_groups: int = 2,
-             embargo_pct: float = 0.01, label_horizon: int = 0) -> Optional[dict]:
+def run_cpcv(
+    n_total: int,
+    backtest_fn: Callable,
+    *,
+    n_folds: int = 6,
+    n_test_groups: int = 2,
+    embargo_pct: float = 0.01,
+    label_horizon: int = 0,
+) -> Optional[dict]:
     """Run CPCV and return {path_sharpes, median_sharpe, n_paths, pbo}.
 
     backtest_fn(train_idx, test_idx) must return the per-bar return array for the
@@ -51,8 +58,12 @@ def run_cpcv(n_total: int, backtest_fn: Callable, *,
     except Exception:
         return None
     res = oskill.cpcv_pipeline(
-        n_total, n_folds=n_folds, n_test_groups=n_test_groups,
-        embargo_pct=embargo_pct, label_horizon=label_horizon, backtest_fn=backtest_fn,
+        n_total,
+        n_folds=n_folds,
+        n_test_groups=n_test_groups,
+        embargo_pct=embargo_pct,
+        label_horizon=label_horizon,
+        backtest_fn=backtest_fn,
         compute_path_statistics=True,
     )
     # oskill returns a summary dict of the path-Sharpe distribution, not the raw list.

@@ -7,6 +7,7 @@ aligned to sel v2 4H bar timestamps via asof join (last snapshot_ts <= bar_ts).
 Coverage: helixa data starts 2026-04-27; bars before that date yield NaN.
 State machine treats None as STUB — conservative skip, no regression risk.
 """
+
 from __future__ import annotations
 
 import logging
@@ -87,9 +88,7 @@ async def load_oi_funding_series(
         )
         await conn.close()
     except Exception as exc:
-        logger.warning(
-            "derivatives_loader: helixa connection failed (%s) — all NaN", exc
-        )
+        logger.warning("derivatives_loader: helixa connection failed (%s) — all NaN", exc)
         return {"open_interest": oi_out, "funding_rate": fr_out}
 
     if not rows:
@@ -99,24 +98,15 @@ async def load_oi_funding_series(
     # Build sorted snapshot arrays in nanosecond int for fast searchsorted
     snap_ns = np.array(
         [
-            int(
-                r["snapshot_ts"]
-                .replace(tzinfo=timezone.utc)
-                .timestamp()
-                * 1e9
-            )
+            int(r["snapshot_ts"].replace(tzinfo=timezone.utc).timestamp() * 1e9)
             if r["snapshot_ts"].tzinfo is None
             else int(r["snapshot_ts"].timestamp() * 1e9)
             for r in rows
         ],
         dtype=np.int64,
     )
-    snap_oi = np.array(
-        [float(r["open_interest"]) if r["open_interest"] is not None else np.nan for r in rows]
-    )
-    snap_fr = np.array(
-        [float(r["funding_rate"]) if r["funding_rate"] is not None else np.nan for r in rows]
-    )
+    snap_oi = np.array([float(r["open_interest"]) if r["open_interest"] is not None else np.nan for r in rows])
+    snap_fr = np.array([float(r["funding_rate"]) if r["funding_rate"] is not None else np.nan for r in rows])
 
     bar_ns = _to_ns_array(bar_timestamps)
 
@@ -128,8 +118,7 @@ async def load_oi_funding_series(
 
     covered = int(np.sum(~np.isnan(oi_out)))
     logger.info(
-        "derivatives_loader: %d/%d bars have OI/funding coverage (symbol=%s, "
-        "helixa_rows=%d)",
+        "derivatives_loader: %d/%d bars have OI/funding coverage (symbol=%s, helixa_rows=%d)",
         covered,
         n,
         symbol,

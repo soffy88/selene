@@ -1,4 +1,5 @@
 """Decision engine — maps (state, prev_state, position, account) → Decision."""
+
 from datetime import datetime
 from typing import Optional
 
@@ -63,16 +64,12 @@ class DecisionEngine:
                 current_state=current_state,
                 previous_state=previous_state,
                 position_multiplier=None,
-                target_size_usdt=(
-                    current_position.current_size_usdt if current_position else None
-                ),
+                target_size_usdt=(current_position.current_size_usdt if current_position else None),
                 reason=f"No rule matched ({current_state} ← {previous_state}); defaulting to HOLD",
             )
 
         action = DecisionAction(rule.action)
-        target_size = self._compute_target_size(
-            rule.position_multiplier, account, current_position
-        )
+        target_size = self._compute_target_size(rule.position_multiplier, account, current_position)
 
         reason = rule.notes or f"Rule {rule.id} matched"
 

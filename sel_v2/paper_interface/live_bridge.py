@@ -18,24 +18,29 @@ path, it does not loosen any gate.
 Default OFF: `emit()` is a no-op unless `SEL_V2_LIVE_BRIDGE` is truthy, so importing/using
 the bridge never accidentally routes paper decisions toward live.
 """
+
 from __future__ import annotations
 
 import logging
 import os
 from typing import Optional
 
-from shared.events.streams import STREAM_SIGNAL_SCORED, encode
-from shared.models.signal import ScoredSignal, SignalType, Direction, Regime
 from sel_v2.strategies.strategy_exit import S1_DRAWDOWN_STOP, S2_DRAWDOWN_STOP
+from shared.events.streams import STREAM_SIGNAL_SCORED, encode
+from shared.models.signal import Direction, Regime, ScoredSignal, SignalType
 
 logger = logging.getLogger("sel_v2.live_bridge")
 
 # sel_v2 state (4H) → v4 Regime, best-effort for downstream regime-aware filters.
 _STATE_TO_REGIME = {
-    "Surging_Up": Regime.TRENDING_UP, "Surging_Down": Regime.TRENDING_DOWN,
-    "Drifting_Up": Regime.TRENDING_UP, "Drifting_Down": Regime.TRENDING_DOWN,
-    "Coiling": Regime.ACCUMULATION, "Drifting_Calm": Regime.RANGING,
-    "Drifting_Charged": Regime.ACCUMULATION, "Critical": Regime.HIGH_VOLATILITY,
+    "Surging_Up": Regime.TRENDING_UP,
+    "Surging_Down": Regime.TRENDING_DOWN,
+    "Drifting_Up": Regime.TRENDING_UP,
+    "Drifting_Down": Regime.TRENDING_DOWN,
+    "Coiling": Regime.ACCUMULATION,
+    "Drifting_Calm": Regime.RANGING,
+    "Drifting_Charged": Regime.ACCUMULATION,
+    "Critical": Regime.HIGH_VOLATILITY,
     "Cascade": Regime.HIGH_VOLATILITY,
 }
 
@@ -87,11 +92,14 @@ def decision_to_scored_signal(
         win_probability=win_probability,
         entry_price=entry_price,
         stop_loss=stop_loss,
-        take_profit=0.0,   # v2 exits are state/CUSUM/time driven, not a fixed TP
-        factor_scores={"sel_v2_strategy": 1.0, "base_size_pct": size_pct,
-                       "suggested_leverage": lev},
-        indicators={"source": "sel_v2", "strategy": strategy, "state_4h": state,
-                    "reason": getattr(decision, "reason", "")},
+        take_profit=0.0,  # v2 exits are state/CUSUM/time driven, not a fixed TP
+        factor_scores={"sel_v2_strategy": 1.0, "base_size_pct": size_pct, "suggested_leverage": lev},
+        indicators={
+            "source": "sel_v2",
+            "strategy": strategy,
+            "state_4h": state,
+            "reason": getattr(decision, "reason", ""),
+        },
         regime_adjusted=state is not None,
     )
 
@@ -110,19 +118,26 @@ class LiveBridge:
         self._r = redis_client
         self._stream = stream
 
-    async def emit(self, decision, *, symbol: str, entry_price: float, strategy: str,
-                   win_probability: float = 0.60) -> Optional[str]:
+    async def emit(
+        self, decision, *, symbol: str, entry_price: float, strategy: str, win_probability: float = 0.60
+    ) -> Optional[str]:
         """Translate and publish a decision. Returns the ScoredSignal id when published,
         or None when the bridge is disabled or the decision is not an actionable entry.
         No-op (never raises) on a non-entry or when SEL_V2_LIVE_BRIDGE is off."""
         if not bridge_enabled():
             return None
         sig = decision_to_scored_signal(
-            decision, symbol=symbol, entry_price=entry_price, strategy=strategy,
-            win_probability=win_probability)
+            decision, symbol=symbol, entry_price=entry_price, strategy=strategy, win_probability=win_probability
+        )
         if sig is None or not sig.is_actionable:
             return None
         await self._r.xadd(self._stream, encode(sig.to_dict()), maxlen=10_000, approximate=True)
-        logger.info("sel_v2 → live pipeline: %s %s @ %s stop=%s (strategy=%s)",
-                    sig.direction.value, symbol, entry_price, sig.stop_loss, strategy)
+        logger.info(
+            "sel_v2 → live pipeline: %s %s @ %s stop=%s (strategy=%s)",
+            sig.direction.value,
+            symbol,
+            entry_price,
+            sig.stop_loss,
+            strategy,
+        )
         return sig.id

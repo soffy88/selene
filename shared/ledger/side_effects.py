@@ -17,9 +17,7 @@ IN_FLIGHT = frozenset({"intent", "submitted", "unknown"})
 
 class DuplicateSideEffect(RuntimeError):
     def __init__(self, record: "SideEffectRecord"):
-        super().__init__(
-            f"duplicate side effect {record.venue}/{record.client_order_id}/{record.operation_kind}"
-        )
+        super().__init__(f"duplicate side effect {record.venue}/{record.client_order_id}/{record.operation_kind}")
         self.record = record
 
 
@@ -37,9 +35,7 @@ class SideEffectStore:
     def __init__(self, ledger: Optional[SqliteLedger] = None) -> None:
         self.ledger = ledger or get_sqlite_ledger()
 
-    def probe(
-        self, venue: str, account: str, client_order_id: str, operation_kind: str
-    ) -> Optional[SideEffectRecord]:
+    def probe(self, venue: str, account: str, client_order_id: str, operation_kind: str) -> Optional[SideEffectRecord]:
         row = self.ledger.get_side_effect(venue, account, client_order_id, operation_kind)
         if row is None:
             return None

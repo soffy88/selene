@@ -81,9 +81,7 @@ class AccountingError(RuntimeError):
     """Raised on the Wave's STOP condition: a leg's weight left [0, 1] bounds."""
 
 
-def _fragment_pnl(
-    direction: int, weight: float, entry_price: float, exit_price: float
-) -> float:
+def _fragment_pnl(direction: int, weight: float, entry_price: float, exit_price: float) -> float:
     gross = weight * direction * (exit_price / entry_price - 1.0)
     cost = weight * ROUND_TRIP_COST_RATE
     return gross - cost
@@ -93,15 +91,11 @@ def _unrealized_pct(leg: Leg, price: float) -> Optional[float]:
     total = leg.total_weight
     if total <= 0:
         return None
-    pnl = sum(
-        b.weight * leg.direction * (price / b.entry_price - 1.0) for b in leg.batches
-    )
+    pnl = sum(b.weight * leg.direction * (price / b.entry_price - 1.0) for b in leg.batches)
     return pnl / total
 
 
-def simulate_branch_b(
-    close, parent_state: list[str], substates: list[BarSubState]
-) -> list[TradeRecord]:
+def simulate_branch_b(close, parent_state: list[str], substates: list[BarSubState]) -> list[TradeRecord]:
     """Run the Branch B pyramid simulation over the full bar series. Returns one
     TradeRecord per (batch, exit-event) fragment — a batch not cut by TERMINAL_FLAG
     before its final exit produces exactly one record; one cut before final exit
@@ -130,12 +124,7 @@ def simulate_branch_b(
                 leg, exited = None, True
 
             # 3: terminal flag first latch -> 50% reduce (not a full exit)
-            if (
-                not exited
-                and leg is not None
-                and Event.TERMINAL_FLAG in b.events
-                and not leg.terminal_cut_done
-            ):
+            if not exited and leg is not None and Event.TERMINAL_FLAG in b.events and not leg.terminal_cut_done:
                 _cut_half(leg, price, i, records)
                 leg.terminal_cut_done = True
 
@@ -165,26 +154,12 @@ def simulate_branch_b(
                 if k == 1:
                     leg_counter += 1
                     leg = Leg(leg_id=leg_counter, direction=b.direction)
-                    leg.batches.append(
-                        Batch(
-                            k=1, weight=BATCH_WEIGHTS[1], entry_price=price, entry_bar=i
-                        )
-                    )
-            elif (
-                not leg.terminal_cut_done
-                and 2 <= k <= MAX_BATCH_K
-                and k not in {bt.k for bt in leg.batches}
-            ):
-                leg.batches.append(
-                    Batch(k=k, weight=BATCH_WEIGHTS[k], entry_price=price, entry_bar=i)
-                )
+                    leg.batches.append(Batch(k=1, weight=BATCH_WEIGHTS[1], entry_price=price, entry_bar=i))
+            elif not leg.terminal_cut_done and 2 <= k <= MAX_BATCH_K and k not in {bt.k for bt in leg.batches}:
+                leg.batches.append(Batch(k=k, weight=BATCH_WEIGHTS[k], entry_price=price, entry_bar=i))
 
-            if leg is not None and (
-                leg.total_weight > 1.0 + 1e-9 or leg.total_weight < -1e-9
-            ):
-                raise AccountingError(
-                    f"leg {leg.leg_id} weight {leg.total_weight} outside [0,1] at bar {i}"
-                )
+            if leg is not None and (leg.total_weight > 1.0 + 1e-9 or leg.total_weight < -1e-9):
+                raise AccountingError(f"leg {leg.leg_id} weight {leg.total_weight} outside [0,1] at bar {i}")
 
     # Force-close anything still open at the end of the data (not a modeled exit rule —
     # just so no leg is left silently open; excluded from the gate report's exit-reason
@@ -216,9 +191,7 @@ def _cut_half(leg: Leg, price: float, bar: int, records: list[TradeRecord]) -> N
         batch.weight = half
 
 
-def _close_all(
-    leg: Leg, price: float, bar: int, reason: str, records: list[TradeRecord]
-) -> None:
+def _close_all(leg: Leg, price: float, bar: int, reason: str, records: list[TradeRecord]) -> None:
     for batch in leg.batches:
         if batch.weight <= 0:
             continue
@@ -234,9 +207,7 @@ def _close_all(
                 exit_reason=reason,
                 weight=batch.weight,
                 bars_held=bar - batch.entry_bar,
-                net_pnl=_fragment_pnl(
-                    leg.direction, batch.weight, batch.entry_price, price
-                ),
+                net_pnl=_fragment_pnl(leg.direction, batch.weight, batch.entry_price, price),
             )
         )
     leg.batches = []

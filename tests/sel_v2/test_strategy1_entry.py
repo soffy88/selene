@@ -1,13 +1,10 @@
 """Tests for sel_v2.strategies.strategy1_entry (v2.0 §13.2)."""
-import pytest
+
 from datetime import datetime, timezone
 
-from sel_v2.strategies.cusum_short import CUSUMShort, CUSUMTrigger
 from sel_v2.strategies.strategy1_entry import (
-    Strategy1EntryFilter,
-    Strategy1EntryDecision,
     BASE_SIZE_FRACTION,
-    OI_REDUCTION_FACTOR,
+    Strategy1EntryFilter,
 )
 
 _TS = datetime(2025, 1, 1, tzinfo=timezone.utc)
@@ -15,6 +12,7 @@ _TS = datetime(2025, 1, 1, tzinfo=timezone.utc)
 
 def _ts(bar_index: int) -> datetime:
     from datetime import timedelta
+
     return _TS + timedelta(hours=4 * bar_index)
 
 
@@ -39,6 +37,7 @@ def _make_filter_with_warm_cusum_short() -> Strategy1EntryFilter:
 
 
 # ── Step 1: state filter ──────────────────────────────────────────────────────
+
 
 def test_abort_drifting_calm():
     f = Strategy1EntryFilter()
@@ -70,6 +69,7 @@ def test_abort_cascade():
 
 # ── Step 2: min-dwell ─────────────────────────────────────────────────────────
 
+
 def test_coiling_min_dwell_not_met():
     f = Strategy1EntryFilter()
     d = f.evaluate(_ts(0), z_t=2.0, state_4h="Coiling", current_duration_4h=5)
@@ -100,6 +100,7 @@ def test_drifting_charged_min_dwell_met():
 
 # ── Step 3: CUSUM-Mid ─────────────────────────────────────────────────────────
 
+
 def test_observe_when_cusum_not_triggered():
     f = Strategy1EntryFilter()
     # Cold start + small z_t won't trigger
@@ -128,6 +129,7 @@ def test_enter_short_when_cusum_triggers_negative():
 
 # ── Step 4: derivatives filter ────────────────────────────────────────────────
 
+
 def _make_triggered_filter() -> tuple[Strategy1EntryFilter, float]:
     """Return filter + z_t that produces ENTER_LONG in neutral conditions."""
     f = _make_filter_with_warm_cusum()
@@ -137,7 +139,10 @@ def _make_triggered_filter() -> tuple[Strategy1EntryFilter, float]:
 def test_funding_extreme_aborts_long():
     f, z = _make_triggered_filter()
     d = f.evaluate(
-        _ts(30), z_t=z, state_4h="Coiling", current_duration_4h=8,
+        _ts(30),
+        z_t=z,
+        state_4h="Coiling",
+        current_duration_4h=8,
         funding_pctile=0.95,
     )
     assert d.action == "ABORT"
@@ -148,7 +153,10 @@ def test_funding_extreme_aborts_long():
 def test_funding_extreme_aborts_short():
     f = _make_filter_with_warm_cusum_short()
     d = f.evaluate(
-        _ts(30), z_t=-10.0, state_4h="Coiling", current_duration_4h=8,
+        _ts(30),
+        z_t=-10.0,
+        state_4h="Coiling",
+        current_duration_4h=8,
         funding_pctile=0.05,
     )
     assert d.action == "ABORT"
@@ -158,7 +166,10 @@ def test_funding_extreme_aborts_short():
 def test_funding_none_does_not_abort():
     f, z = _make_triggered_filter()
     d = f.evaluate(
-        _ts(30), z_t=z, state_4h="Coiling", current_duration_4h=8,
+        _ts(30),
+        z_t=z,
+        state_4h="Coiling",
+        current_duration_4h=8,
         funding_pctile=None,
     )
     assert d.action == "ENTER_LONG"
@@ -167,13 +178,19 @@ def test_funding_none_does_not_abort():
 def test_oi_against_long_halves_size():
     f, z = _make_triggered_filter()
     d_with = f.evaluate(
-        _ts(30), z_t=z, state_4h="Coiling", current_duration_4h=8,
+        _ts(30),
+        z_t=z,
+        state_4h="Coiling",
+        current_duration_4h=8,
         oi_direction="falling",
     )
     # Reset and get size without OI constraint
     f2 = _make_filter_with_warm_cusum()
     d_without = f2.evaluate(
-        _ts(30), z_t=z, state_4h="Coiling", current_duration_4h=8,
+        _ts(30),
+        z_t=z,
+        state_4h="Coiling",
+        current_duration_4h=8,
         oi_direction=None,
     )
     assert d_with.action == "ENTER_LONG"
@@ -187,7 +204,10 @@ def test_oi_against_long_halves_size():
 def test_liquidation_pulse_aborts():
     f, z = _make_triggered_filter()
     d = f.evaluate(
-        _ts(30), z_t=z, state_4h="Coiling", current_duration_4h=8,
+        _ts(30),
+        z_t=z,
+        state_4h="Coiling",
+        current_duration_4h=8,
         liquidation_pulse_1h=True,
     )
     assert d.action == "ABORT"
@@ -196,10 +216,14 @@ def test_liquidation_pulse_aborts():
 
 # ── Step 6: divergence ────────────────────────────────────────────────────────
 
+
 def test_divergence_aborts_entry():
     f, z = _make_triggered_filter()
     d = f.evaluate(
-        _ts(30), z_t=z, state_4h="Coiling", current_duration_4h=8,
+        _ts(30),
+        z_t=z,
+        state_4h="Coiling",
+        current_duration_4h=8,
         cross_spread_pct=0.5,
     )
     assert d.action == "ABORT"
@@ -209,7 +233,10 @@ def test_divergence_aborts_entry():
 def test_divergence_none_does_not_abort():
     f, z = _make_triggered_filter()
     d = f.evaluate(
-        _ts(30), z_t=z, state_4h="Coiling", current_duration_4h=8,
+        _ts(30),
+        z_t=z,
+        state_4h="Coiling",
+        current_duration_4h=8,
         cross_spread_pct=None,
     )
     assert d.action == "ENTER_LONG"
@@ -217,14 +244,21 @@ def test_divergence_none_does_not_abort():
 
 # ── Step 7: vocab modifier ────────────────────────────────────────────────────
 
+
 def test_sweep_vocab_increases_size_modifier():
     f, z = _make_triggered_filter()
     d_no_vocab = f.evaluate(
-        _ts(30), z_t=z, state_4h="Coiling", current_duration_4h=8,
+        _ts(30),
+        z_t=z,
+        state_4h="Coiling",
+        current_duration_4h=8,
     )
     f2 = _make_filter_with_warm_cusum()
     d_with_sweep = f2.evaluate(
-        _ts(30), z_t=z, state_4h="Coiling", current_duration_4h=8,
+        _ts(30),
+        z_t=z,
+        state_4h="Coiling",
+        current_duration_4h=8,
         vocab=["Sweep"],
     )
     assert d_with_sweep.vocab_modifier > 0.0
@@ -234,13 +268,17 @@ def test_sweep_vocab_increases_size_modifier():
 def test_absorption_reduces_confidence():
     f, z = _make_triggered_filter()
     d = f.evaluate(
-        _ts(30), z_t=z, state_4h="Coiling", current_duration_4h=8,
+        _ts(30),
+        z_t=z,
+        state_4h="Coiling",
+        current_duration_4h=8,
         vocab=["Absorption"],
     )
     assert d.vocab_modifier < 0.0
 
 
 # ── Sizing: base_size_pct ─────────────────────────────────────────────────────
+
 
 def test_base_size_capped_at_base_fraction():
     f, z = _make_triggered_filter()

@@ -20,6 +20,7 @@ Usage:
     python -m sel_v2.offline.calibrate_all --data analysis/data/btc_4h.parquet
     python -m sel_v2.offline.calibrate_all --from-db        # pull bars from v2_bars_4h
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,35 +34,49 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 # The full set of v2_strategy_params keys this backfill is responsible for. A deploy
 # can check coverage against the live table after running (see verify_params_present).
 EXPECTED_PARAM_KEYS = (
-    "h2_mu_ref", "h2_alpha_ref", "h2_beta_ref", "h2_branching_ratio_threshold",
-    "tda1_l1_threshold_p90", "tda1_l1_threshold_p95", "tda1_l1_threshold_p97",
+    "h2_mu_ref",
+    "h2_alpha_ref",
+    "h2_beta_ref",
+    "h2_branching_ratio_threshold",
+    "tda1_l1_threshold_p90",
+    "tda1_l1_threshold_p95",
+    "tda1_l1_threshold_p97",
 )
 
 
-def run_all(data_path: str, *, persist: bool = True, db_url: Optional[str] = None,
-            hawkes_kwargs: Optional[dict] = None,
-            tda_kwargs: Optional[dict] = None) -> dict:
+def run_all(
+    data_path: str,
+    *,
+    persist: bool = True,
+    db_url: Optional[str] = None,
+    hawkes_kwargs: Optional[dict] = None,
+    tda_kwargs: Optional[dict] = None,
+) -> dict:
     """Run the H2 Hawkes and TDA1 calibrations on `data_path` and (optionally)
     persist their parameters. Returns the computed values + the param keys written."""
     from sel_v2.offline.hawkes_calibration import run_hawkes_calibration
     from sel_v2.offline.tda_calibration import run_tda_calibration
 
     logger.info("Calibration backfill starting (data=%s persist=%s)", data_path, persist)
-    h = run_hawkes_calibration(data_path=data_path, persist=persist, db_url=db_url,
-                               **(hawkes_kwargs or {}))
-    t = run_tda_calibration(data_path=data_path, persist=persist, db_url=db_url,
-                            **(tda_kwargs or {}))
+    h = run_hawkes_calibration(data_path=data_path, persist=persist, db_url=db_url, **(hawkes_kwargs or {}))
+    t = run_tda_calibration(data_path=data_path, persist=persist, db_url=db_url, **(tda_kwargs or {}))
     full = h.get("full_fit", {}) or {}
     summary = {
-        "hawkes": {"mu": full.get("mu"), "alpha": full.get("alpha"),
-                   "beta": full.get("beta"), "branching_ratio": full.get("branching_ratio")},
+        "hawkes": {
+            "mu": full.get("mu"),
+            "alpha": full.get("alpha"),
+            "beta": full.get("beta"),
+            "branching_ratio": full.get("branching_ratio"),
+        },
         "tda": {"l1_q90": t.get("l1_q90"), "l1_q95": t.get("l1_q95"), "l1_q97": t.get("l1_q97")},
         "expected_param_keys": list(EXPECTED_PARAM_KEYS),
         "persisted": persist,
     }
-    logger.info("Calibration backfill done: hawkes η=%.3f tda p95=%.6f",
-                summary["hawkes"]["branching_ratio"] or float("nan"),
-                summary["tda"]["l1_q95"] or float("nan"))
+    logger.info(
+        "Calibration backfill done: hawkes η=%.3f tda p95=%.6f",
+        summary["hawkes"]["branching_ratio"] or float("nan"),
+        summary["tda"]["l1_q95"] or float("nan"),
+    )
     return summary
 
 
@@ -69,10 +84,11 @@ async def export_bars_parquet(pool, parquet_path: str, symbol: str = "BTC-USDT")
     """Export v2_bars_4h for `symbol` to a parquet the calibrations can read.
     Returns the number of bars written."""
     import pandas as pd
+
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT time, open, high, low, close, volume FROM v2_bars_4h "
-            "WHERE symbol=$1 ORDER BY time ASC", symbol)
+            "SELECT time, open, high, low, close, volume FROM v2_bars_4h WHERE symbol=$1 ORDER BY time ASC", symbol
+        )
     df = pd.DataFrame([dict(r) for r in rows])
     if not df.empty:
         for col in ("open", "high", "low", "close", "volume"):
@@ -96,20 +112,21 @@ async def verify_params_present(pool) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run all calibrations and backfill params")
-    parser.add_argument("--data", default="analysis/data/btc_4h.parquet",
-                        help="Parquet bar file (ignored when --from-db is set)")
-    parser.add_argument("--from-db", action="store_true",
-                        help="Export bars from v2_bars_4h before calibrating")
+    parser.add_argument(
+        "--data", default="analysis/data/btc_4h.parquet", help="Parquet bar file (ignored when --from-db is set)"
+    )
+    parser.add_argument("--from-db", action="store_true", help="Export bars from v2_bars_4h before calibrating")
     parser.add_argument("--symbol", default="BTC-USDT")
-    parser.add_argument("--no-persist", action="store_true",
-                        help="Compute but do not write to v2_strategy_params")
+    parser.add_argument("--no-persist", action="store_true", help="Compute but do not write to v2_strategy_params")
     parser.add_argument("--db-url", default=None, help="Postgres DSN override")
     args = parser.parse_args()
 
     data_path = args.data
     if args.from_db:
         import asyncio
+
         import asyncpg
+
         dsn = args.db_url or os.environ.get("DB_URL")
         data_path = "analysis/data/_calib_bars_from_db.parquet"
 
@@ -119,6 +136,7 @@ def main() -> None:
                 return await export_bars_parquet(pool, data_path, args.symbol)
             finally:
                 await pool.close()
+
         n = asyncio.run(_export())
         if n == 0:
             logger.error("v2_bars_4h returned 0 bars for %s — aborting", args.symbol)

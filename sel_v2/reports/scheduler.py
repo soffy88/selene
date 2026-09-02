@@ -15,12 +15,12 @@ query v2_state_history, v2_cusum_events, v2_strategy_trades, and
 v2_inverse_vocab_events for the past 7 days.  Until those tables have
 live data, all sections return N/A.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sel_v2.reports.weekly_generator import WeeklyGenerator
@@ -74,15 +74,18 @@ def _collect_report_data(period_start: str, period_end: str, db=None) -> dict[st
         "coordination_events": {},
         "anomalies": {"data_gaps": [], "api_errors": [], "decision_anomalies": []},
         "account_state": {},
-        "observation_tools": {"tool_triggers": {}, "tool_notes": {
-            "B1": "rolling HMM runs; no disagreements recorded",
-            "B2": "Drifting-Charged is never recognized (OI/funding STUB)",
-            "TDA2": "running; no anomaly triggered this week",
-            "I1": "PE normal range",
-            "T2": "funding_rate STUB → NO_DATA",
-            "W2": "running; energy ratio within normal range",
-            "H3": "liquidation STUB → running in degraded mode",
-        }},
+        "observation_tools": {
+            "tool_triggers": {},
+            "tool_notes": {
+                "B1": "rolling HMM runs; no disagreements recorded",
+                "B2": "Drifting-Charged is never recognized (OI/funding STUB)",
+                "TDA2": "running; no anomaly triggered this week",
+                "I1": "PE normal range",
+                "T2": "funding_rate STUB → NO_DATA",
+                "W2": "running; energy ratio within normal range",
+                "H3": "liquidation STUB → running in degraded mode",
+            },
+        },
     }
 
     if db is not None:
@@ -107,7 +110,6 @@ async def run_weekly_report(db=None) -> str:
     path = gen.generate(week_iso=week_iso, data=data, write_to_disk=True)
     logger.info("Weekly report written to %s", path)
     return path
-
 
 
 if __name__ == "__main__":

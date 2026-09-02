@@ -25,9 +25,7 @@ import numpy as np
 from sel_v2.offline.branch_b_sim import simulate_branch_b
 from sel_v2.offline.substate import compute_substates
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("v22_gate_report")
 
 SYMBOL = os.environ.get("SYMBOLS", "BTC-USDT")
@@ -83,9 +81,7 @@ def _pct(x: float) -> str:
     return f"{x * 100:.1f}%"
 
 
-def _false_positive_rate(
-    events: list[tuple], high, low, close, window=FALSE_POSITIVE_WINDOW_BARS
-):
+def _false_positive_rate(events: list[tuple], high, low, close, window=FALSE_POSITIVE_WINDOW_BARS):
     """events: list of (direction, entry_bar, event_bar). Rate a break/flag as a false
     positive if price makes a NEW extreme beyond the leg's own prior extreme (from
     entry_bar..event_bar) within `window` bars after event_bar."""
@@ -135,18 +131,12 @@ async def run() -> dict:
         # leg-level aggregates
         leg_pnl = {lid: sum(r.net_pnl for r in recs) for lid, recs in legs.items()}
         leg_direction = {lid: recs[0].direction for lid, recs in legs.items()}
-        leg_entry_bar = {
-            lid: min(r.entry_bar for r in recs) for lid, recs in legs.items()
-        }
+        leg_entry_bar = {lid: min(r.entry_bar for r in recs) for lid, recs in legs.items()}
         leg_final_reason = {}
         leg_final_bar = {}
         for lid, recs in legs.items():
             finals = [r for r in recs if r.exit_reason != "terminal_50pct"]
-            final = (
-                max(finals, key=lambda r: r.exit_bar)
-                if finals
-                else max(recs, key=lambda r: r.exit_bar)
-            )
+            final = max(finals, key=lambda r: r.exit_bar) if finals else max(recs, key=lambda r: r.exit_bar)
             leg_final_reason[lid] = final.exit_reason
             leg_final_bar[lid] = final.exit_bar
 
@@ -164,11 +154,7 @@ async def run() -> dict:
 
         # exit reason distribution (final, per leg) + terminal-cut incidence
         exit_dist = Counter(leg_final_reason.values())
-        n_terminal_cut = sum(
-            1
-            for recs in legs.values()
-            if any(r.exit_reason == "terminal_50pct" for r in recs)
-        )
+        n_terminal_cut = sum(1 for recs in legs.values() if any(r.exit_reason == "terminal_50pct" for r in recs))
 
         # terminal lead + its own false-positive rate
         terminal_bar = {}
@@ -176,16 +162,9 @@ async def run() -> dict:
             cuts = [r for r in recs if r.exit_reason == "terminal_50pct"]
             if cuts:
                 terminal_bar[lid] = cuts[0].exit_bar
-        terminal_leads = [
-            leg_final_bar[lid] - terminal_bar[lid] for lid in terminal_bar
-        ]
-        terminal_events = [
-            (leg_direction[lid], leg_entry_bar[lid], terminal_bar[lid])
-            for lid in terminal_bar
-        ]
-        term_fp_rate, term_fp, term_total = _false_positive_rate(
-            terminal_events, high, low, close
-        )
+        terminal_leads = [leg_final_bar[lid] - terminal_bar[lid] for lid in terminal_bar]
+        terminal_events = [(leg_direction[lid], leg_entry_bar[lid], terminal_bar[lid]) for lid in terminal_bar]
+        term_fp_rate, term_fp, term_total = _false_positive_rate(terminal_events, high, low, close)
 
         # per-year split
         year_stats = defaultdict(list)
@@ -205,8 +184,7 @@ async def run() -> dict:
             "h3_rate": h3_rate,
             "h3_fp": h3_fp,
             "h3_total": h3_total,
-            "h3_pass": (h3_rate is not None)
-            and h3_rate < H_V22_3_MAX_FALSE_POSITIVE_RATE,
+            "h3_pass": (h3_rate is not None) and h3_rate < H_V22_3_MAX_FALSE_POSITIVE_RATE,
             "exit_dist": dict(exit_dist),
             "n_terminal_cut": n_terminal_cut,
             "terminal_leads": terminal_leads,

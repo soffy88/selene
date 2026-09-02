@@ -123,9 +123,7 @@ def build_strokes(bars: list[MergedBar], fractals: list[Fractal]) -> list[Stroke
             continue
         if fx.kind == anchor.kind:
             # same type — keep the extreme (top: higher; bottom: lower)
-            better = (fx.kind == "top" and fx.price > anchor.price) or (
-                fx.kind == "bottom" and fx.price < anchor.price
-            )
+            better = (fx.kind == "top" and fx.price > anchor.price) or (fx.kind == "bottom" and fx.price < anchor.price)
             if better:
                 if strokes and strokes[-1].end_m == anchor.apex_m:
                     # extend the last confirmed stroke to the new extreme
@@ -156,9 +154,7 @@ def build_strokes(bars: list[MergedBar], fractals: list[Fractal]) -> list[Stroke
 # ── 4. orthodox pivot (笔中枢) overlap series ────────────────────────────────
 
 
-def stroke_overlap_series(
-    strokes: list[Stroke], n_raw: int, atr: np.ndarray
-) -> np.ndarray:
+def stroke_overlap_series(strokes: list[Stroke], n_raw: int, atr: np.ndarray) -> np.ndarray:
     """Per-raw-bar causal overlap_ratio of the last 3 CONFIRMED strokes' price
     ranges (正统中枢 construction), normalized by ATR — directly comparable with
     chan_lens.pivot_overlap_series (zigzag-based CHAN-3)."""
@@ -205,9 +201,7 @@ def stroke_direction_series(strokes: list[Stroke], n_raw: int) -> list[str]:
 # ── 5. MACD-area divergence (CHAN-5) ─────────────────────────────────────────
 
 
-def macd_histogram(
-    close: np.ndarray, fast: int = 12, slow: int = 26, sig: int = 9
-) -> np.ndarray:
+def macd_histogram(close: np.ndarray, fast: int = 12, slow: int = 26, sig: int = 9) -> np.ndarray:
     def ema(x, n):
         a = 2.0 / (n + 1)
         out = np.empty_like(x)
@@ -245,22 +239,12 @@ def detect_macd_divergences(
         if prior is not None and prior.end_idx > prior.start_idx:
             testable.append(leg.leg_id)
             prior_bars = prior.end_idx - prior.start_idx
-            prior_rate = (
-                float(np.sum(np.abs(hist[prior.start_idx + 1 : prior.end_idx + 1])))
-                / prior_bars
-            )
+            prior_rate = float(np.sum(np.abs(hist[prior.start_idx + 1 : prior.end_idx + 1]))) / prior_bars
             prior_extreme = float(close[prior.end_idx])
             for i in range(leg.start_idx + 1, leg.end_idx + 1):
                 bars_elapsed = i - leg.start_idx
-                rate = (
-                    float(np.sum(np.abs(hist[leg.start_idx + 1 : i + 1])))
-                    / bars_elapsed
-                )
-                exceeds = (
-                    close[i] > prior_extreme
-                    if leg.direction == 1
-                    else close[i] < prior_extreme
-                )
+                rate = float(np.sum(np.abs(hist[leg.start_idx + 1 : i + 1]))) / bars_elapsed
+                exceeds = close[i] > prior_extreme if leg.direction == 1 else close[i] < prior_extreme
                 if exceeds and prior_rate > 0 and rate < DIVERGENCE_RATIO * prior_rate:
                     candidates.append(
                         MacdDivergence(

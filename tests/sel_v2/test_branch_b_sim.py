@@ -47,9 +47,7 @@ def test_full_pyramid_sizes_30_45_25_and_closes_on_left_surging():
         _bar(push_count=1, events=[Event.RE_PUSH]),
         _bar(push_count=2, events=[Event.RE_PUSH]),
         _bar(push_count=3, events=[Event.RE_PUSH]),
-        _bar(
-            push_count=3
-        ),  # default BarSubState would be used in practice; irrelevant here
+        _bar(push_count=3),  # default BarSubState would be used in practice; irrelevant here
     ]
     records = simulate_branch_b(close, parent, subs)
 
@@ -62,9 +60,7 @@ def test_full_pyramid_sizes_30_45_25_and_closes_on_left_surging():
     for r in records:
         assert r.exit_reason == "left_surging"
         assert r.exit_price == 130.0
-    assert by_k[1].net_pnl == pytest.approx(
-        _fragment_pnl(1, BATCH_WEIGHTS[1], 100.0, 130.0)
-    )
+    assert by_k[1].net_pnl == pytest.approx(_fragment_pnl(1, BATCH_WEIGHTS[1], 100.0, 130.0))
 
 
 def test_k_four_and_beyond_never_adds():

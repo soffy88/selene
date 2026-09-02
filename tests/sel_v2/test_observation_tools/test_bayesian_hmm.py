@@ -4,7 +4,7 @@ Tests for B1 BayesianHMM and B2 HMMBoundaryArbiter.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pytest
@@ -15,7 +15,7 @@ import pytest
 pytest.importorskip("oprim", reason="private quant stack (oprim) not installed")
 
 from sel_v2.observation_tools.base import BarFeatures, ObservationResult
-from sel_v2.observation_tools.bayesian_hmm import BayesianHMM, _GaussianHMM, MIN_BARS
+from sel_v2.observation_tools.bayesian_hmm import MIN_BARS, BayesianHMM, _GaussianHMM
 from sel_v2.observation_tools.hmm_boundary_arbiter import HMMBoundaryArbiter
 
 

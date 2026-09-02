@@ -41,9 +41,7 @@ class TestPortfolioOpensOnPaperFill:
     def test_live_filled_still_opens_position(self):
         """The live-exchange 'filled' event must keep working too."""
         e = PortfolioEngine()
-        asyncio.run(
-            e.handle_order_event(_fill_event("sig2", "ETHUSDT", event="filled"))
-        )
+        asyncio.run(e.handle_order_event(_fill_event("sig2", "ETHUSDT", event="filled")))
         assert len(e._positions) == 1
 
     def test_close_pops_the_position(self):

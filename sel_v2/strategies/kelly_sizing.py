@@ -17,6 +17,7 @@ Phase schedule:
 Strategy 1: rolling 60-day window, min 30 trades before phase switch
 Strategy 2: rolling 30-day window, min 30 trades before phase switch
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -29,10 +30,10 @@ import numpy as np
 
 
 class KellyPhase(Enum):
-    PHASE_0 = 0   # fixed size, no Kelly
-    PHASE_1 = 1   # fixed size, diagnostic W/R only
-    PHASE_2 = 2   # quarter Kelly, cap [5%, 25%]
-    PHASE_3 = 3   # quarter Kelly, cap [3%, 30%]
+    PHASE_0 = 0  # fixed size, no Kelly
+    PHASE_1 = 1  # fixed size, diagnostic W/R only
+    PHASE_2 = 2  # quarter Kelly, cap [5%, 25%]
+    PHASE_3 = 3  # quarter Kelly, cap [3%, 30%]
 
 
 # §7.1: fixed base_size fractions (Phase 0 and 1)
@@ -51,29 +52,30 @@ _ROLLING_WINDOW_DAYS: dict[str, int] = {
 _PHASE2_CAP = (0.05, 0.25)
 _PHASE3_CAP = (0.03, 0.30)
 
-_MIN_TRADES_FOR_SWITCH = 30   # must have ≥ 30 closed trades to enable Phase 2
+_MIN_TRADES_FOR_SWITCH = 30  # must have ≥ 30 closed trades to enable Phase 2
 _QUARTER_KELLY = 0.25
 
 
 @dataclass
 class ClosedTrade:
     closed_at: datetime
-    pnl_pct: float   # realised PnL as fraction (positive = win)
+    pnl_pct: float  # realised PnL as fraction (positive = win)
 
 
 @dataclass
 class KellyDiagnostic:
     """Computed W/R statistics for the current rolling window."""
+
     phase: KellyPhase
     sample_size: int
-    win_rate: Optional[float]            # W
-    avg_win_pct: Optional[float]         # avg win magnitude
-    avg_loss_pct: Optional[float]        # avg loss magnitude (positive number)
-    reward_risk_ratio: Optional[float]   # R = avg_win / avg_loss
-    kelly_fraction: Optional[float]      # f* (full Kelly)
-    quarter_kelly: Optional[float]       # 0.25 × f*
-    suggested_base_pct: float            # what this phase actually uses
-    negative_edge: bool = False          # True if f* < 0 → pause strategy
+    win_rate: Optional[float]  # W
+    avg_win_pct: Optional[float]  # avg win magnitude
+    avg_loss_pct: Optional[float]  # avg loss magnitude (positive number)
+    reward_risk_ratio: Optional[float]  # R = avg_win / avg_loss
+    kelly_fraction: Optional[float]  # f* (full Kelly)
+    quarter_kelly: Optional[float]  # 0.25 × f*
+    suggested_base_pct: float  # what this phase actually uses
+    negative_edge: bool = False  # True if f* < 0 → pause strategy
 
 
 @dataclass
@@ -86,7 +88,7 @@ class KellySizer:
     The phase field is set externally (Wiki-gated per §7.1).
     """
 
-    strategy: str                    # 'strategy_1' or 'strategy_2'
+    strategy: str  # 'strategy_1' or 'strategy_2'
     phase: KellyPhase = KellyPhase.PHASE_0
     _trades: deque[ClosedTrade] = field(default_factory=deque)
 

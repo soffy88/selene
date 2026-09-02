@@ -13,6 +13,7 @@ Three placeholder sections for manual annotation are always appended:
   - Claude 反馈
   - 調参決策記録
 """
+
 from __future__ import annotations
 
 import os
@@ -20,15 +21,15 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sel_v2.reports.sections import (
-    build_state_distribution,
+    build_account_state,
+    build_anomalies,
+    build_coordination_events,
     build_cusum_stats,
     build_inverse_vocab_stats,
+    build_observation_tools,
+    build_state_distribution,
     build_strategy1_perf,
     build_strategy2_perf,
-    build_coordination_events,
-    build_anomalies,
-    build_account_state,
-    build_observation_tools,
 )
 
 _REPORTS_DIR = os.path.join(os.path.dirname(__file__), "weekly")

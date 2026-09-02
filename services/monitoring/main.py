@@ -13,8 +13,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
-from pathlib import Path
+from datetime import datetime
 
 from fastapi import FastAPI, Query
 from fastapi.responses import PlainTextResponse
@@ -28,18 +27,19 @@ logging.basicConfig(
 )
 
 # ── 配置 ──────────────────────────────────────────────
-REPORT_HOUR  = int(os.getenv("REPORT_HOUR_CST", "9"))    # 每天几点生成（CST）
-REPORT_DAYS  = int(os.getenv("REPORT_DAYS",     "1"))    # 默认统计过去1天
+REPORT_HOUR = int(os.getenv("REPORT_HOUR_CST", "9"))  # 每天几点生成（CST）
+REPORT_DAYS = int(os.getenv("REPORT_DAYS", "1"))  # 默认统计过去1天
 PUSH_ENABLED = os.getenv("REPORT_PUSH", "true").lower() == "true"
-EXEC_MODE    = os.getenv("EXEC_MODE", "NOTIFY_ONLY")
+EXEC_MODE = os.getenv("EXEC_MODE", "NOTIFY_ONLY")
 CONSECUTIVE_REQUIRED = int(os.getenv("CONSECUTIVE_DAYS_REQUIRED", "3"))
 
 # 趋势数据存 Redis（不依赖本地文件，容器重启不丢失）
-TREND_KEY    = "cw4:monitor:trend"
+TREND_KEY = "cw4:monitor:trend"
 LAST_RUN_KEY = "cw4:monitor:last_run_date"
 
 
 # ── 趋势存取（Redis）─────────────────────────────────
+
 
 async def load_trend() -> list:
     r = await get_redis()
@@ -58,26 +58,26 @@ async def save_trend(trend: list):
 
 
 async def append_trend(report_data: dict, trend: list) -> list:
-    ic   = report_data.get("ic", {})
+    ic = report_data.get("ic", {})
     sigs = report_data.get("signals", {})
-    rec  = report_data.get("recommendation", {})
+    rec = report_data.get("recommendation", {})
     risk = report_data.get("risk", {})
 
     entry = {
-        "date":           datetime.now().strftime("%Y-%m-%d"),
-        "mean_ic":        ic.get("mean_ic"),
-        "mean_ir":        ic.get("mean_ir"),
-        "ic_n":           ic.get("total_n", 0),
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "mean_ic": ic.get("mean_ic"),
+        "mean_ir": ic.get("mean_ir"),
+        "ic_n": ic.get("total_n", 0),
         "signal_per_day": sigs.get("per_day", 0),
-        "avg_win_prob":   sigs.get("avg_win_prob", 0),
-        "drawdown_pct":   risk.get("current_dd_pct", 0),
-        "next_mode":      rec.get("next_mode"),
-        "confidence":     rec.get("confidence"),
-        "blockers":       len(rec.get("blockers", [])),
+        "avg_win_prob": sigs.get("avg_win_prob", 0),
+        "drawdown_pct": risk.get("current_dd_pct", 0),
+        "next_mode": rec.get("next_mode"),
+        "confidence": rec.get("confidence"),
+        "blockers": len(rec.get("blockers", [])),
     }
 
     trend.append(entry)
-    return trend[-90:]   # 只保留最近90天
+    return trend[-90:]  # 只保留最近90天
 
 
 def analyze_trend(trend: list) -> dict:
@@ -89,23 +89,24 @@ def analyze_trend(trend: list) -> dict:
             "avg_recent": None,
         }
 
-    recent  = [t["mean_ic"] for t in trend[-7:]  if t["mean_ic"] is not None]
+    recent = [t["mean_ic"] for t in trend[-7:] if t["mean_ic"] is not None]
     earlier = [t["mean_ic"] for t in trend[-14:-7] if t["mean_ic"] is not None]
 
-    avg_recent  = sum(recent)  / len(recent)  if recent  else None
+    avg_recent = sum(recent) / len(recent) if recent else None
     avg_earlier = sum(earlier) / len(earlier) if earlier else avg_recent
 
     if avg_recent is None:
-        return {"improving": None, "consecutive_pass": 0,
-                "msg": "近期无 IC 数据", "avg_recent": None}
+        return {"improving": None, "consecutive_pass": 0, "msg": "近期无 IC 数据", "avg_recent": None}
 
     improving = avg_recent > (avg_earlier or 0) + 0.005
     declining = avg_recent < (avg_earlier or 0) - 0.005
 
     msg = (
-        f"📈 IC 趋势改善 ({avg_earlier:.4f} → {avg_recent:.4f})" if improving else
-        f"📉 IC 趋势下降 ({avg_earlier:.4f} → {avg_recent:.4f})" if declining else
-        f"➡️  IC 趋势持平 ({avg_recent:.4f})"
+        f"📈 IC 趋势改善 ({avg_earlier:.4f} → {avg_recent:.4f})"
+        if improving
+        else f"📉 IC 趋势下降 ({avg_earlier:.4f} → {avg_recent:.4f})"
+        if declining
+        else f"➡️  IC 趋势持平 ({avg_recent:.4f})"
     )
 
     # 连续达标天数
@@ -117,15 +118,16 @@ def analyze_trend(trend: list) -> dict:
             break
 
     return {
-        "improving":        improving,
+        "improving": improving,
         "consecutive_pass": consecutive,
-        "avg_recent":       round(avg_recent, 4),
-        "avg_earlier":      round(avg_earlier, 4) if avg_earlier else None,
-        "msg":              msg,
+        "avg_recent": round(avg_recent, 4),
+        "avg_earlier": round(avg_earlier, 4) if avg_earlier else None,
+        "msg": msg,
     }
 
 
 # ── 报告生成核心 ──────────────────────────────────────
+
 
 def _run_report_sync(days: int) -> dict:
     """
@@ -133,6 +135,7 @@ def _run_report_sync(days: int) -> dict:
     在 asyncio.to_thread 中调用，不阻塞事件循环。
     """
     import services.monitoring.report as rpt
+
     return rpt.run(days=days, push=False, current_mode=EXEC_MODE)
 
 
@@ -154,11 +157,12 @@ async def generate_and_push(days: int = REPORT_DAYS) -> dict:
 
     # 生成最终推送文本
     import services.monitoring.report as rpt
+
     report_text = rpt.render_report(report_data, days)
 
     # 追加趋势信息到推送文本
     trend_append = _build_trend_section(trend, trend_analysis)
-    full_text    = report_text + trend_append
+    full_text = report_text + trend_append
 
     # 推送 Telegram
     if PUSH_ENABLED:
@@ -180,12 +184,18 @@ async def generate_and_push(days: int = REPORT_DAYS) -> dict:
 
     # 写 Redis 缓存（供 gateway API 读取）
     r = await get_redis()
-    await r.set("cw4:monitor:latest_report", json.dumps({
-        "data":           report_data,
-        "trend":          trend_analysis,
-        "generated_at":   datetime.now().isoformat(),
-        "days":           days,
-    }), ex=86400 * 2)   # 缓存2天
+    await r.set(
+        "cw4:monitor:latest_report",
+        json.dumps(
+            {
+                "data": report_data,
+                "trend": trend_analysis,
+                "generated_at": datetime.now().isoformat(),
+                "days": days,
+            }
+        ),
+        ex=86400 * 2,
+    )  # 缓存2天
 
     # 记录最后运行日期
     await r.set(LAST_RUN_KEY, datetime.now().strftime("%Y-%m-%d"))
@@ -202,15 +212,14 @@ def _build_trend_section(trend: list, analysis: dict) -> str:
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
     ]
 
-    ics = [(t["date"][-5:], t["mean_ic"]) for t in trend[-14:]
-           if t["mean_ic"] is not None]
+    ics = [(t["date"][-5:], t["mean_ic"]) for t in trend[-14:] if t["mean_ic"] is not None]
 
     if ics:
         max_ic = max(v for _, v in ics) or 0.01
         for date, ic in ics:
             bar_len = int(ic / max_ic * 25) if max_ic > 0 else 0
-            bar     = "█" * bar_len
-            tag     = " ◀ 切换阈值" if 0.048 < ic < 0.052 else ""
+            bar = "█" * bar_len
+            tag = " ◀ 切换阈值" if 0.048 < ic < 0.052 else ""
             lines.append(f"  {date}  {ic:.4f}  {bar}{tag}")
     else:
         lines.append("  （暂无历史数据）")
@@ -228,17 +237,20 @@ def _push_telegram(text: str):
     if not (os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID")):
         logger.info("Telegram 未配置，跳过推送")
         return
-    token   = os.getenv("TELEGRAM_BOT_TOKEN")
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
     try:
         import urllib.request
-        chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+
+        chunks = [text[i : i + 4000] for i in range(0, len(text), 4000)]
         for chunk in chunks:
-            payload = json.dumps({
-                "chat_id":    chat_id,
-                "text":       f"```\n{chunk}\n```",
-                "parse_mode": "Markdown",
-            }).encode()
+            payload = json.dumps(
+                {
+                    "chat_id": chat_id,
+                    "text": f"```\n{chunk}\n```",
+                    "parse_mode": "Markdown",
+                }
+            ).encode()
             req = urllib.request.Request(
                 f"https://api.telegram.org/bot{token}/sendMessage",
                 data=payload,
@@ -252,6 +264,7 @@ def _push_telegram(text: str):
 
 # ── 定时调度 ──────────────────────────────────────────
 
+
 async def scheduler_loop():
     """
     每分钟检查是否到达报告时间。
@@ -262,14 +275,14 @@ async def scheduler_loop():
     while True:
         await asyncio.sleep(60)
         try:
-            now   = datetime.now()
+            now = datetime.now()
             today = now.strftime("%Y-%m-%d")
 
             if now.hour < REPORT_HOUR:
                 continue
 
             # 检查今天是否已经运行过
-            r         = await get_redis()
+            r = await get_redis()
             last_date = await r.get(LAST_RUN_KEY)
             if last_date == today:
                 continue
@@ -286,6 +299,7 @@ async def scheduler_loop():
 
 # ── FastAPI ───────────────────────────────────────────
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     task = asyncio.create_task(scheduler_loop())
@@ -296,23 +310,31 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="CryptoWatch v4 Monitoring Service", lifespan=lifespan)
 
+
 # ── Prometheus metrics (item #12) ───────────────────────────────────────────────
 @app.get("/metrics")
 async def metrics():
     """Prometheus exposition: service liveness + redis reachability.
     Scraped by the central observability stack (Prometheus/Grafana)."""
     from fastapi.responses import PlainTextResponse
+
     from shared.metrics import render_prometheus
-    out = [{"name": "selene_up", "value": 1, "labels": {"service": "monitoring"},
-            "help": "service process is up"}]
+
+    out = [{"name": "selene_up", "value": 1, "labels": {"service": "monitoring"}, "help": "service process is up"}]
     try:
         from shared.db.connections import redis_health
-        out.append({"name": "selene_redis_up", "value": await redis_health(),
-                    "labels": {"service": "monitoring"}, "help": "redis reachable"})
+
+        out.append(
+            {
+                "name": "selene_redis_up",
+                "value": await redis_health(),
+                "labels": {"service": "monitoring"},
+                "help": "redis reachable",
+            }
+        )
     except Exception:
         pass
     return PlainTextResponse(render_prometheus(out))
-
 
 
 @app.get("/health")
@@ -321,15 +343,15 @@ async def health():
     last = await r.get(LAST_RUN_KEY) or "从未运行"
     trend = await load_trend()
     return {
-        "status":       "ok",
-        "service":      "monitoring",
-        "redis":        await redis_health(),
-        "last_report":  last,
-        "trend_days":   len(trend),
-        "report_hour":  REPORT_HOUR,
+        "status": "ok",
+        "service": "monitoring",
+        "redis": await redis_health(),
+        "last_report": last,
+        "trend_days": len(trend),
+        "report_hour": REPORT_HOUR,
         "push_enabled": PUSH_ENABLED,
-        "exec_mode":    EXEC_MODE,
-        "ts":           datetime.now().isoformat(),
+        "exec_mode": EXEC_MODE,
+        "ts": datetime.now().isoformat(),
     }
 
 
@@ -339,17 +361,17 @@ async def trigger_now(days: int = Query(1, description="统计天数")):
     logger.info(f"手动触发报告生成 days={days}")
     result = await generate_and_push(days)
     return {
-        "status":     "ok",
-        "generated":  datetime.now().isoformat(),
+        "status": "ok",
+        "generated": datetime.now().isoformat(),
         "recommendation": result["report"].get("recommendation", {}),
-        "trend":      result["trend"],
+        "trend": result["trend"],
     }
 
 
 @app.get("/report/latest")
 async def latest_report():
     """获取最新一次报告的完整数据（JSON）"""
-    r   = await get_redis()
+    r = await get_redis()
     raw = await r.get("cw4:monitor:latest_report")
     if not raw:
         return {"status": "no_data", "msg": "尚未生成任何报告，POST /report/now 立即生成"}
@@ -359,18 +381,19 @@ async def latest_report():
 @app.get("/report/latest/text", response_class=PlainTextResponse)
 async def latest_report_text():
     """获取最新一次报告的文本版本"""
-    r   = await get_redis()
+    r = await get_redis()
     raw = await r.get("cw4:monitor:latest_report")
     if not raw:
         return "尚未生成任何报告，请 POST /report/now 立即生成"
     data = json.loads(raw)
     import services.monitoring.report as rpt
+
     report_data = data.get("data", {})
-    days        = data.get("days", 1)
-    text        = rpt.render_report(report_data, days)
-    trend_raw   = await get_redis()
-    trend       = await load_trend()
-    analysis    = analyze_trend(trend)
+    days = data.get("days", 1)
+    text = rpt.render_report(report_data, days)
+    await get_redis()
+    trend = await load_trend()
+    analysis = analyze_trend(trend)
     return text + _build_trend_section(trend, analysis)
 
 
@@ -379,17 +402,17 @@ async def trend():
     """获取 IC 历史趋势数据"""
     t = await load_trend()
     return {
-        "trend":    t[-30:],   # 最近30天
+        "trend": t[-30:],  # 最近30天
         "analysis": analyze_trend(t),
         "total_days": len(t),
     }
 
 
 @app.get("/mode-thresholds")
-@app.get("/recommendation")   # deprecated alias (Helios observe-only: prefer /mode-thresholds)
+@app.get("/recommendation")  # deprecated alias (Helios observe-only: prefer /mode-thresholds)
 async def mode_thresholds():
     """返回模式切换门槛的【观察状态】（不是建议）。供 dashboard 展示。"""
-    r   = await get_redis()
+    r = await get_redis()
     raw = await r.get("cw4:monitor:latest_report")
     if not raw:
         return {"status": "no_data"}
@@ -397,13 +420,14 @@ async def mode_thresholds():
     rec = data.get("data", {}).get("recommendation", {})
     return {
         "mode_thresholds": rec,
-        "recommendation":  rec,   # deprecated key kept for back-compat
-        "trend":           data.get("trend", {}),
-        "generated_at":    data.get("generated_at"),
-        "exec_mode":       EXEC_MODE,
+        "recommendation": rec,  # deprecated key kept for back-compat
+        "trend": data.get("trend", {}),
+        "generated_at": data.get("generated_at"),
+        "exec_mode": EXEC_MODE,
     }
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("SERVICE_PORT", 8021)))

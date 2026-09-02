@@ -13,6 +13,7 @@ Relation to H1 (Wave 2):
   H2 = 4H-bar scale rolling MLE for state machine Critical condition
   These are independent; shared math lives in sel_v2/hawkes/mle.py.
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,9 +25,9 @@ from sel_v2.hawkes.mle import fit_hawkes
 
 logger = logging.getLogger(__name__)
 
-_WINDOW_BARS = 540    # 90 days × 6 bars/day
-_EVENT_SIGMA = 1.0    # event = |return| > 1σ
-_MAX_BR = 10.0        # clip optimizer overflow
+_WINDOW_BARS = 540  # 90 days × 6 bars/day
+_EVENT_SIGMA = 1.0  # event = |return| > 1σ
+_MAX_BR = 10.0  # clip optimizer overflow
 
 
 def compute_hawkes_branching_ratio(
@@ -93,10 +94,8 @@ def precompute_branching_ratios(
 
     for i in range(window, n):
         # log_returns[i-window : i] covers bars close[i-window] → close[i]
-        seg_returns = log_returns[i - window: i]
-        br = compute_hawkes_branching_ratio(
-            seg_returns, window=window, n_restarts=n_restarts
-        )
+        seg_returns = log_returns[i - window : i]
+        br = compute_hawkes_branching_ratio(seg_returns, window=window, n_restarts=n_restarts)
         br_series[i] = br if br is not None else np.nan
         if i % 200 == 0:
             logger.debug("Hawkes BR computed at bar %d / %d  br=%.4f", i, n, br_series[i])

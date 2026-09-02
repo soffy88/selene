@@ -1,10 +1,11 @@
 """Feature calculator orchestrator: raw data → FeatureVector."""
+
 import logging
 from datetime import datetime
 from typing import Optional
 
 from .derived import compute_all_derived
-from .flow import compute_absorption_ratio, get_funding_rate_from_redis
+from .flow import get_funding_rate_from_redis
 from .liquidity import compute_H_from_samples
 from .orderbook import compute_depth_features, compute_depth_features_stub
 from .price import compute_price_features
@@ -79,6 +80,7 @@ class FeatureCalculator:
         # --- Flow layer ---
         if redis is not None and bar_ts_iso is not None:
             from .flow import get_tf_from_redis
+
             fv.TF = await get_tf_from_redis(redis, symbol, bar_ts_iso)
             fv.funding_rate = await get_funding_rate_from_redis(redis, symbol)
         avail.TF = fv.TF is not None

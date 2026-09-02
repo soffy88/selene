@@ -2,26 +2,27 @@
 Tests for sel_engine Wave 2 state recognition layer.
 All tests use synthetic data — no DB or Redis connections required.
 """
-from datetime import datetime, timezone, timedelta
+
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import pytest
 
 from sel_engine.features.schema import FeatureVector
-from sel_engine.states.schema import StateLabel, StateNoneReason, StateRecord
-from sel_engine.states.thresholds import RollingQuantileCalculator
 from sel_engine.states.conditions import (
     check_cascade,
-    check_critical,
     check_coiling,
-    check_surging,
-    check_drifting_charged,
+    check_critical,
     check_drifting_calm,
+    check_drifting_charged,
+    check_surging,
 )
-from sel_engine.states.recognizer import StateRecognizer, compute_state_distribution, _HARD_SHORT_CIRCUIT_QR
-
+from sel_engine.states.recognizer import _HARD_SHORT_CIRCUIT_QR, StateRecognizer, compute_state_distribution
+from sel_engine.states.schema import StateLabel, StateNoneReason, StateRecord
+from sel_engine.states.thresholds import RollingQuantileCalculator
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def make_fv(
     time: Optional[datetime] = None,
@@ -95,6 +96,7 @@ def _flat_fv_sequence(n: int, base_time: Optional[datetime] = None) -> list[Feat
 
 # ── RollingQuantileCalculator ─────────────────────────────────────────────────
 
+
 class TestRollingQuantileCalculator:
     def test_returns_none_with_no_history(self):
         calc = RollingQuantileCalculator()
@@ -144,7 +146,7 @@ class TestRollingQuantileCalculator:
     def test_strictly_causal_add_after_rank(self):
         """add() called after quantile_rank() must not include current value in the rank."""
         calc = RollingQuantileCalculator()
-        for i in range(20):
+        for _i in range(20):
             calc.add("x", 1.0)  # fill with 1.0
 
         # Current value is 999 (should NOT appear in window yet)
@@ -189,7 +191,7 @@ class TestRollingQuantileCalculator:
 
     def test_none_values_in_window_excluded_from_rank(self):
         calc = RollingQuantileCalculator()
-        for i in range(10):
+        for _ in range(10):
             calc.add("x", None)  # None values in history
         for i in range(10):
             calc.add("x", float(i))  # [0..9]
@@ -201,14 +203,15 @@ class TestRollingQuantileCalculator:
 
 # ── check_cascade ─────────────────────────────────────────────────────────────
 
+
 class TestCheckCascade:
     def test_matches_with_all_secondary_conditions(self):
         """Primary (abs_delta_p_pct > 97th) + LV secondary + delta_H secondary."""
         fv = make_fv(delta_p_pct=5.0)
         qr = {
             "abs_delta_p_pct": 0.98,  # > 0.97 ✓ primary
-            "LV": 0.97,               # > 0.95 ✓ secondary
-            "delta_H": 0.97,          # > 0.95 ✓ secondary
+            "LV": 0.97,  # > 0.95 ✓ secondary
+            "delta_H": 0.97,  # > 0.95 ✓ secondary
         }
         matched, reason, used = check_cascade(fv, qr)
         assert matched
@@ -242,8 +245,8 @@ class TestCheckCascade:
         fv = make_fv()
         qr = {
             "abs_delta_p_pct": 0.98,  # primary ✓
-            "LV": None,               # no secondary
-            "delta_H": None,          # no secondary
+            "LV": None,  # no secondary
+            "delta_H": None,  # no secondary
         }
         matched, _, _ = check_cascade(fv, qr)
         assert not matched
@@ -275,7 +278,7 @@ class TestCheckCascade:
         fv = make_fv()
         qr = {
             "abs_delta_p_pct": 0.98,
-            "LV": 0.90,    # below 0.95
+            "LV": 0.90,  # below 0.95
             "delta_H": 0.90,  # below 0.95
         }
         matched, _, _ = check_cascade(fv, qr)
@@ -295,6 +298,7 @@ class TestCheckCascade:
 
 
 # ── check_critical ────────────────────────────────────────────────────────────
+
 
 class TestCheckCritical:
     """Cond1: ac12 > ac24 > ac48 (monotone rising). Cond2: sigma_p_d2 > 0 AND > 80th.
@@ -384,15 +388,16 @@ class TestCheckCritical:
 
 # ── check_coiling ─────────────────────────────────────────────────────────────
 
+
 class TestCheckCoiling:
     def test_matches_all_conditions(self):
         """Low sigma, low H, high OI change rate, high absorption ratio."""
         fv = make_fv(H=3.5)
         qr = {
-            "sigma_p_24h": 0.20,          # < 0.30 ✓
-            "H": 0.20,                     # < 0.30 ✓
-            "oi_change_rate_24h": 0.75,   # > 0.70 ✓
-            "tf_dp_ratio_24h": 0.85,      # > 0.80 ✓
+            "sigma_p_24h": 0.20,  # < 0.30 ✓
+            "H": 0.20,  # < 0.30 ✓
+            "oi_change_rate_24h": 0.75,  # > 0.70 ✓
+            "tf_dp_ratio_24h": 0.85,  # > 0.80 ✓
         }
         matched, reason, _ = check_coiling(fv, qr)
         assert matched
@@ -485,6 +490,7 @@ class TestCheckCoiling:
 
 # ── check_surging ─────────────────────────────────────────────────────────────
 
+
 class TestCheckSurging:
     def test_surging_up_positive_tf(self):
         """price_slope_6h > 80th + tf_dir > 0 → SURGING_UP."""
@@ -570,13 +576,14 @@ class TestCheckSurging:
 
 # ── check_drifting_charged ────────────────────────────────────────────────────
 
+
 class TestCheckDriftingCharged:
     def test_matches_all_conditions(self):
         """σ in [40th, 70th], H_24h_mean < 50th, abs_tf in [30th, 70th], OI_hurst > 0.6."""
         fv = make_fv(OI_hurst=0.72)
         qr = {
-            "sigma_p_24h": 0.55,     # in [0.40, 0.70] ✓
-            "H_24h_mean": 0.40,      # < 0.50 ✓
+            "sigma_p_24h": 0.55,  # in [0.40, 0.70] ✓
+            "H_24h_mean": 0.40,  # < 0.50 ✓
             "abs_tf_24h_sum": 0.50,  # in [0.30, 0.70] ✓
         }
         matched, reason, _ = check_drifting_charged(fv, qr)
@@ -674,14 +681,15 @@ class TestCheckDriftingCharged:
 
 # ── check_drifting_calm ───────────────────────────────────────────────────────
 
+
 class TestCheckDriftingCalm:
     def test_matches_all_conditions(self):
         """σ in [30th, 60th], H_24h_mean in [40th, 80th], abs_tf < 50th, |oi_cr| < 50th."""
         fv = make_fv()
         qr = {
-            "sigma_p_24h": 0.45,             # in [0.30, 0.60] ✓
-            "H_24h_mean": 0.60,              # in [0.40, 0.80] ✓
-            "abs_tf_24h_sum": 0.35,          # < 0.50 ✓
+            "sigma_p_24h": 0.45,  # in [0.30, 0.60] ✓
+            "H_24h_mean": 0.60,  # in [0.40, 0.80] ✓
+            "abs_tf_24h_sum": 0.35,  # < 0.50 ✓
             "abs_oi_change_rate_24h": 0.30,  # < 0.50 ✓
         }
         matched, reason, _ = check_drifting_calm(fv, qr)
@@ -787,6 +795,7 @@ class TestCheckDriftingCalm:
 
 # ── StateRecognizer — end-to-end ──────────────────────────────────────────────
 
+
 class TestStateRecognizer:
     WINDOW = RollingQuantileCalculator.WINDOW  # 720
 
@@ -840,13 +849,11 @@ class TestStateRecognizer:
         extreme_fv = make_fv(
             time=base_time + timedelta(hours=self.WINDOW),
             delta_p_pct=50.0,  # extreme → abs_delta_p_pct > 97th
-            LV=1.0,            # extreme → LV > 95th (CASCADE secondary)
+            LV=1.0,  # extreme → LV > 95th (CASCADE secondary)
         )
         record = recognizer.recognize(extreme_fv)
         assert record.cold_start is False
-        assert record.state == StateLabel.CASCADE, (
-            f"Expected CASCADE, got {record.state} ({record.reason})"
-        )
+        assert record.state == StateLabel.CASCADE, f"Expected CASCADE, got {record.state} ({record.reason})"
 
     def test_priority_cascade_over_surging(self):
         """
@@ -867,10 +874,10 @@ class TestStateRecognizer:
 
         extreme_fv = make_fv(
             time=base_time + timedelta(hours=self.WINDOW),
-            delta_p_pct=100.0,              # extreme → CASCADE primary
-            LV=1.0,                         # extreme → CASCADE secondary
-            price_slope_6h=999.0,           # extreme → SURGING Cond1
-            tf_directional_ratio_6h=0.85,   # SURGING Cond2 direction
+            delta_p_pct=100.0,  # extreme → CASCADE primary
+            LV=1.0,  # extreme → CASCADE secondary
+            price_slope_6h=999.0,  # extreme → SURGING Cond1
+            tf_directional_ratio_6h=0.85,  # SURGING Cond2 direction
         )
         record = recognizer.recognize(extreme_fv)
         assert record.state == StateLabel.CASCADE
@@ -892,21 +899,24 @@ class TestStateRecognizer:
 
 # ── compute_state_distribution ────────────────────────────────────────────────
 
+
 class TestComputeStateDistribution:
     def _make_state_records(self, states: list) -> list[StateRecord]:
         """states: list of StateLabel or None (None = cold start)"""
         records = []
         t = datetime(2024, 1, 1, tzinfo=timezone.utc)
         for s in states:
-            records.append(StateRecord(
-                time=t,
-                symbol="BTCUSDT",
-                state=s,
-                reason="TEST" if s else "COLD_START",
-                feature_quantiles={},
-                cold_start=(s is None),
-                none_reason=StateNoneReason.COLD_START if s is None else StateNoneReason.NOT_APPLICABLE,
-            ))
+            records.append(
+                StateRecord(
+                    time=t,
+                    symbol="BTCUSDT",
+                    state=s,
+                    reason="TEST" if s else "COLD_START",
+                    feature_quantiles={},
+                    cold_start=(s is None),
+                    none_reason=StateNoneReason.COLD_START if s is None else StateNoneReason.NOT_APPLICABLE,
+                )
+            )
             t += timedelta(hours=1)
         return records
 
@@ -962,21 +972,44 @@ class TestComputeStateDistribution:
 
     def test_distribution_splits_cold_missing_no_match(self):
         """compute_state_distribution must separate three distinct None causes."""
-        WINDOW = RollingQuantileCalculator.WINDOW
         t = datetime(2024, 1, 1, tzinfo=timezone.utc)
         records = [
-            StateRecord(time=t, symbol="X", state=None, reason="COLD_START",
-                        feature_quantiles={}, cold_start=True,
-                        none_reason=StateNoneReason.COLD_START),
-            StateRecord(time=t, symbol="X", state=None, reason="NO_STATE_MATCHED",
-                        feature_quantiles={}, cold_start=False,
-                        none_reason=StateNoneReason.MISSING_DATA),
-            StateRecord(time=t, symbol="X", state=None, reason="NO_STATE_MATCHED",
-                        feature_quantiles={}, cold_start=False,
-                        none_reason=StateNoneReason.NO_MATCH),
-            StateRecord(time=t, symbol="X", state=StateLabel.CASCADE, reason="CASCADE:x",
-                        feature_quantiles={}, cold_start=False,
-                        none_reason=StateNoneReason.NOT_APPLICABLE),
+            StateRecord(
+                time=t,
+                symbol="X",
+                state=None,
+                reason="COLD_START",
+                feature_quantiles={},
+                cold_start=True,
+                none_reason=StateNoneReason.COLD_START,
+            ),
+            StateRecord(
+                time=t,
+                symbol="X",
+                state=None,
+                reason="NO_STATE_MATCHED",
+                feature_quantiles={},
+                cold_start=False,
+                none_reason=StateNoneReason.MISSING_DATA,
+            ),
+            StateRecord(
+                time=t,
+                symbol="X",
+                state=None,
+                reason="NO_STATE_MATCHED",
+                feature_quantiles={},
+                cold_start=False,
+                none_reason=StateNoneReason.NO_MATCH,
+            ),
+            StateRecord(
+                time=t,
+                symbol="X",
+                state=StateLabel.CASCADE,
+                reason="CASCADE:x",
+                feature_quantiles={},
+                cold_start=False,
+                none_reason=StateNoneReason.NOT_APPLICABLE,
+            ),
         ]
         dist = compute_state_distribution(records)
         assert dist["total_bars"] == 4
@@ -987,6 +1020,7 @@ class TestComputeStateDistribution:
 
 
 # ── StateNoneReason — recognizer integration ──────────────────────────────────
+
 
 class TestStateNoneReason:
     """Verify StateRecognizer sets none_reason correctly for all three None causes."""
@@ -1028,12 +1062,14 @@ class TestStateNoneReason:
         rec = self._warm_recognizer(with_wiki=False)
         t = datetime(2023, 6, 1, tzinfo=timezone.utc)
         # Process one more bar with no WIKI data — should be MISSING_DATA
-        result = rec.recognize(make_fv(
-            time=t,
-            close=50000.0,
-            delta_p_pct=0.1,
-            sigma_p_24h=0.005,
-        ))
+        result = rec.recognize(
+            make_fv(
+                time=t,
+                close=50000.0,
+                delta_p_pct=0.1,
+                sigma_p_24h=0.005,
+            )
+        )
         assert result.state is None
         assert result.cold_start is False
         assert result.none_reason == StateNoneReason.MISSING_DATA
@@ -1043,17 +1079,19 @@ class TestStateNoneReason:
         rec = self._warm_recognizer(with_wiki=True)
         t = datetime(2023, 6, 1, tzinfo=timezone.utc)
         # Flat data with all WIKI features present — no condition should fire
-        result = rec.recognize(make_fv(
-            time=t,
-            close=50000.0,
-            delta_p_pct=0.01,        # unremarkable
-            sigma_p_24h=0.005,
-            H_24h_mean=0.5,
-            abs_tf_24h_sum=50.0,
-            oi_change_rate_24h=0.001,
-            tf_dp_ratio_24h=0.5,
-            tf_directional_ratio_6h=0.1,
-        ))
+        result = rec.recognize(
+            make_fv(
+                time=t,
+                close=50000.0,
+                delta_p_pct=0.01,  # unremarkable
+                sigma_p_24h=0.005,
+                H_24h_mean=0.5,
+                abs_tf_24h_sum=50.0,
+                oi_change_rate_24h=0.001,
+                tf_dp_ratio_24h=0.5,
+                tf_directional_ratio_6h=0.1,
+            )
+        )
         # If state is None: none_reason must be MISSING_DATA or NO_MATCH (not COLD_START)
         if result.state is None:
             assert result.none_reason in (StateNoneReason.MISSING_DATA, StateNoneReason.NO_MATCH)
@@ -1064,23 +1102,26 @@ class TestStateNoneReason:
         rec = self._warm_recognizer(with_wiki=True)
         t = datetime(2023, 6, 1, tzinfo=timezone.utc)
         # Inject an extreme bar to trigger CASCADE (abs_delta_p > 97th, LV > 95th)
-        result = rec.recognize(make_fv(
-            time=t,
-            close=50000.0,
-            delta_p_pct=40.0,   # extreme
-            sigma_p_24h=0.005,
-            LV=1.0,
-            H_24h_mean=0.5,
-            abs_tf_24h_sum=100.0,
-            oi_change_rate_24h=0.01,
-            tf_dp_ratio_24h=0.5,
-            tf_directional_ratio_6h=0.3,
-        ))
+        result = rec.recognize(
+            make_fv(
+                time=t,
+                close=50000.0,
+                delta_p_pct=40.0,  # extreme
+                sigma_p_24h=0.005,
+                LV=1.0,
+                H_24h_mean=0.5,
+                abs_tf_24h_sum=100.0,
+                oi_change_rate_24h=0.01,
+                tf_dp_ratio_24h=0.5,
+                tf_directional_ratio_6h=0.3,
+            )
+        )
         if result.state is not None:
             assert result.none_reason == StateNoneReason.NOT_APPLICABLE
 
 
 # ── EC-05 defense tests ────────────────────────────────────────────────────────
+
 
 class TestHardShortCircuitQRCoverage:
     """Defense tests for _HARD_SHORT_CIRCUIT_QR — prevent silent regression if
@@ -1090,13 +1131,15 @@ class TestHardShortCircuitQRCoverage:
     # fv_direct: checked directly on the FeatureVector (not via qr dict).
     # qr_features: must be in _HARD_SHORT_CIRCUIT_QR.
     _FV_DIRECT: frozenset = frozenset({"tf_directional_ratio_6h"})
-    _REQUIRED_QR_FEATURES: frozenset = frozenset({
-        "H_24h_mean",
-        "abs_tf_24h_sum",
-        "oi_change_rate_24h",
-        "tf_dp_ratio_24h",
-        "abs_oi_change_rate_24h",
-    })
+    _REQUIRED_QR_FEATURES: frozenset = frozenset(
+        {
+            "H_24h_mean",
+            "abs_tf_24h_sum",
+            "oi_change_rate_24h",
+            "tf_dp_ratio_24h",
+            "abs_oi_change_rate_24h",
+        }
+    )
 
     def test_hard_short_circuit_qr_covers_all_wiki_required_features(self):
         """Every WIKI_REQUIRED quantile feature must be in _HARD_SHORT_CIRCUIT_QR.
@@ -1121,32 +1164,36 @@ class TestHardShortCircuitQRCoverage:
         t = datetime(2023, 1, 1, tzinfo=timezone.utc)
         # Warm to post-warmup with all WIKI features present
         for i in range(WINDOW):
-            rec.recognize(make_fv(
-                time=t + timedelta(hours=i),
-                close=50000.0 + i,
-                delta_p_pct=0.1,
-                sigma_p_24h=0.005,
-                H_24h_mean=0.5,
-                abs_tf_24h_sum=100.0,
-                oi_change_rate_24h=0.01,
-                tf_dp_ratio_24h=0.5,
-                tf_directional_ratio_6h=0.3,
-            ))
+            rec.recognize(
+                make_fv(
+                    time=t + timedelta(hours=i),
+                    close=50000.0 + i,
+                    delta_p_pct=0.1,
+                    sigma_p_24h=0.005,
+                    H_24h_mean=0.5,
+                    abs_tf_24h_sum=100.0,
+                    oi_change_rate_24h=0.01,
+                    tf_dp_ratio_24h=0.5,
+                    tf_directional_ratio_6h=0.3,
+                )
+            )
 
         base_t = t + timedelta(hours=WINDOW)
 
         # Baseline: all features present, unremarkable values → state should be None with NO_MATCH
-        baseline = rec.recognize(make_fv(
-            time=base_t,
-            close=50000.0,
-            delta_p_pct=0.01,
-            sigma_p_24h=0.005,
-            H_24h_mean=0.5,
-            abs_tf_24h_sum=50.0,
-            oi_change_rate_24h=0.001,
-            tf_dp_ratio_24h=0.5,
-            tf_directional_ratio_6h=0.1,
-        ))
+        baseline = rec.recognize(
+            make_fv(
+                time=base_t,
+                close=50000.0,
+                delta_p_pct=0.01,
+                sigma_p_24h=0.005,
+                H_24h_mean=0.5,
+                abs_tf_24h_sum=50.0,
+                oi_change_rate_24h=0.001,
+                tf_dp_ratio_24h=0.5,
+                tf_directional_ratio_6h=0.1,
+            )
+        )
         # If no condition fires, must be NO_MATCH (not MISSING_DATA)
         if baseline.state is None:
             assert baseline.none_reason == StateNoneReason.NO_MATCH, (
@@ -1155,16 +1202,21 @@ class TestHardShortCircuitQRCoverage:
 
         # Now null each WIKI feature one at a time — each must produce MISSING_DATA
         wiki_cases = [
-            ("H_24h_mean",           dict(H_24h_mean=None)),
-            ("abs_tf_24h_sum",       dict(abs_tf_24h_sum=None)),
-            ("oi_change_rate_24h",   dict(oi_change_rate_24h=None)),
-            ("tf_dp_ratio_24h",      dict(tf_dp_ratio_24h=None)),
+            ("H_24h_mean", dict(H_24h_mean=None)),
+            ("abs_tf_24h_sum", dict(abs_tf_24h_sum=None)),
+            ("oi_change_rate_24h", dict(oi_change_rate_24h=None)),
+            ("tf_dp_ratio_24h", dict(tf_dp_ratio_24h=None)),
             ("tf_directional_ratio_6h", dict(tf_directional_ratio_6h=None)),
         ]
         full_kwargs = dict(
-            close=50000.0, delta_p_pct=0.01, sigma_p_24h=0.005,
-            H_24h_mean=0.5, abs_tf_24h_sum=50.0, oi_change_rate_24h=0.001,
-            tf_dp_ratio_24h=0.5, tf_directional_ratio_6h=0.1,
+            close=50000.0,
+            delta_p_pct=0.01,
+            sigma_p_24h=0.005,
+            H_24h_mean=0.5,
+            abs_tf_24h_sum=50.0,
+            oi_change_rate_24h=0.001,
+            tf_dp_ratio_24h=0.5,
+            tf_directional_ratio_6h=0.1,
         )
         for feat_name, override in wiki_cases:
             kwargs = {**full_kwargs, **override}

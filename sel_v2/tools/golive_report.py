@@ -19,7 +19,6 @@ import json
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 import asyncpg
 
@@ -71,9 +70,7 @@ class GateReport:
         return "\n".join(lines)
 
 
-async def _none_prone_fill_rates(
-    pool: asyncpg.Pool, since: datetime
-) -> dict[str, float]:
+async def _none_prone_fill_rates(pool: asyncpg.Pool, since: datetime) -> dict[str, float]:
     """Reads the GL1 T0.3 decision_trail JSONB directly — it's the audit trail of what
     the engine actually used, so it's also the fill-rate source of truth (no second,
     possibly-divergent recompute)."""
@@ -102,25 +99,19 @@ async def _none_prone_fill_rates(
 async def _state_distribution(pool: asyncpg.Pool, since: datetime) -> dict[str, int]:
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT state, count(*) AS n FROM v2_state_history "
-            "WHERE timestamp >= $1 GROUP BY state",
+            "SELECT state, count(*) AS n FROM v2_state_history WHERE timestamp >= $1 GROUP BY state",
             since,
         )
     return {r["state"]: r["n"] for r in rows}
 
 
-async def _decision_trail_liveness(
-    pool: asyncpg.Pool, since: datetime
-) -> tuple[int, int]:
+async def _decision_trail_liveness(pool: asyncpg.Pool, since: datetime) -> tuple[int, int]:
     """P2-1 (T0.3/D1) status: is decision_trail actually being populated, i.e. is the
     engine writing what it used, not leaving the column perpetually NULL."""
     async with pool.acquire() as conn:
-        total = await conn.fetchval(
-            "SELECT count(*) FROM v2_strategy_decision WHERE timestamp >= $1", since
-        )
+        total = await conn.fetchval("SELECT count(*) FROM v2_strategy_decision WHERE timestamp >= $1", since)
         populated = await conn.fetchval(
-            "SELECT count(*) FROM v2_strategy_decision "
-            "WHERE timestamp >= $1 AND decision_trail IS NOT NULL",
+            "SELECT count(*) FROM v2_strategy_decision WHERE timestamp >= $1 AND decision_trail IS NOT NULL",
             since,
         )
     return populated or 0, total or 0
@@ -158,7 +149,7 @@ async def build_g0_report(pool: asyncpg.Pool) -> GateReport:
             + (
                 ""
                 if est.status != "DIRTY"
-                else f"(fingerprint drifted since epoch start — states/**/strategies/** changed)"
+                else "(fingerprint drifted since epoch start — states/**/strategies/** changed)"
             ),
         )
     )
@@ -181,11 +172,7 @@ async def build_g0_report(pool: asyncpg.Pool) -> GateReport:
     # 3. state distribution (informational — no pass/fail, just visibility)
     dist = await _state_distribution(pool, window_start)
     total_bars = sum(dist.values())
-    dist_detail = (
-        ", ".join(f"{s}={dist.get(s, 0)}" for s in _STATE_LABELS)
-        if total_bars
-        else "no bars in window"
-    )
+    dist_detail = ", ".join(f"{s}={dist.get(s, 0)}" for s in _STATE_LABELS) if total_bars else "no bars in window"
     checks.append(CheckResult("state_distribution", True, dist_detail))
 
     # 4. Cascade/Critical trigger counts (informational)
@@ -218,9 +205,7 @@ async def build_g0_report(pool: asyncpg.Pool) -> GateReport:
         CheckResult(
             "staleness_current",
             not currently_stale,
-            f"currently stale: {currently_stale}"
-            if currently_stale
-            else "all sources fresh",
+            f"currently stale: {currently_stale}" if currently_stale else "all sources fresh",
         )
     )
     checks.append(
@@ -244,9 +229,7 @@ async def _main() -> None:
     pool = await asyncpg.create_pool(dsn, min_size=1, max_size=2)
     try:
         if args.gate != "G0":
-            print(
-                f"--gate {args.gate} is not implemented yet (Phase 1/2, not due — GL1 §4/§5)."
-            )
+            print(f"--gate {args.gate} is not implemented yet (Phase 1/2, not due — GL1 §4/§5).")
             return
         report = await build_g0_report(pool)
         print(report.render())

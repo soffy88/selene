@@ -1,6 +1,7 @@
 """
 services/notification/main.py  —  CryptoWatch v4 Notification Service 启动入口
 """
+
 import asyncio
 import logging
 import os
@@ -9,8 +10,7 @@ from datetime import datetime
 
 from fastapi import FastAPI
 
-from shared.db.connections import get_redis, redis_health
-from services.notification.hub import NotificationHub, TelegramChannel, DingTalkChannel
+from services.notification.hub import DingTalkChannel, NotificationHub, TelegramChannel
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -28,11 +28,12 @@ async def lifespan(app: FastAPI):
 
     # 使用 shared.db.redis_client（NotificationHub 内部用这个）
     from shared.db.redis_client import init_redis as _init
+
     _init(redis_url)
 
     tg = TelegramChannel(
         os.getenv("TELEGRAM_BOT_TOKEN", ""),
-        os.getenv("TELEGRAM_CHAT_ID",   ""),
+        os.getenv("TELEGRAM_CHAT_ID", ""),
     )
     dd = DingTalkChannel(os.getenv("DINGTALK_WEBHOOK_URL", ""))
     _hub = NotificationHub(tg, dd)
@@ -46,30 +47,38 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="CryptoWatch v4 Notification Service", lifespan=lifespan)
 
+
 # ── Prometheus metrics (item #12) ───────────────────────────────────────────────
 @app.get("/metrics")
 async def metrics():
     """Prometheus exposition: service liveness + redis reachability.
     Scraped by the central observability stack (Prometheus/Grafana)."""
     from fastapi.responses import PlainTextResponse
+
     from shared.metrics import render_prometheus
-    out = [{"name": "selene_up", "value": 1, "labels": {"service": "notification"},
-            "help": "service process is up"}]
+
+    out = [{"name": "selene_up", "value": 1, "labels": {"service": "notification"}, "help": "service process is up"}]
     try:
         from shared.db.connections import redis_health
-        out.append({"name": "selene_redis_up", "value": await redis_health(),
-                    "labels": {"service": "notification"}, "help": "redis reachable"})
+
+        out.append(
+            {
+                "name": "selene_redis_up",
+                "value": await redis_health(),
+                "labels": {"service": "notification"},
+                "help": "redis reachable",
+            }
+        )
     except Exception:
         pass
     return PlainTextResponse(render_prometheus(out))
 
 
-
 @app.get("/health")
 async def health():
     return {
-        "status":  "ok",
+        "status": "ok",
         "service": "notification",
-        "stats":   _hub.get_stats() if _hub else {},
-        "ts":      datetime.utcnow().isoformat(),
+        "stats": _hub.get_stats() if _hub else {},
+        "ts": datetime.utcnow().isoformat(),
     }

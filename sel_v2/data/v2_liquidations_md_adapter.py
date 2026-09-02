@@ -23,12 +23,8 @@ import os
 
 import asyncpg
 
-MD_DSN = os.environ.get(
-    "MD_DSN", "postgresql://selene_app:sel_app_2026@platform-postgres:5432/marketdata"
-)
-DB_URL = os.environ.get(
-    "DB_URL", "postgresql://selene_app:sel_app_2026@platform-postgres:5432/selene"
-)
+MD_DSN = os.environ.get("MD_DSN", "postgresql://selene_app:sel_app_2026@platform-postgres:5432/marketdata")
+DB_URL = os.environ.get("DB_URL", "postgresql://selene_app:sel_app_2026@platform-postgres:5432/selene")
 VENUE = os.environ.get("LIQ_MD_VENUE", "okx")
 BASE_SYMBOL = os.environ.get("SYMBOLS", "BTC-USDT")
 _BATCH_LIMIT = 5000
@@ -76,22 +72,19 @@ async def _run(loop_s: int) -> None:
     md = await asyncpg.create_pool(MD_DSN, min_size=1, max_size=2)
     sel = await asyncpg.create_pool(DB_URL, min_size=1, max_size=2)
     print(
-        f"v2_liquidations_md_adapter start: {VENUE} liquidations from md.liquidations, "
-        f"loop={loop_s}s",
+        f"v2_liquidations_md_adapter start: {VENUE} liquidations from md.liquidations, loop={loop_s}s",
         flush=True,
     )
     try:
         while True:
             try:
                 last_ts = await sel.fetchval(
-                    "SELECT COALESCE(MAX(timestamp), '-infinity'::timestamptz) "
-                    "FROM v2_liquidations WHERE symbol=$1",
+                    "SELECT COALESCE(MAX(timestamp), '-infinity'::timestamptz) FROM v2_liquidations WHERE symbol=$1",
                     BASE_SYMBOL,
                 )
                 n, _ = await sync(md, sel, last_ts)
                 print(
-                    f"v2_liquidations_md_adapter: {n} {VENUE} liquidations upserted "
-                    f"(watermark was {last_ts})",
+                    f"v2_liquidations_md_adapter: {n} {VENUE} liquidations upserted (watermark was {last_ts})",
                     flush=True,
                 )
             except Exception as exc:  # noqa: BLE001
@@ -105,9 +98,7 @@ async def _run(loop_s: int) -> None:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(
-        description="v2_liquidations from iris md.liquidations(okx)"
-    )
+    p = argparse.ArgumentParser(description="v2_liquidations from iris md.liquidations(okx)")
     p.add_argument("--loop", type=int, default=15, help="poll seconds (0 = one-shot)")
     args = p.parse_args()
     asyncio.run(_run(args.loop))

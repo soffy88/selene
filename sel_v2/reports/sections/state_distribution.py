@@ -1,4 +1,5 @@
 """§26.2 Section 1: 状態機統計 — state distribution and transitions."""
+
 from __future__ import annotations
 
 from typing import Any

@@ -1,24 +1,21 @@
 """
 Tests for paper_startup.py — pre-flight checks and report generation.
 """
+
 from __future__ import annotations
 
 import asyncio
-import os
-import tempfile
 from datetime import datetime, timezone
 
-import pytest
-
 from sel_v2.scripts.paper_startup import (
+    DECISION_TRAIL_SQL,
+    PHASE_HISTORY_SQL,
     _build_report,
     run_checks,
-    PHASE_HISTORY_SQL,
-    DECISION_TRAIL_SQL,
 )
 
-
 # ── SQL content tests ─────────────────────────────────────────────────────────
+
 
 def test_phase_history_sql_contains_strategy_1():
     assert "strategy_1" in PHASE_HISTORY_SQL
@@ -44,6 +41,7 @@ def test_decision_trail_sql_insert():
 
 
 # ── Dry-run checks ────────────────────────────────────────────────────────────
+
 
 def test_run_checks_dry_run_returns_list():
     results = asyncio.run(run_checks(db_url=None))
@@ -72,6 +70,7 @@ def test_run_checks_dry_run_v2_bars_4h_present():
 
 
 # ── Report build tests ────────────────────────────────────────────────────────
+
 
 def test_build_report_returns_markdown():
     now = datetime(2026, 4, 29, tzinfo=timezone.utc)

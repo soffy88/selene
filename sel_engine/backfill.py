@@ -7,9 +7,9 @@ OKX endpoint: GET /api/v5/market/history-candles
 Paginates backwards from `end_ts` until `start_ts` is reached or no more data.
 Upserts rows into the existing `candles` hypertable.
 """
+
 import asyncio
 import logging
-import time
 from datetime import datetime, timezone
 
 import aiohttp
@@ -45,7 +45,7 @@ async def _fetch_page(
                 timeout=aiohttp.ClientTimeout(total=20),
             ) as resp:
                 if resp.status == 429:
-                    await asyncio.sleep(2 ** attempt * 2)
+                    await asyncio.sleep(2**attempt * 2)
                     continue
                 if resp.status != 200:
                     logger.warning("history-candles HTTP %s", resp.status)
@@ -74,6 +74,7 @@ async def backfill_candles(
         end_ts = datetime.now(timezone.utc)
     if start_ts is None:
         from datetime import timedelta
+
         start_ts = end_ts - timedelta(days=730)  # 2 years
 
     start_ms = int(start_ts.timestamp() * 1000)
@@ -97,21 +98,29 @@ async def backfill_candles(
                 oldest_ts_ms = ts_ms
                 open_time = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
                 close_time = datetime.fromtimestamp((ts_ms + 3_600_000) / 1000, tz=timezone.utc)
-                batch.append((
-                    symbol, "1h", open_time,
-                    float(item[1]), float(item[2]), float(item[3]), float(item[4]),
-                    float(item[5]),
-                    close_time,
-                ))
+                batch.append(
+                    (
+                        symbol,
+                        "1h",
+                        open_time,
+                        float(item[1]),
+                        float(item[2]),
+                        float(item[3]),
+                        float(item[4]),
+                        float(item[5]),
+                        close_time,
+                    )
+                )
 
             if batch:
                 async with pool.acquire() as conn:
-                    result = await conn.executemany(_UPSERT_CANDLE_SQL, batch)
+                    await conn.executemany(_UPSERT_CANDLE_SQL, batch)
                 count = len(batch)
                 total_inserted += count
                 logger.info(
                     "backfill %s: inserted %d rows (oldest=%s)",
-                    symbol, count,
+                    symbol,
+                    count,
                     datetime.fromtimestamp(oldest_ts_ms / 1000, tz=timezone.utc).isoformat() if oldest_ts_ms else "?",
                 )
 
@@ -132,6 +141,7 @@ async def run_backfill(
     years: int = 2,
 ) -> None:
     from shared.db.connections import get_pg
+
     pool = await get_pg()
     try:
         n = await backfill_candles(pool, symbol, inst_id)

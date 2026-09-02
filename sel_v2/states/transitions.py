@@ -15,11 +15,12 @@ Legal transitions and their vocabulary:
 
 All other (from, to) pairs are ILLEGAL — marked is_legal=False, transition_via=None.
 """
+
 from __future__ import annotations
 
 from typing import Optional
 
-from sel_v2.states.schema import StateLabel, BarFeatures
+from sel_v2.states.schema import BarFeatures, StateLabel
 
 # ── Legal transition map ───────────────────────────────────────────────────────
 
@@ -28,33 +29,26 @@ _LEGAL_TRANSITIONS: dict[tuple[StateLabel, StateLabel], str] = {
     # Release
     (StateLabel.COILING, StateLabel.SURGING): "Release",
     (StateLabel.DRIFTING_CHARGED, StateLabel.SURGING): "Release",
-
     # Exhaustion
     (StateLabel.SURGING, StateLabel.DRIFTING_CALM): "Exhaustion",
     (StateLabel.SURGING, StateLabel.DRIFTING_CHARGED): "Exhaustion",
-
     # Decay
     (StateLabel.DRIFTING_CHARGED, StateLabel.DRIFTING_CALM): "Decay",
-    (StateLabel.COILING,          StateLabel.DRIFTING_CALM): "Decay",    # Coiling dissolves without breakout
-    (StateLabel.CRITICAL,         StateLabel.DRIFTING_CALM): "Decay",    # Critical soft-landing (v2.0 §5.6)
-
+    (StateLabel.COILING, StateLabel.DRIFTING_CALM): "Decay",  # Coiling dissolves without breakout
+    (StateLabel.CRITICAL, StateLabel.DRIFTING_CALM): "Decay",  # Critical soft-landing (v2.0 §5.6)
     # Charging — multiple paths
     (StateLabel.DRIFTING_CALM, StateLabel.DRIFTING_CHARGED): "Charging",
     (StateLabel.DRIFTING_CALM, StateLabel.COILING): "Charging",
     (StateLabel.DRIFTING_CHARGED, StateLabel.COILING): "Charging",
-
     # Stress
     (StateLabel.DRIFTING_CALM, StateLabel.CRITICAL): "Stress",
     (StateLabel.DRIFTING_CHARGED, StateLabel.CRITICAL): "Stress",
     (StateLabel.COILING, StateLabel.CRITICAL): "Stress",
     (StateLabel.SURGING, StateLabel.CRITICAL): "Stress",  # rare but valid §5.3
-
     # Recoil
-    (StateLabel.SURGING,  StateLabel.COILING):  "Recoil",   # post-surge re-compression (rare)
-
+    (StateLabel.SURGING, StateLabel.COILING): "Recoil",  # post-surge re-compression (rare)
     # Trigger
     (StateLabel.CRITICAL, StateLabel.CASCADE): "Trigger",
-
     # Reset
     (StateLabel.CASCADE, StateLabel.DRIFTING_CALM): "Reset",
 }
@@ -94,8 +88,4 @@ def identify_transition(
 
 def get_legal_exits(state: StateLabel) -> list[tuple[StateLabel, str]]:
     """Return list of (next_state, vocab_word) legal exits from this state."""
-    return [
-        (to_state, word)
-        for (from_s, to_state), word in _LEGAL_TRANSITIONS.items()
-        if from_s == state
-    ]
+    return [(to_state, word) for (from_s, to_state), word in _LEGAL_TRANSITIONS.items() if from_s == state]

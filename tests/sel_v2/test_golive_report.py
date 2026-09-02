@@ -20,9 +20,7 @@ def test_gate_report_overall_red_if_any_check_fails():
     ]
     report = GateReport(
         gate="G0",
-        generated_at=__import__("datetime").datetime.now(
-            __import__("datetime").timezone.utc
-        ),
+        generated_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
         checks=checks,
         overall="RED",
     )
@@ -71,9 +69,7 @@ def test_none_prone_fill_rates_reads_decision_trail(monkeypatch):
         pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
         import datetime
 
-        rates = await report_mod._none_prone_fill_rates(
-            pool, datetime.datetime.now(datetime.timezone.utc)
-        )
+        rates = await report_mod._none_prone_fill_rates(pool, datetime.datetime.now(datetime.timezone.utc))
         assert rates["entropy_variance_rising"] == 0.5
         assert rates["oi_change_rate"] == 0.5
         assert rates["funding_persistent"] == 1.0
@@ -90,9 +86,7 @@ def test_none_prone_fill_rates_empty_is_all_zero():
         pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
         import datetime
 
-        rates = await report_mod._none_prone_fill_rates(
-            pool, datetime.datetime.now(datetime.timezone.utc)
-        )
+        rates = await report_mod._none_prone_fill_rates(pool, datetime.datetime.now(datetime.timezone.utc))
         assert all(v == 0.0 for v in rates.values())
 
     asyncio.run(run())
@@ -156,8 +150,9 @@ def test_build_g0_report_red_when_no_epoch_and_empty_data(monkeypatch):
 
 def test_build_g0_report_green_when_everything_passes(monkeypatch):
     async def fake_status(pool):
-        from sel_v2.tools.epoch import EpochStatus
         import datetime
+
+        from sel_v2.tools.epoch import EpochStatus
 
         return EpochStatus(
             epoch_id="e1",
@@ -201,8 +196,9 @@ def test_build_g0_report_green_when_everything_passes(monkeypatch):
 
 def test_build_g0_report_red_when_source_currently_stale(monkeypatch):
     async def fake_status(pool):
-        from sel_v2.tools.epoch import EpochStatus
         import datetime
+
+        from sel_v2.tools.epoch import EpochStatus
 
         return EpochStatus(
             epoch_id="e1",

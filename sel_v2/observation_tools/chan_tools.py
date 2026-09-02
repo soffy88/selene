@@ -92,11 +92,7 @@ class ChanPivot(ObservationTool):
             value=ratio,
             threshold=self._threshold,
             label="PIVOT_OVERLAP" if signal else "NORMAL",
-            confidence=(
-                min((ratio - self._threshold) / max(self._threshold, 1e-8), 1.0)
-                if signal
-                else 0.0
-            ),
+            confidence=(min((ratio - self._threshold) / max(self._threshold, 1e-8), 1.0) if signal else 0.0),
             metadata={"associated_state": bar.state},
         )
 

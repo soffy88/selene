@@ -12,16 +12,16 @@ Exchange Adapter 抽象基类 + 统一结果模型。
 
 import asyncio
 import logging
-import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, Callable, AsyncIterator
+from typing import Callable
 
 logger = logging.getLogger("execution.adapter")
 
 
 # ── 幂等键工具 ────────────────────────────────────────
+
 
 def sanitize_client_id(client_order_id: str) -> str:
     """Make an idempotency key safe for both OKX (clOrdId) and Binance (newClientOrderId):
@@ -51,57 +51,59 @@ _is_duplicate_order = is_duplicate_order
 
 # ── 统一结果模型 ──────────────────────────────────────
 
+
 @dataclass
 class OrderResult:
-    success:      bool
-    exchange_id:  str   = ""
+    success: bool
+    exchange_id: str = ""
     filled_price: float = 0.0
-    filled_qty:   float = 0.0
-    fee_paid:     float = 0.0
-    status:       str   = ""   # NEW / PARTIALLY_FILLED / FILLED / CANCELLED
-    error:        str   = ""
+    filled_qty: float = 0.0
+    fee_paid: float = 0.0
+    status: str = ""  # NEW / PARTIALLY_FILLED / FILLED / CANCELLED
+    error: str = ""
     client_order_id: str = ""  # echoed idempotency key (clOrdId / newClientOrderId)
-    recovered:    bool  = False  # True = result reconstructed from a duplicate-order lookup
-    raw:          dict  = field(default_factory=dict)
+    recovered: bool = False  # True = result reconstructed from a duplicate-order lookup
+    raw: dict = field(default_factory=dict)
 
 
 @dataclass
 class CancelResult:
     success: bool
-    error:   str = ""
+    error: str = ""
 
 
 @dataclass
 class PositionResult:
-    symbol:       str
-    side:         str
-    size:         float
-    entry_price:  float
+    symbol: str
+    side: str
+    size: float
+    entry_price: float
     unrealized_pnl: float = 0.0
-    leverage:     float   = 1.0
+    leverage: float = 1.0
 
 
 @dataclass
 class FillEvent:
     """WebSocket 成交回报事件（推送给 execution/main.py 更新 FSM）"""
-    exchange_id:  str
-    symbol:       str
-    side:         str
-    filled_qty:   float
+
+    exchange_id: str
+    symbol: str
+    side: str
+    filled_qty: float
     filled_price: float
-    fee:          float
-    is_final:     bool     # True = 完全成交 / False = 部分成交
-    ts:           datetime = field(default_factory=datetime.utcnow)
+    fee: float
+    is_final: bool  # True = 完全成交 / False = 部分成交
+    ts: datetime = field(default_factory=datetime.utcnow)
 
 
 # ── 抽象基类 ──────────────────────────────────────────
 
-class BaseAdapter(ABC):
 
+class BaseAdapter(ABC):
     def __init__(self, api_key: str, api_secret: str, testnet: bool = False):
-        self.api_key    = api_key
+        self.api_key = api_key
         self.api_secret = api_secret
-        self.testnet    = testnet
+        self.testnet = testnet
         self._fill_callbacks: list[Callable[[FillEvent], None]] = []
 
     def on_fill(self, callback: Callable[[FillEvent], None]):
@@ -121,23 +123,23 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def place_order(
         self,
-        symbol:     str,
-        side:       str,       # BUY / SELL
-        qty:        float,
-        order_type: str,       # MARKET / LIMIT
-        price:      float = 0.0,
+        symbol: str,
+        side: str,  # BUY / SELL
+        qty: float,
+        order_type: str,  # MARKET / LIMIT
+        price: float = 0.0,
         reduce_only: bool = False,
         time_in_force: str = "GTC",
-        client_order_id: str = "",   # idempotency key; reused across retries so the
-                                     # exchange rejects duplicate placements (no double fills)
+        client_order_id: str = "",  # idempotency key; reused across retries so the
+        # exchange rejects duplicate placements (no double fills)
     ) -> OrderResult:
         """下单。返回 OrderResult，不抛异常。"""
 
     async def place_stop_order(
         self,
-        symbol:     str,
-        side:       str,       # side of the STOP itself = opposite of the position (SELL protects a long)
-        qty:        float,
+        symbol: str,
+        side: str,  # side of the STOP itself = opposite of the position (SELL protects a long)
+        qty: float,
         stop_price: float,
         reduce_only: bool = True,
         client_order_id: str = "",
@@ -181,8 +183,8 @@ class BaseAdapter(ABC):
         """返回 {total_equity, available, margin_used}"""
 
     async def close(self):
-        """清理连接（可选覆盖）"""
-        pass
+        """清理连接（可选覆盖）。默认丢掉 fill 回调，避免泄漏到下一轮 lifespan。"""
+        self._fill_callbacks.clear()
 
 
 # ── Adapter 注册表 ────────────────────────────────────
@@ -199,9 +201,7 @@ def get_adapter(name: str = "binance") -> BaseAdapter:
     key = (name or "binance").lower()
     if key not in _ADAPTERS:
         raise RuntimeError(
-            f"Adapter '{key}' not registered. "
-            f"Available: {list(_ADAPTERS.keys())}. "
-            "Call register_adapter() at startup."
+            f"Adapter '{key}' not registered. Available: {list(_ADAPTERS.keys())}. Call register_adapter() at startup."
         )
     return _ADAPTERS[key]
 

@@ -9,11 +9,12 @@ falls in that half-open interval.
 
 Coverage: helixa taker_flow_1m starts 2026-04-27; earlier bars yield NaN.
 """
+
 from __future__ import annotations
 
 import logging
 import os
-from datetime import timezone, timedelta
+from datetime import timezone
 from typing import Optional, Sequence
 
 import numpy as np
@@ -87,9 +88,7 @@ async def load_taker_flow_series(
         )
         await conn.close()
     except Exception as exc:
-        logger.warning(
-            "taker_flow_loader: helixa connection failed (%s) — all NaN", exc
-        )
+        logger.warning("taker_flow_loader: helixa connection failed (%s) — all NaN", exc)
         return {"net_taker_flow": flow_out}
 
     if not rows:
@@ -99,24 +98,15 @@ async def load_taker_flow_series(
     # Build 1m-row arrays in nanosecond ints
     row_ns = np.array(
         [
-            int(
-                r["window_start"]
-                .replace(tzinfo=timezone.utc)
-                .timestamp()
-                * 1e9
-            )
+            int(r["window_start"].replace(tzinfo=timezone.utc).timestamp() * 1e9)
             if r["window_start"].tzinfo is None
             else int(r["window_start"].timestamp() * 1e9)
             for r in rows
         ],
         dtype=np.int64,
     )
-    row_buy = np.array(
-        [float(r["taker_buy_volume"]) if r["taker_buy_volume"] is not None else 0.0 for r in rows]
-    )
-    row_sell = np.array(
-        [float(r["taker_sell_volume"]) if r["taker_sell_volume"] is not None else 0.0 for r in rows]
-    )
+    row_buy = np.array([float(r["taker_buy_volume"]) if r["taker_buy_volume"] is not None else 0.0 for r in rows])
+    row_sell = np.array([float(r["taker_sell_volume"]) if r["taker_sell_volume"] is not None else 0.0 for r in rows])
     row_net = row_buy - row_sell
 
     _4h_ns = int(_4H_SECONDS * 1e9)

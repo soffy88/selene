@@ -1,6 +1,7 @@
 """StateLabel enum and StateRecord dataclass for the sel state recognition layer."""
+
 import enum
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
@@ -30,9 +31,10 @@ STATE_PRIORITY = {
 
 class StateNoneReason(str, enum.Enum):
     """Why state=None was returned. Distinguishes three operationally distinct causes."""
-    COLD_START   = "cold_start"    # first WINDOW bars — quantile windows not yet filled
+
+    COLD_START = "cold_start"  # first WINDOW bars — quantile windows not yet filled
     MISSING_DATA = "missing_data"  # ≥1 WIKI_REQUIRED feature absent; condition short-circuited
-    NO_MATCH     = "no_match"      # all required data present; no condition was satisfied
+    NO_MATCH = "no_match"  # all required data present; no condition was satisfied
     NOT_APPLICABLE = "not_applicable"  # state is not None — reason field is not relevant
 
 
@@ -40,9 +42,9 @@ class StateNoneReason(str, enum.Enum):
 class StateRecord:
     time: datetime
     symbol: str
-    state: Optional[StateLabel]        # None during cold start or when no condition matches
-    reason: str                         # e.g. "COLD_START", "CASCADE:abs_delta_p@0.98+LV@0.97"
-    feature_quantiles: dict             # quantile rank of each feature used
+    state: Optional[StateLabel]  # None during cold start or when no condition matches
+    reason: str  # e.g. "COLD_START", "CASCADE:abs_delta_p@0.98+LV@0.97"
+    feature_quantiles: dict  # quantile rank of each feature used
     feature_vector: Optional[FeatureVector] = None
     cold_start: bool = False
     is_legal_transition: bool = True

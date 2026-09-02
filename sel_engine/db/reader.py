@@ -1,4 +1,5 @@
 """Read sel_features from TimescaleDB for a given time range and symbol."""
+
 import logging
 from datetime import datetime
 from typing import Optional

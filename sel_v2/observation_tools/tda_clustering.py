@@ -16,26 +16,27 @@ H1 death-birth lifetimes), not a persistence-landscape L^1, and no clustering is
 performed despite the "clustering" name. It is a scalar topological-activity
 heuristic; a true persistence landscape / clustering step is future work.
 """
+
 from __future__ import annotations
 
 from collections import deque
-from datetime import datetime
 
 import numpy as np
+from oprim import takens_embed
 
 from sel_v2.observation_tools.base import BarFeatures, ObservationResult, ObservationTool
-from oprim import takens_embed
 
 try:
     from ripser import ripser as _ripser
+
     _HAS_RIPSER = True
 except ImportError:
     _HAS_RIPSER = False
 
-WINDOW_BARS = 40        # Takens embedding window
-MIN_BARS = 20           # minimum for meaningful embedding
+WINDOW_BARS = 40  # Takens embedding window
+MIN_BARS = 20  # minimum for meaningful embedding
 DEFAULT_THRESHOLD = 0.05
-QUANTILE_WINDOW = 360   # bars for rolling 90th-pct (~60 days of 4H)
+QUANTILE_WINDOW = 360  # bars for rolling 90th-pct (~60 days of 4H)
 EMBED_DIM = 4
 EMBED_TAU = 1
 
@@ -70,6 +71,7 @@ class TDAClustering(ObservationTool):
     """
     TDA2 — rolling persistence landscape anomaly detector  (v2.1 §12.2).
     """
+
     tool_id = "TDA2"
 
     def __init__(

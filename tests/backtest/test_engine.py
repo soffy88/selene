@@ -6,12 +6,13 @@ winner per window, (2) the DSR trial count == grid size, and (3) the OOS window
 starts after the train+embargo offset. A deterministic injected signal_fn keeps
 trade generation reproducible (no RNG).
 """
+
 from __future__ import annotations
 
 import asyncio
 import math
 
-from backtest.engine import WFOEngine, WFOConfig, default_param_grid
+from backtest.engine import WFOConfig, WFOEngine, default_param_grid
 
 HOUR_MS = 3_600_000
 BASE_MS = 1_700_000_000_000
@@ -24,10 +25,14 @@ def _make_candles(n: int) -> list[dict]:
         close = 30000 + 2000 * math.sin(i / 10.0) + 600 * math.sin(i / 3.0)
         high = close * 1.004
         low = close * 0.996
-        candles.append({
-            "open_time": BASE_MS + i * HOUR_MS,
-            "high": high, "low": low, "close": close,
-        })
+        candles.append(
+            {
+                "open_time": BASE_MS + i * HOUR_MS,
+                "high": high,
+                "low": low,
+                "close": close,
+            }
+        )
     return candles
 
 
@@ -41,8 +46,7 @@ def _make_funding(n: int) -> list[dict]:
 
 
 def _small_config(**kw) -> WFOConfig:
-    base = dict(train_days=3, test_days=1, step_days=1, embargo_days=1,
-                min_oos_trades=1)
+    base = dict(train_days=3, test_days=1, step_days=1, embargo_days=1, min_oos_trades=1)
     base.update(kw)
     return WFOConfig(**base)
 
@@ -74,6 +78,7 @@ def test_run_records_trials_and_per_window_params():
 
 def test_oos_period_starts_after_train_plus_embargo():
     cfg = _small_config()
+
     # Deterministic signal: enter LONG on a fixed cadence so window 0 has trades.
     def sig(closes, highs, lows, price, fr, regime, params):
         return [{"type": "X", "side": "LONG"}] if len(closes) % 5 == 0 else []
@@ -92,6 +97,7 @@ def test_oos_period_starts_after_train_plus_embargo():
 
 def test_oos_metrics_and_to_dict_wired():
     cfg = _small_config()
+
     def sig(closes, highs, lows, price, fr, regime, params):
         return [{"type": "X", "side": "LONG"}] if len(closes) % 5 == 0 else []
 
@@ -110,8 +116,12 @@ def test_optimize_params_falls_back_when_no_trades():
     cfg = _small_config()
     engine = WFOEngine(cfg, signal_fn=lambda *a, **k: [])  # never trades
     grid = cfg.param_grid
-    train = {"closes": [100.0] * 100, "highs": [101.0] * 100,
-             "lows": [99.0] * 100, "times": [BASE_MS + i * HOUR_MS for i in range(100)]}
+    train = {
+        "closes": [100.0] * 100,
+        "highs": [101.0] * 100,
+        "lows": [99.0] * 100,
+        "times": [BASE_MS + i * HOUR_MS for i in range(100)],
+    }
     best = engine._optimize_params("BTC-USDT", train, [], [], [], {}, grid)
     assert best is grid[0]
 

@@ -19,9 +19,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import math
 import os
-import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -36,9 +34,13 @@ _FIGURES_DIR.mkdir(exist_ok=True)
 
 # ── constants ──────────────────────────────────────────────────────────────
 ALL_STATES = [
-    "Cascade", "Critical", "Coiling",
-    "Surging_Up", "Surging_Down",
-    "Drifting_Charged", "Drifting_Calm",
+    "Cascade",
+    "Critical",
+    "Coiling",
+    "Surging_Up",
+    "Surging_Down",
+    "Drifting_Charged",
+    "Drifting_Calm",
 ]
 MAX_SAMPLES = 5
 SPARKLINE_BLOCKS = " ▁▂▃▄▅▆▇█"
@@ -47,6 +49,7 @@ SPARKLINE_BLOCKS = " ▁▂▃▄▅▆▇█"
 # ─────────────────────────────────────────────────────────────────────────────
 # ASCII helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _sparkline(values: list[float], width: int = 48) -> str:
     """Single-line Unicode block sparkline."""
@@ -58,9 +61,11 @@ def _sparkline(values: list[float], width: int = 48) -> str:
         values = [values[int(i * step)] for i in range(width)]
     if hi == lo:
         return "─" * len(values)
+
     def _ch(v: float) -> str:
         idx = round((v - lo) / (hi - lo) * (len(SPARKLINE_BLOCKS) - 1))
         return SPARKLINE_BLOCKS[idx]
+
     return "".join(_ch(v) for v in values)
 
 
@@ -85,10 +90,10 @@ def _ascii_chart(
     if n > width:
         step = n / width
         idx = [int(i * step) for i in range(width)]
-        times  = [times[i]  for i in idx]
-        opens  = [opens[i]  for i in idx]
-        highs  = [highs[i]  for i in idx]
-        lows   = [lows[i]   for i in idx]
+        times = [times[i] for i in idx]
+        opens = [opens[i] for i in idx]
+        highs = [highs[i] for i in idx]
+        lows = [lows[i] for i in idx]
         closes = [closes[i] for i in idx]
         n = len(closes)
 
@@ -103,11 +108,11 @@ def _ascii_chart(
     lines = []
     # Build grid: height rows × n cols
     grid = [[" "] * n for _ in range(height)]
-    for col, (o, h, l, c) in enumerate(zip(opens, highs, lows, closes)):
-        top_wick  = _row(h)
-        bot_wick  = _row(l)
-        body_top  = _row(max(o, c))
-        body_bot  = _row(min(o, c))
+    for col, (o, h, low, c) in enumerate(zip(opens, highs, lows, closes, strict=False)):
+        top_wick = _row(h)
+        bot_wick = _row(low)
+        body_top = _row(max(o, c))
+        body_bot = _row(min(o, c))
         for row in range(height):
             if body_top <= row <= body_bot:
                 grid[row][col] = "█" if c >= o else "░"
@@ -122,7 +127,7 @@ def _ascii_chart(
         lines.append(label + "".join(row))
 
     # Time axis: mark first bar of every 6H
-    axis = " " * label_w
+    " " * label_w
     tick_row = []
     for col, t in enumerate(times):
         if t.hour % 6 == 0 and col > 0:
@@ -133,8 +138,7 @@ def _ascii_chart(
 
     # Time labels
     lbl_line = " " * (label_w + 1)
-    prev_day = None
-    for col, t in enumerate(times):
+    for _col, t in enumerate(times):
         if t.hour % 6 == 0:
             tag = t.strftime("%d/%H")
             lbl_line += tag
@@ -199,7 +203,7 @@ async def _fetch_all(
     try:
         async with pool.acquire() as conn:
             candle_rows = await conn.fetch(_CANDLES_SQL, symbol, effective_candle_since)
-            state_rows  = await conn.fetch(_STATE_SEQ_SQL, symbol, since)
+            state_rows = await conn.fetch(_STATE_SEQ_SQL, symbol, since)
             # sel_features may not exist yet — tolerate
             try:
                 feat_rows = await conn.fetch(_SEL_FEATURES_SQL, symbol, since)
@@ -219,6 +223,7 @@ async def _fetch_all(
 # In-memory engine fallback
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 async def _run_engine_in_memory(candles: list[dict], symbol: str) -> list[dict]:
     """
     Run StateEngine + FeatureCalculator directly (no DB/Redis) on candle data.
@@ -233,8 +238,8 @@ async def _run_engine_in_memory(candles: list[dict], symbol: str) -> list[dict]:
 
     close_history: list[float] = []
     sigma_history: list[float] = []
-    H_history:     list[float] = []
-    OI_history:    list[float] = []
+    H_history: list[float] = []
+    OI_history: list[float] = []
 
     results = []
     for row in candles:
@@ -272,35 +277,38 @@ async def _run_engine_in_memory(candles: list[dict], symbol: str) -> list[dict]:
         elif record.state == StateLabel.SURGING_DOWN:
             direction = "Down"
 
-        results.append({
-            "time":               record.time,
-            "state":              record.state.value if record.state else None,
-            "direction":          direction,
-            "is_cold_start":      record.cold_start,
-            "reason":             record.reason,
-            "transition_from":    record.transition_from.value if record.transition_from else None,
-            "close_price":        fv.close if fv.close else close,
-            "delta_p_pct":        fv.delta_p_pct,
-            "sigma_p_24h":        fv.sigma_p_24h,
-            "H":                  fv.H,
-            "TF":                 fv.TF,
-            "OI":                 fv.OI,
-            "funding_rate":       fv.funding_rate,
-            "LV":                 fv.LV,
-            "absorption_ratio":   fv.absorption_ratio,
-            "price_autocorr_12h": fv.price_autocorr_12h,
-            "price_autocorr_24h": fv.price_autocorr_24h,
-            "price_autocorr_48h": fv.price_autocorr_48h,
-            "sigma_p_d2":         fv.sigma_p_d2,
-            "OI_hurst":           fv.OI_hurst,
-            "feature_completeness": 0.0,
-        })
+        results.append(
+            {
+                "time": record.time,
+                "state": record.state.value if record.state else None,
+                "direction": direction,
+                "is_cold_start": record.cold_start,
+                "reason": record.reason,
+                "transition_from": record.transition_from.value if record.transition_from else None,
+                "close_price": fv.close if fv.close else close,
+                "delta_p_pct": fv.delta_p_pct,
+                "sigma_p_24h": fv.sigma_p_24h,
+                "H": fv.H,
+                "TF": fv.TF,
+                "OI": fv.OI,
+                "funding_rate": fv.funding_rate,
+                "LV": fv.LV,
+                "absorption_ratio": fv.absorption_ratio,
+                "price_autocorr_12h": fv.price_autocorr_12h,
+                "price_autocorr_24h": fv.price_autocorr_24h,
+                "price_autocorr_48h": fv.price_autocorr_48h,
+                "sigma_p_d2": fv.sigma_p_d2,
+                "OI_hurst": fv.OI_hurst,
+                "feature_completeness": 0.0,
+            }
+        )
     return results
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # State run detection
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _detect_runs(state_rows: list[dict], candle_map: dict) -> list[dict]:
     """
@@ -314,12 +322,14 @@ def _detect_runs(state_rows: list[dict], candle_map: dict) -> list[dict]:
 
     def _flush():
         if current_bars:
-            runs.append({
-                "state": current_state,
-                "start": current_bars[0]["time"],
-                "end":   current_bars[-1]["time"],
-                "bars":  list(current_bars),
-            })
+            runs.append(
+                {
+                    "state": current_state,
+                    "start": current_bars[0]["time"],
+                    "end": current_bars[-1]["time"],
+                    "bars": list(current_bars),
+                }
+            )
 
     for sr in state_rows:
         raw_state = sr.get("state") or ("COLD_START" if sr.get("is_cold_start") else "UNKNOWN")
@@ -328,12 +338,14 @@ def _detect_runs(state_rows: list[dict], candle_map: dict) -> list[dict]:
         merged = dict(sr)
         if t in candle_map:
             c = candle_map[t]
-            merged.update({
-                "open":   float(c["open"]),
-                "high":   float(c["high"]),
-                "low":    float(c["low"]),
-                "volume": float(c["volume"]),
-            })
+            merged.update(
+                {
+                    "open": float(c["open"]),
+                    "high": float(c["high"]),
+                    "low": float(c["low"]),
+                    "volume": float(c["volume"]),
+                }
+            )
             if merged.get("close_price") is None:
                 merged["close_price"] = float(c["close"])
 
@@ -351,6 +363,7 @@ def _detect_runs(state_rows: list[dict], candle_map: dict) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Sampling
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _sample_runs(runs: list[dict], n: int = MAX_SAMPLES) -> list[dict]:
     """Take up to n evenly-spaced runs for temporal variety."""
@@ -372,20 +385,20 @@ def _sample_runs(runs: list[dict], n: int = MAX_SAMPLES) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _FEATURE_DISPLAY = [
-    ("close_price",      "close (USDT)"),
-    ("delta_p_pct",      "ΔP/P (%)"),
-    ("sigma_p_24h",      "σ(P)_24H"),
-    ("funding_rate",     "funding_rate"),
-    ("H",                "H (entropy)"),
-    ("TF",               "TF (taker flow)"),
-    ("OI",               "OI"),
-    ("LV",               "LV"),
+    ("close_price", "close (USDT)"),
+    ("delta_p_pct", "ΔP/P (%)"),
+    ("sigma_p_24h", "σ(P)_24H"),
+    ("funding_rate", "funding_rate"),
+    ("H", "H (entropy)"),
+    ("TF", "TF (taker flow)"),
+    ("OI", "OI"),
+    ("LV", "LV"),
     ("absorption_ratio", "absorption_ratio"),
-    ("price_autocorr_12h","autocorr_12h"),
-    ("price_autocorr_24h","autocorr_24h"),
-    ("price_autocorr_48h","autocorr_48h"),
-    ("sigma_p_d2",       "σ(P)_d2"),
-    ("OI_hurst",         "OI_hurst"),
+    ("price_autocorr_12h", "autocorr_12h"),
+    ("price_autocorr_24h", "autocorr_24h"),
+    ("price_autocorr_48h", "autocorr_48h"),
+    ("sigma_p_d2", "σ(P)_d2"),
+    ("OI_hurst", "OI_hurst"),
 ]
 
 
@@ -420,11 +433,10 @@ def _feature_table(bars: list[dict], feat_map: dict) -> str:
 
     n = len(merged_bars)
     start_bar = merged_bars[0]
-    mid_bar   = merged_bars[n // 2]
-    end_bar   = merged_bars[-1]
+    mid_bar = merged_bars[n // 2]
+    end_bar = merged_bars[-1]
 
-    lines = ["| Feature | Start | Mid | End | Mean | Min | Max |",
-             "|---|---|---|---|---|---|---|"]
+    lines = ["| Feature | Start | Mid | End | Mean | Min | Max |", "|---|---|---|---|---|---|---|"]
 
     for col_key, label in _FEATURE_DISPLAY:
         vals = [b.get(col_key) for b in merged_bars]
@@ -436,8 +448,8 @@ def _feature_table(bars: list[dict], feat_map: dict) -> str:
 
         if numeric:
             mean_v = _fmt(sum(numeric) / len(numeric))
-            min_v  = _fmt(min(numeric))
-            max_v  = _fmt(max(numeric))
+            min_v = _fmt(min(numeric))
+            max_v = _fmt(max(numeric))
         else:
             mean_v = min_v = max_v = "—"
 
@@ -450,14 +462,14 @@ def _feature_table(bars: list[dict], feat_map: dict) -> str:
 # Report generation
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _write_figure(run_idx: int, state: str, bars: list[dict]) -> Optional[str]:
     """Save ASCII OHLC chart to figures/. Returns relative path or None."""
-    times  = [b["time"] for b in bars if "open" in b]
-    opens  = [float(b["open"])  for b in bars if "open" in b]
-    highs  = [float(b["high"])  for b in bars if "open" in b]
-    lows   = [float(b["low"])   for b in bars if "open" in b]
-    closes = [float(b["close_price"]) for b in bars
-              if b.get("close_price") is not None and "open" in b]
+    times = [b["time"] for b in bars if "open" in b]
+    opens = [float(b["open"]) for b in bars if "open" in b]
+    highs = [float(b["high"]) for b in bars if "open" in b]
+    lows = [float(b["low"]) for b in bars if "open" in b]
+    closes = [float(b["close_price"]) for b in bars if b.get("close_price") is not None and "open" in b]
 
     if not closes:
         return None
@@ -481,23 +493,23 @@ def _build_report(
 ) -> str:
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     lines = [
-        f"# sel State Inspection Report",
-        f"",
+        "# sel State Inspection Report",
+        "",
         f"**Symbol:** {symbol}  ",
         f"**Period:** last {days} days (since {since.strftime('%Y-%m-%d %H:%M UTC')})  ",
         f"**State source:** {state_source}  ",
         f"**Generated:** {now_str}  ",
         f"**Active bars (non-cold-start):** {total_active_bars}",
-        f"",
-        f"> Pure read-only diagnostic. No state logic modified.",
-        f"> Thresholds are PLACEHOLDER — calibrate with v1.0.md when available.",
-        f"",
-        f"---",
-        f"",
-        f"## Summary",
-        f"",
-        f"| State | Runs | Bars | Rate | Avg run (bars) | Avg run (hours) |",
-        f"|---|---|---|---|---|---|",
+        "",
+        "> Pure read-only diagnostic. No state logic modified.",
+        "> Thresholds are PLACEHOLDER — calibrate with v1.0.md when available.",
+        "",
+        "---",
+        "",
+        "## Summary",
+        "",
+        "| State | Runs | Bars | Rate | Avg run (bars) | Avg run (hours) |",
+        "|---|---|---|---|---|---|",
     ]
 
     for state in ALL_STATES:
@@ -506,9 +518,7 @@ def _build_report(
         n_bars = sum(len(r["bars"]) for r in state_runs)
         rate = n_bars / total_active_bars if total_active_bars > 0 else 0.0
         avg_run = (n_bars / n_runs) if n_runs > 0 else 0.0
-        lines.append(
-            f"| {state} | {n_runs} | {n_bars} | {rate:.1%} | {avg_run:.1f} | {avg_run:.1f}h |"
-        )
+        lines.append(f"| {state} | {n_runs} | {n_bars} | {rate:.1%} | {avg_run:.1f} | {avg_run:.1f}h |")
 
     lines += ["", "---", ""]
 
@@ -517,17 +527,17 @@ def _build_report(
         state_runs = runs_by_state.get(state, [])
         n_runs = len(state_runs)
         n_bars = sum(len(r["bars"]) for r in state_runs)
-        rate   = n_bars / total_active_bars if total_active_bars > 0 else 0.0
+        rate = n_bars / total_active_bars if total_active_bars > 0 else 0.0
         avg_run = (n_bars / n_runs) if n_runs > 0 else 0.0
 
         lines += [
             f"## State: {state}",
-            f"",
+            "",
             f"- **Runs:** {n_runs}",
             f"- **Total bars:** {n_bars}",
             f"- **Rate:** {rate:.2%} of active bars",
             f"- **Avg run duration:** {avg_run:.1f} bars ({avg_run:.1f}h)",
-            f"",
+            "",
         ]
 
         if n_runs == 0:
@@ -545,26 +555,26 @@ def _build_report(
 
         for i, run in enumerate(samples, 1):
             bars = run["bars"]
-            n_b  = len(bars)
+            n_b = len(bars)
             start_t = run["start"].strftime("%Y-%m-%d %H:%M UTC")
-            end_t   = run["end"].strftime("%Y-%m-%d %H:%M UTC")
-            closes  = [float(b["close_price"]) for b in bars if b.get("close_price") is not None]
-            spark   = _sparkline(closes)
+            end_t = run["end"].strftime("%Y-%m-%d %H:%M UTC")
+            closes = [float(b["close_price"]) for b in bars if b.get("close_price") is not None]
+            spark = _sparkline(closes)
 
             # First bar reason
             first_reason = bars[0].get("reason") or "—"
-            trans_from   = bars[0].get("transition_from") or "—"
+            trans_from = bars[0].get("transition_from") or "—"
 
             lines += [
                 f"### Run {i} of {len(samples)}: {start_t} → {end_t} ({n_b} bars)",
-                f"",
+                "",
                 f"**Entered from:** {trans_from}  ",
                 f"**Trigger reason (first bar):** `{first_reason}`  ",
-                f"",
+                "",
                 f"**Close sparkline** ({len(closes)} bars):  ",
                 f"`{spark}`",
                 f"(`{_fmt(min(closes)) if closes else '—'}` → `{_fmt(max(closes)) if closes else '—'}` USDT range)",
-                f"",
+                "",
             ]
 
             # ASCII chart saved to file
@@ -572,15 +582,15 @@ def _build_report(
             if fig_path:
                 lines += [
                     f"**OHLC chart:** see [`{fig_path}`]({fig_path})",
-                    f"",
+                    "",
                 ]
 
             # Feature table
             lines += [
-                f"**Feature snapshot** (start / mid / end / mean / min / max over run):  ",
-                f"",
+                "**Feature snapshot** (start / mid / end / mean / min / max over run):  ",
+                "",
                 _feature_table(bars, feat_map),
-                f"",
+                "",
             ]
 
         lines += ["---", ""]
@@ -591,6 +601,7 @@ def _build_report(
 # ─────────────────────────────────────────────────────────────────────────────
 # Terminal summary
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _print_summary(
     runs_by_state: dict[str, list[dict]],
@@ -617,7 +628,7 @@ def _print_summary(
         state_runs = runs_by_state.get(state, [])
         n_runs = len(state_runs)
         n_bars = sum(len(r["bars"]) for r in state_runs)
-        rate   = n_bars / total_active_bars if total_active_bars > 0 else 0.0
+        rate = n_bars / total_active_bars if total_active_bars > 0 else 0.0
         avg_run = (n_bars / n_runs) if n_runs > 0 else 0.0
 
         warn = " ⚠" if n_bars == 0 else ""
@@ -633,6 +644,7 @@ def _print_summary(
 # ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 async def main(symbol: str, days: int) -> None:
     dsn = os.environ.get(
@@ -654,9 +666,7 @@ async def main(symbol: str, days: int) -> None:
 
     try:
         print(f"Connecting to DB: {dsn.split('@')[-1]} …")
-        candles, state_rows, feat_rows = await _fetch_all(
-            dsn, symbol, since=display_since, candle_since=warmup_since
-        )
+        candles, state_rows, feat_rows = await _fetch_all(dsn, symbol, since=display_since, candle_since=warmup_since)
         print(
             f"Fetched: {len(candles)} candles (from {warmup_since.strftime('%Y-%m-%d')}), "
             f"{len(state_rows)} state rows, {len(feat_rows)} feature rows"
@@ -666,21 +676,25 @@ async def main(symbol: str, days: int) -> None:
         # 720 warmup bars + full display window guarantees cold-start exit
         total_synth = 720 + days * 24
         print(f"[WARN] Proceeding with synthetic data ({total_synth} bars: 720 warmup + {days * 24} display)")
-        import random; random.seed(42)
+        import random
+
+        random.seed(42)
         price = 50_000.0
         now_h = now.replace(minute=0, second=0, microsecond=0)
         for i in range(total_synth):
             t = now_h - timedelta(hours=(total_synth - i))
             delta = random.gauss(0, 0.002) * price
             price = max(40_000, price + delta)
-            candles.append({
-                "time": t,
-                "open": price - abs(random.gauss(0, 50)),
-                "high": price + abs(random.gauss(0, 100)),
-                "low":  price - abs(random.gauss(0, 100)),
-                "close": price,
-                "volume": random.uniform(100, 5000),
-            })
+            candles.append(
+                {
+                    "time": t,
+                    "open": price - abs(random.gauss(0, 50)),
+                    "high": price + abs(random.gauss(0, 100)),
+                    "low": price - abs(random.gauss(0, 100)),
+                    "close": price,
+                    "volume": random.uniform(100, 5000),
+                }
+            )
         state_source = "synthetic (DB unavailable)"
 
     # ── 2. If sel_state_sequence empty → run engine in-memory ───────────────
@@ -707,14 +721,14 @@ async def main(symbol: str, days: int) -> None:
             state_rows = []
 
     # ── 3. Build index structures ────────────────────────────────────────────
-    candle_map  = {r["time"]: r for r in candles}
-    feat_map    = {r["time"]: r for r in feat_rows}
+    candle_map = {r["time"]: r for r in candles}
+    feat_map = {r["time"]: r for r in feat_rows}
 
     # ── 4. Detect state runs ─────────────────────────────────────────────────
     all_runs = _detect_runs(state_rows, candle_map)
 
     # ── 5. Partition into counts ─────────────────────────────────────────────
-    cold_bars   = sum(len(r["bars"]) for r in all_runs if r["state"] == "COLD_START")
+    cold_bars = sum(len(r["bars"]) for r in all_runs if r["state"] == "COLD_START")
     active_bars = sum(len(r["bars"]) for r in all_runs if r["state"] not in ("COLD_START", "UNKNOWN", None))
 
     runs_by_state: dict[str, list[dict]] = {s: [] for s in ALL_STATES}
@@ -743,7 +757,7 @@ async def main(symbol: str, days: int) -> None:
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="sel state inspection diagnostic")
     p.add_argument("--symbol", default="BTCUSDT")
-    p.add_argument("--days",   default=12, type=int)
+    p.add_argument("--days", default=12, type=int)
     return p.parse_args()
 
 

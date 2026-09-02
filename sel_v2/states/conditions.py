@@ -23,9 +23,8 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sel_v2.states.schema import BarFeatures, ConditionResult
 from sel_v2.states.critical_logic import evaluate_critical_entry
-
+from sel_v2.states.schema import BarFeatures, ConditionResult
 
 # ── Helper ─────────────────────────────────────────────────────────────────────
 
@@ -206,10 +205,7 @@ def check_surging(features: BarFeatures) -> ConditionResult:
     """
     # Price breakout
     has_breakout: Optional[bool] = None
-    if (
-        features.price_breakout_up is not None
-        and features.price_breakout_down is not None
-    ):
+    if features.price_breakout_up is not None and features.price_breakout_down is not None:
         has_breakout = features.price_breakout_up or features.price_breakout_down
     elif features.price_breakout_up is not None:
         has_breakout = features.price_breakout_up
@@ -226,12 +222,7 @@ def check_surging(features: BarFeatures) -> ConditionResult:
     # abstains (None) — it must not return False, which _tristate_all treats as a
     # hard veto and would block Surging on the common (non-extreme) case.
     ofi_pctile_high: Optional[bool] = (
-        True
-        if (
-            features.ofi_cumulative_pctile is not None
-            and features.ofi_cumulative_pctile >= 0.90
-        )
-        else None
+        True if (features.ofi_cumulative_pctile is not None and features.ofi_cumulative_pctile >= 0.90) else None
     )
 
     # OI acceleration (STUB)

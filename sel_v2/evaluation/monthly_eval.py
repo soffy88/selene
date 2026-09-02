@@ -31,14 +31,10 @@ from pathlib import Path
 from sel_v2.evaluation.tool_evaluator import ToolEvaluator
 from sel_v2.strategies.db_writer import DBWriter
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("monthly_eval")
 
-REPORT_PATH = (
-    Path(__file__).resolve().parents[1] / "reports" / "tool_evaluation_monthly.md"
-)
+REPORT_PATH = Path(__file__).resolve().parents[1] / "reports" / "tool_evaluation_monthly.md"
 RUN_HOUR_UTC = 1  # 1st of month, 01:00 UTC
 LOOKBACK_DAYS = 90
 
@@ -52,9 +48,7 @@ async def run_once() -> list[dict]:
         evaluator = ToolEvaluator(writer)
         results = await evaluator.evaluate_all(phase=phase, lookback_days=LOOKBACK_DAYS)
         try:
-            corr = await evaluator.compute_correlations(
-                phase=phase, lookback_days=LOOKBACK_DAYS
-            )
+            corr = await evaluator.compute_correlations(phase=phase, lookback_days=LOOKBACK_DAYS)
         except Exception as exc:  # noqa: BLE001 — correlations are best-effort
             logger.warning("correlations failed: %s", exc)
             corr = {}
@@ -87,8 +81,7 @@ async def run_once() -> list[dict]:
         ]
         for r in results:
             lines.append(
-                f"| {r['tool_id']} {r['tool_name']} | {r['decision']} "
-                f"| {r['sample_size']} | {r['decision_reason']} |"
+                f"| {r['tool_id']} {r['tool_name']} | {r['decision']} | {r['sample_size']} | {r['decision_reason']} |"
             )
         try:
             with REPORT_PATH.open("a") as f:
@@ -102,9 +95,7 @@ async def run_once() -> list[dict]:
 
 
 def _seconds_until_next_run(now: datetime) -> float:
-    nxt = now.replace(
-        day=1, hour=RUN_HOUR_UTC, minute=0, second=0, microsecond=0
-    ) + timedelta(days=32)
+    nxt = now.replace(day=1, hour=RUN_HOUR_UTC, minute=0, second=0, microsecond=0) + timedelta(days=32)
     nxt = nxt.replace(day=1)
     return (nxt - now).total_seconds()
 

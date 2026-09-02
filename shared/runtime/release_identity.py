@@ -143,9 +143,7 @@ def _parse_iso(value: str) -> datetime:
 
 
 def canonical_json_bytes(payload: Any) -> bytes:
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(
-        "utf-8"
-    )
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
 
 
 def sha256_digest(payload: Any) -> str:
@@ -202,9 +200,7 @@ def _require_digest_match(data: Mapping[str, Any], *, kind: str) -> None:
     claimed = str(data.get("artifact_digest") or "")
     computed = sha256_digest(data)
     if claimed != computed:
-        raise ExecModeError(
-            f"{kind} artifact_digest mismatch: claimed={claimed} computed={computed}"
-        )
+        raise ExecModeError(f"{kind} artifact_digest mismatch: claimed={claimed} computed={computed}")
 
 
 def resolve_git_sha(environ: Optional[Mapping[str, str]] = None) -> str:
@@ -326,9 +322,7 @@ def verify_boot(
 
     if env_name != "production":
         if identity.funds_scope != "testnet":
-            raise ExecModeError(
-                f"Non-production live mode must use funds_scope=testnet, got {identity.funds_scope}."
-            )
+            raise ExecModeError(f"Non-production live mode must use funds_scope=testnet, got {identity.funds_scope}.")
         return identity
 
     return _verify_production_live(identity, env, now=now or _utcnow())
@@ -353,13 +347,9 @@ def _verify_production_live(
     _require_keys(shadow, _SHADOW_REQUIRED, kind="shadow artifact")
 
     if str(oos.get("schema_version") or "") != "oos-artifact-v1":
-        raise ExecModeError(
-            f"Unknown OOS schema_version={oos.get('schema_version')!r}; refusing live boot."
-        )
+        raise ExecModeError(f"Unknown OOS schema_version={oos.get('schema_version')!r}; refusing live boot.")
     if str(shadow.get("schema_version") or "") != "shadow-artifact-v1":
-        raise ExecModeError(
-            f"Unknown shadow schema_version={shadow.get('schema_version')!r}; refusing live boot."
-        )
+        raise ExecModeError(f"Unknown shadow schema_version={shadow.get('schema_version')!r}; refusing live boot.")
 
     _require_pass_verdict(oos, kind="OOS artifact")
     _require_pass_verdict(shadow, kind="shadow artifact")
@@ -386,9 +376,7 @@ def _verify_production_live(
     image_digests = release.get("image_digests") or {}
     if not isinstance(image_digests, dict) or not image_digests:
         raise ExecModeError("release.image_digests must be a non-empty object.")
-    if image not in {str(v) for v in image_digests.values()} and image != str(
-        oos.get("image_digest") or ""
-    ):
+    if image not in {str(v) for v in image_digests.values()} and image != str(oos.get("image_digest") or ""):
         raise ExecModeError("running image digest is not listed in release.image_digests or OOS artifact.")
     if image != str(oos.get("image_digest") or ""):
         raise ExecModeError("OOS image_digest does not match running image digest.")
@@ -484,4 +472,3 @@ def main(argv: Optional[list[str]] = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -1,5 +1,6 @@
 import importlib.util
-import sys, os
+import os
+import sys
 
 import pytest
 

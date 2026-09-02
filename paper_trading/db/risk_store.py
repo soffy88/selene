@@ -1,4 +1,5 @@
 """RiskStore — persist RiskGate state (Redis) and risk events (TimescaleDB)."""
+
 from __future__ import annotations
 
 import json

@@ -75,9 +75,7 @@ class SweepEvent:
     level: float  # the swept prior extreme
 
 
-def detect_sweeps(
-    high: np.ndarray, low: np.ndarray, close: np.ndarray
-) -> list[SweepEvent]:
+def detect_sweeps(high: np.ndarray, low: np.ndarray, close: np.ndarray) -> list[SweepEvent]:
     """Sweep-up at bar i: high[i] breaks the prior SWEEP_LOOKBACK-bar high but the
     CLOSE comes back below it (failed breakout / stop run). Mirrored for lows.
     Note the deliberate contrast with CHAN-1's breakout (close-based, held)."""
@@ -151,9 +149,7 @@ class OrderBlockEvent:
     revisit_idx: Optional[int] = None  # first zone touch after confirm_idx
 
 
-def detect_order_blocks(
-    high: np.ndarray, low: np.ndarray, close: np.ndarray, atr: np.ndarray
-) -> list[OrderBlockEvent]:
+def detect_order_blocks(high: np.ndarray, low: np.ndarray, close: np.ndarray, atr: np.ndarray) -> list[OrderBlockEvent]:
     """Bullish OB: bar b closes down (close[b] < close[b-1] — no open column in
     the joined frame, preregistered proxy), then within OB_DISPLACEMENT_BARS the
     close gains >= OB_DISPLACEMENT_ATR x ATR[b] AND exceeds the prior
@@ -185,11 +181,7 @@ def detect_order_blocks(
                         zone_bottom=float(low[b]),
                     )
                     for k in range(j + 1, min(j + 1 + OB_REVISIT_WINDOW, n)):
-                        touched = (
-                            low[k] <= ev.zone_top
-                            if direction == 1
-                            else high[k] >= ev.zone_bottom
-                        )
+                        touched = low[k] <= ev.zone_top if direction == 1 else high[k] >= ev.zone_bottom
                         if touched:
                             ev.revisit_idx = k
                             break

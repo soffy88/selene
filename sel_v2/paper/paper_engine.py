@@ -3,7 +3,8 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 import aiohttp
 import asyncpg
 import redis.asyncio as redis
@@ -11,9 +12,7 @@ import redis.asyncio as redis
 from sel_v2.runtime.staleness import enforcement_for, is_bar_stale, is_stale
 from sel_v2.strategies.db_writer import DBWriter
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("paper_engine")
 
 # Fixed namespace so a logical paper trade maps to the same v2_trades.id across the
@@ -29,9 +28,7 @@ POSITION_MGMT_INTERVAL_SEC = int(os.environ.get("POSITION_MGMT_INTERVAL_SEC", "6
 PAPER_HARD_STOP_PCT = float(os.environ.get("PAPER_HARD_STOP_PCT", "0.05"))
 
 
-def _trade_id(
-    strategy: str, sub_account: str, entry_time, direction: str, entry_price: float
-) -> str:
+def _trade_id(strategy: str, sub_account: str, entry_time, direction: str, entry_price: float) -> str:
     key = f"{strategy}|{sub_account}|{entry_time}|{direction}|{entry_price}"
     return str(uuid.uuid5(_TRADE_NS, key))
 
@@ -68,9 +65,7 @@ class PaperEngine:
         try:
             raw = await self._redis.get(self.REDIS_KEY_LAST_BAR_TS)
             if raw:
-                ts = datetime.fromisoformat(
-                    raw.decode() if isinstance(raw, bytes) else raw
-                )
+                ts = datetime.fromisoformat(raw.decode() if isinstance(raw, bytes) else raw)
                 logger.info(f"last_bar_ts loaded from Redis: {ts}")
                 return ts
         except Exception as e:
@@ -85,12 +80,8 @@ class PaperEngine:
 
     async def _load_strategy_params(self):
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT param_key, param_value FROM v2_strategy_params"
-            )
-            self._strategy_params = {
-                row["param_key"]: row["param_value"] for row in rows
-            }
+            rows = await conn.fetch("SELECT param_key, param_value FROM v2_strategy_params")
+            self._strategy_params = {row["param_key"]: row["param_value"] for row in rows}
         logger.info(f"Loaded {len(self._strategy_params)} strategy parameters")
 
     def _param_float(self, key: str, default: float) -> float:
@@ -102,9 +93,7 @@ class PaperEngine:
         try:
             return float(json.loads(raw) if isinstance(raw, str) else raw)
         except (ValueError, TypeError):
-            logger.warning(
-                "_param_float: unparseable %s=%r, using default %s", key, raw, default
-            )
+            logger.warning("_param_float: unparseable %s=%r, using default %s", key, raw, default)
             return default
 
     async def _load_bars_df(self):
@@ -113,8 +102,7 @@ class PaperEngine:
 
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT time, open, high, low, close, volume FROM v2_bars_4h "
-                "WHERE symbol=$1 ORDER BY time ASC",
+                "SELECT time, open, high, low, close, volume FROM v2_bars_4h WHERE symbol=$1 ORDER BY time ASC",
                 self._symbol,
             )
         if not rows:
@@ -129,6 +117,7 @@ class PaperEngine:
         states (the reason the live engine never traded). NaN where no snapshot
         exists at/before a bar — the engine treats NaN as 'unknown' (conservative)."""
         import bisect
+
         import numpy as np
 
         n = len(df)
@@ -143,14 +132,8 @@ class PaperEngine:
         if not rows:
             return oi, funding
         ts = [r["timestamp"] for r in rows]
-        ois = [
-            float(r["open_interest"]) if r["open_interest"] is not None else np.nan
-            for r in rows
-        ]
-        frs = [
-            float(r["funding_rate"]) if r["funding_rate"] is not None else np.nan
-            for r in rows
-        ]
+        ois = [float(r["open_interest"]) if r["open_interest"] is not None else np.nan for r in rows]
+        frs = [float(r["funding_rate"]) if r["funding_rate"] is not None else np.nan for r in rows]
         for i, bt in enumerate(df["time"]):
             j = bisect.bisect_right(ts, bt) - 1  # most recent snapshot <= bar time
             if j >= 0:
@@ -162,15 +145,13 @@ class PaperEngine:
         """Load recent trade arrival times (Unix seconds) from v2_ticks to drive the
         Strategy-2 H1 Hawkes intensity. Bounded to a recent window — intensity decays,
         so only recent ticks affect recent bars (item: tick→H1 wiring)."""
-        from datetime import timedelta
         import numpy as np
 
         last_bar = df["time"].iloc[-1]
         cutoff = last_bar - timedelta(days=lookback_days)
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT timestamp FROM v2_ticks WHERE symbol=$1 AND timestamp >= $2 "
-                "ORDER BY timestamp ASC",
+                "SELECT timestamp FROM v2_ticks WHERE symbol=$1 AND timestamp >= $2 ORDER BY timestamp ASC",
                 self._symbol,
                 cutoff,
             )
@@ -193,7 +174,6 @@ class PaperEngine:
           entropy    — mean(entropy) over the bar's LOB snapshots (feeds Coiling's
                        entropy_low condition; collected all along but never aggregated)
         """
-        from datetime import timedelta
         import numpy as np
 
         n = len(df)
@@ -322,9 +302,7 @@ class PaperEngine:
             "lob": await self._latest_lob_ts(),
         }
         stale_map = {src: is_stale(src, ts, now) for src, ts in readings.items()}
-        stale_map["bar_4h"] = is_bar_stale(
-            df["time"].iloc[-1] if len(df) else None, now
-        )
+        stale_map["bar_4h"] = is_bar_stale(df["time"].iloc[-1] if len(df) else None, now)
         readings["bar_4h"] = df["time"].iloc[-1] if len(df) else None
 
         result = {}
@@ -334,15 +312,9 @@ class PaperEngine:
             if self._staleness_state.get(source) != stale:
                 last_update = readings[source]
                 age_s = (now - last_update).total_seconds() if last_update else None
-                reason = (
-                    enforcement_for(source, stale=True).reason_code if stale else None
-                )
-                await self._writer.write_staleness_event(
-                    source, stale, reason, last_update, age_s
-                )
-                logger.info(
-                    "staleness transition: %s stale=%s reason=%s", source, stale, reason
-                )
+                reason = enforcement_for(source, stale=True).reason_code if stale else None
+                await self._writer.write_staleness_event(source, stale, reason, last_update, age_s)
+                logger.info("staleness transition: %s stale=%s reason=%s", source, stale, reason)
             self._staleness_state[source] = stale
         return result
 
@@ -366,9 +338,7 @@ class PaperEngine:
         except Exception:
             skip_tda = True
         engine = PaperStrategyEngine(
-            total_nav_usdt=float(
-                self._strategy_params.get("paper_total_nav", 100_000) or 100_000
-            ),
+            total_nav_usdt=float(self._strategy_params.get("paper_total_nav", 100_000) or 100_000),
             instrument=self._symbol,
             skip_tda=skip_tda,
             # Calibrated state-machine thresholds from Wave 1 calibrate_all (same keys
@@ -428,17 +398,17 @@ class PaperEngine:
             latest_ts = df["time"].iloc[-1]
             if getattr(self, "_last_obs_bar_ts", None) == latest_ts:
                 return  # already ran for this bar
-            from sel_v2.observation_tools.runner import (
-                run_recent_observations,
-                persist_latest_observations,
-                persist_lens_vocab_events,
-            )
-
             # same records that feed write_states_bulk → associated_state matches
             # v2_state_history exactly. Record timestamps come from df["time"].values
             # (bar_runner.py) — tz-NAIVE numpy datetime64 in UTC — while the runner
             # keys bars by tz-aware python datetimes; normalize or every lookup misses.
             import pandas as pd
+
+            from sel_v2.observation_tools.runner import (
+                persist_latest_observations,
+                persist_lens_vocab_events,
+                run_recent_observations,
+            )
 
             def _utc_dt(ts):
                 t = pd.Timestamp(ts)
@@ -469,9 +439,7 @@ class PaperEngine:
         try:
             import json
 
-            await self._redis.set(
-                "v2:paper:engine_summary", json.dumps(summary, default=str)
-            )
+            await self._redis.set("v2:paper:engine_summary", json.dumps(summary, default=str))
         except Exception as e:
             logger.warning("failed to persist engine summary: %s", e)
 
@@ -502,7 +470,7 @@ class PaperEngine:
             # 重试 3 次:经 helios-proxy 首连偶发失败。全失败则回滚去重标记,
             # 下个重放周期(几分钟)再试 → 至少一次送达。
             last_err = None
-            for attempt in range(3):
+            for _attempt in range(3):
                 try:
                     async with aiohttp.ClientSession() as s:
                         async with s.post(
@@ -549,9 +517,7 @@ class PaperEngine:
                     p = cp.position
                     d = _dir_str(p.direction)
                     await self._writer.upsert_trade(
-                        trade_id=_trade_id(
-                            p.strategy, p.sub_account, p.entry_time, d, p.entry_price
-                        ),
+                        trade_id=_trade_id(p.strategy, p.sub_account, p.entry_time, d, p.entry_price),
                         strategy=p.strategy,
                         sub_account=p.sub_account,
                         entry_time=p.entry_time,
@@ -569,9 +535,7 @@ class PaperEngine:
                     )
                 for p in acct.open_positions:
                     d = _dir_str(p.direction)
-                    tid = _trade_id(
-                        p.strategy, p.sub_account, p.entry_time, d, p.entry_price
-                    )
+                    tid = _trade_id(p.strategy, p.sub_account, p.entry_time, d, p.entry_price)
                     await self._writer.upsert_trade(
                         trade_id=tid,
                         strategy=p.strategy,
@@ -600,9 +564,7 @@ class PaperEngine:
 
             # Inverse-vocab signatures (Wave S2C Step 3 telemetry).
             if hasattr(engine, "vocab_events"):
-                await self._writer.write_inverse_vocab_events_bulk(
-                    engine.vocab_events()
-                )
+                await self._writer.write_inverse_vocab_events_bulk(engine.vocab_events())
 
             # Latest per-strategy decision (the "why no entry this bar" the UI shows).
             from datetime import datetime as _dt
@@ -631,9 +593,7 @@ class PaperEngine:
     async def _process_backlog(self):
         persistent_ts = await self._load_last_bar_ts()
         async with self._pool.acquire() as conn:
-            max_bar = await conn.fetchval(
-                "SELECT MAX(time) FROM v2_bars_4h WHERE symbol = $1", self._symbol
-            )
+            max_bar = await conn.fetchval("SELECT MAX(time) FROM v2_bars_4h WHERE symbol = $1", self._symbol)
         if max_bar is None:
             logger.warning("v2_bars_4h is empty")
             return
@@ -681,9 +641,7 @@ class PaperEngine:
     # ── Strategy 2 tick loop ────────────────────────────────────────────────────
     async def _latest_tick_ts(self):
         async with self._pool.acquire() as conn:
-            return await conn.fetchval(
-                "SELECT MAX(timestamp) FROM v2_ticks WHERE symbol=$1", self._symbol
-            )
+            return await conn.fetchval("SELECT MAX(timestamp) FROM v2_ticks WHERE symbol=$1", self._symbol)
 
     async def _maybe_reprocess_on_new_ticks(self) -> bool:
         """Trigger a replay when new ticks have arrived since the last one seen, so
@@ -692,9 +650,7 @@ class PaperEngine:
         sealed 4H bars inside process_frame); this only keeps S2 state fresh and is
         rate-limited by the loop's sleep. Returns True if a replay was run."""
         latest = await self._latest_tick_ts()
-        if latest is not None and (
-            self._last_tick_ts is None or latest > self._last_tick_ts
-        ):
+        if latest is not None and (self._last_tick_ts is None or latest > self._last_tick_ts):
             self._last_tick_ts = latest
             await self._reprocess()
             return True
@@ -766,11 +722,7 @@ class PaperEngine:
             entry = p["entry_price"]
             if entry <= 0:
                 continue
-            upnl_pct = (
-                (mark - entry) / entry
-                if p["direction"] == "LONG"
-                else (entry - mark) / entry
-            )
+            upnl_pct = (mark - entry) / entry if p["direction"] == "LONG" else (entry - mark) / entry
             upnl_usdt = upnl_pct * p["notional_usdt"]
             total_unreal += upnl_usdt
             row = {
@@ -796,18 +748,14 @@ class PaperEngine:
             return None
         snapshot = self._position_risk_snapshot(self._current_open_positions(), mark)
         try:
-            await self._redis.set(
-                "v2:paper:position_risk", json.dumps(snapshot, default=str)
-            )
+            await self._redis.set("v2:paper:position_risk", json.dumps(snapshot, default=str))
             if snapshot["breaches"]:
                 logger.warning(
                     "intra-bar hard-stop breach on %d position(s) @ mark=%.2f",
                     len(snapshot["breaches"]),
                     mark,
                 )
-                await self._redis.set(
-                    "v2:paper:risk_alert", json.dumps(snapshot["breaches"], default=str)
-                )
+                await self._redis.set("v2:paper:risk_alert", json.dumps(snapshot["breaches"], default=str))
         except Exception as e:
             logger.warning("failed to publish position risk: %s", e)
         return snapshot
@@ -835,9 +783,7 @@ class PaperEngine:
                     self._symbol,
                 )
             self._open_positions = [dict(r) for r in rows]
-            logger.info(
-                "restored %d open positions from v2_trades", len(self._open_positions)
-            )
+            logger.info("restored %d open positions from v2_trades", len(self._open_positions))
         except Exception as e:
             logger.warning("failed to restore open positions: %s", e)
             self._open_positions = []

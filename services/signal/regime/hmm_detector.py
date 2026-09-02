@@ -33,12 +33,12 @@ import numpy as np
 
 logger = logging.getLogger("signal.hmm_detector")
 
-REFRESH_HOURS = int(os.getenv("HMM_REFRESH_HOURS",   "6"))
-LOOKBACK_BARS = int(os.getenv("HMM_LOOKBACK_BARS",   "800"))
-N_COMPONENTS  = 3
-N_ITER        = 200
-MIN_ROWS      = 60    # 低于此值冷启动
-REDIS_TTL     = 3600 * 8   # 8小时
+REFRESH_HOURS = int(os.getenv("HMM_REFRESH_HOURS", "6"))
+LOOKBACK_BARS = int(os.getenv("HMM_LOOKBACK_BARS", "800"))
+N_COMPONENTS = 3
+N_ITER = 200
+MIN_ROWS = 60  # 低于此值冷启动
+REDIS_TTL = 3600 * 8  # 8小时
 
 REDIS_KEY_PREFIX = "cw4:regime:hmm"
 
@@ -51,18 +51,15 @@ class HMMRegimeDetector:
     """
 
     def __init__(self, redis_client, pg_pool, symbols: list[str]):
-        self._r       = redis_client
-        self._pg      = pg_pool
+        self._r = redis_client
+        self._pg = pg_pool
         self._symbols = symbols
         self._running = False
 
     async def run(self):
         self._running = True
         logger.info(
-            f"HMMRegimeDetector 启动 "
-            f"symbols={self._symbols} "
-            f"refresh={REFRESH_HOURS}h "
-            f"lookback={LOOKBACK_BARS}bars"
+            f"HMMRegimeDetector 启动 symbols={self._symbols} refresh={REFRESH_HOURS}h lookback={LOOKBACK_BARS}bars"
         )
 
         # 启动时立即跑一次
@@ -92,7 +89,9 @@ class HMMRegimeDetector:
         # 从 TimescaleDB 加载收盘价
         closes = await self._load_closes(symbol)
         if closes is None or len(closes) < MIN_ROWS:
-            logger.warning(f"HMM {symbol}: 数据不足({len(closes) if closes is not None else 0}/{MIN_ROWS})，冷启动写 range")
+            logger.warning(
+                f"HMM {symbol}: 数据不足({len(closes) if closes is not None else 0}/{MIN_ROWS})，冷启动写 range"
+            )
             await self._write_result(symbol, "range", 0.0, {})
             return
 
@@ -106,43 +105,29 @@ class HMMRegimeDetector:
             return
 
         # HMM 训练（CPU 密集，放到线程池）
-        state, confidence, feat_summary = await asyncio.to_thread(
-            self._fit_and_predict, features
-        )
+        state, confidence, feat_summary = await asyncio.to_thread(self._fit_and_predict, features)
 
         await self._write_result(symbol, state, confidence, feat_summary)
-        logger.info(
-            f"HMM {symbol}: state={state} "
-            f"confidence={confidence:.2f} "
-            f"features={feat_summary}"
-        )
+        logger.info(f"HMM {symbol}: state={state} confidence={confidence:.2f} features={feat_summary}")
 
     # ── 特征工程 ──────────────────────────────────────────
-    def _build_features(
-        self, closes: np.ndarray, fear_greed: float
-    ) -> Optional[np.ndarray]:
+    def _build_features(self, closes: np.ndarray, fear_greed: float) -> Optional[np.ndarray]:
         try:
             returns = np.diff(np.log(closes + 1e-10))
             n = len(returns)
             if n < 20:
                 return None
 
-            window_vol   = 20
-            window_corr  = 5
-            min_window   = max(window_vol, window_corr + 1)
+            window_vol = 20
+            window_corr = 5
+            min_window = max(window_vol, window_corr + 1)
 
             feat_len = n - min_window
             if feat_len < MIN_ROWS:
                 return None
 
-            vols   = np.array([
-                np.std(returns[i:i+window_vol])
-                for i in range(feat_len)
-            ])
-            autocorrs = np.array([
-                self._autocorr(returns[i:i+window_corr+1], lag=1)
-                for i in range(feat_len)
-            ])
+            vols = np.array([np.std(returns[i : i + window_vol]) for i in range(feat_len)])
+            autocorrs = np.array([self._autocorr(returns[i : i + window_corr + 1], lag=1) for i in range(feat_len)])
             fg_arr = np.full(feat_len, fear_greed)
 
             # 标准化（避免 HMM 收敛问题）
@@ -150,11 +135,13 @@ class HMMRegimeDetector:
                 std = arr.std()
                 return (arr - arr.mean()) / std if std > 1e-10 else arr - arr.mean()
 
-            features = np.column_stack([
-                safe_normalize(vols),
-                safe_normalize(autocorrs),
-                fg_arr,
-            ])
+            features = np.column_stack(
+                [
+                    safe_normalize(vols),
+                    safe_normalize(autocorrs),
+                    fg_arr,
+                ]
+            )
             return features
 
         except Exception as e:
@@ -170,26 +157,25 @@ class HMMRegimeDetector:
         if x.std() < 1e-10 or y.std() < 1e-10:
             return 0.0
         from oprim import pearson_spearman_corr
+
         result = pearson_spearman_corr(x, y, min_samples=2)
-        return float(result['pearson_r'])
+        return float(result["pearson_r"])
 
     # ── HMM 训练 + 预测（同步，在线程池执行）────────────
-    def _fit_and_predict(
-        self, features: np.ndarray
-    ) -> tuple[str, float, dict]:
+    def _fit_and_predict(self, features: np.ndarray) -> tuple[str, float, dict]:
         try:
             from hmmlearn import hmm as hmmlearn_hmm
 
             model = hmmlearn_hmm.GaussianHMM(
-                n_components = N_COMPONENTS,
-                covariance_type = "diag",
-                n_iter = N_ITER,
-                random_state = 42,
+                n_components=N_COMPONENTS,
+                covariance_type="diag",
+                n_iter=N_ITER,
+                random_state=42,
             )
             model.fit(features)
 
             # 预测当前隐状态
-            states     = model.predict(features)
+            states = model.predict(features)
             curr_state = int(states[-1])
 
             # 置信度：当前时刻的后验概率最大值
@@ -197,9 +183,9 @@ class HMMRegimeDetector:
             confidence = float(posteriors[-1].max())
 
             # 给隐状态打语义标签
-            means = model.means_    # shape (N_COMPONENTS, 3)
-            vol_means    = means[:, 0]   # 特征0: 波动率（已标准化）
-            autocorr_means = means[:, 1] # 特征1: 自相关
+            means = model.means_  # shape (N_COMPONENTS, 3)
+            vol_means = means[:, 0]  # 特征0: 波动率（已标准化）
+            autocorr_means = means[:, 1]  # 特征1: 自相关
 
             # 最高波动率 → crisis
             crisis_idx = int(np.argmax(vol_means))
@@ -212,27 +198,24 @@ class HMMRegimeDetector:
 
             label_map = {
                 crisis_idx: "crisis",
-                trend_idx:  "trend",
-                range_idx:  "range",
+                trend_idx: "trend",
+                range_idx: "range",
             }
             state_name = label_map.get(curr_state, "range")
 
             # 特征摘要（用于监控）
             last_feat = features[-1]
             feat_summary = {
-                "realized_vol_norm":   round(float(last_feat[0]), 3),
+                "realized_vol_norm": round(float(last_feat[0]), 3),
                 "price_autocorr_norm": round(float(last_feat[1]), 3),
-                "fear_greed_norm":     round(float(last_feat[2]), 3),
-                "state_idx":           curr_state,
-                "label_map":           {str(k): v for k, v in label_map.items()},
+                "fear_greed_norm": round(float(last_feat[2]), 3),
+                "state_idx": curr_state,
+                "label_map": {str(k): v for k, v in label_map.items()},
             }
             return state_name, confidence, feat_summary
 
         except ImportError:
-            logger.warning(
-                "hmmlearn 未安装，HMM 检测回退到 range。"
-                "安装方法：pip install hmmlearn"
-            )
+            logger.warning("hmmlearn 未安装，HMM 检测回退到 range。安装方法：pip install hmmlearn")
             return "range", 0.0, {}
         except Exception as e:
             logger.error(f"HMM fit error: {e}")
@@ -241,17 +224,17 @@ class HMMRegimeDetector:
     # ── Redis 读写 ────────────────────────────────────────
     async def _write_result(
         self,
-        symbol:      str,
-        state:       str,
-        confidence:  float,
+        symbol: str,
+        state: str,
+        confidence: float,
         feat_summary: dict,
     ):
         result = {
-            "state":       state,
-            "confidence":  round(confidence, 4),
-            "updated_at":  datetime.now(timezone.utc).isoformat(),
-            "symbol":      symbol,
-            "features":    feat_summary,
+            "state": state,
+            "confidence": round(confidence, 4),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "symbol": symbol,
+            "features": feat_summary,
         }
         key = f"{REDIS_KEY_PREFIX}:{symbol}"
         await self._r.set(key, json.dumps(result), ex=REDIS_TTL)
@@ -260,12 +243,16 @@ class HMMRegimeDetector:
     async def _load_closes(self, symbol: str) -> Optional[np.ndarray]:
         try:
             async with self._pg.acquire() as conn:
-                rows = await conn.fetch("""
+                rows = await conn.fetch(
+                    """
                     SELECT close FROM candles
                     WHERE symbol = $1 AND interval = '1h'
                     ORDER BY time DESC
                     LIMIT $2
-                """, symbol, LOOKBACK_BARS)
+                """,
+                    symbol,
+                    LOOKBACK_BARS,
+                )
         except Exception as e:
             logger.error(f"_load_closes {symbol}: {e}")
             return None
@@ -288,6 +275,7 @@ class HMMRegimeDetector:
 
 # ── 公共接口：读取 HMM 状态 ──────────────────────────────
 
+
 async def get_hmm_regime(redis_client, symbol: str) -> dict:
     """
     读取指定 symbol 的 HMM Regime 状态。
@@ -307,11 +295,12 @@ async def get_hmm_regime(redis_client, symbol: str) -> dict:
 
 # ── 核心融合函数：HMM + ADX+ATR → 最终 Regime + Kelly 系数 ──
 
+
 def fuse_regimes(
-    hmm_state:    str,
-    hmm_conf:     float,
-    adxatr_regime,              # shared.models.signal.Regime 枚举值
-    adxatr_bars:  int = 0,      # 当前 regime 持续多少根K线（稳定性指标）
+    hmm_state: str,
+    hmm_conf: float,
+    adxatr_regime,  # shared.models.signal.Regime 枚举值
+    adxatr_bars: int = 0,  # 当前 regime 持续多少根K线（稳定性指标）
 ) -> tuple[str, float]:
     """
     两层融合逻辑：

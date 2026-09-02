@@ -7,12 +7,12 @@ scheduler is wired into compose. Kept for reference. See docs/CONSOLIDATION.md.
 Generates honest markdown reports from one week of DecisionTrail records.
 No beautifying: cold-start, failures, low N — all reported as-is.
 """
+
 from __future__ import annotations
 
 import os
 from collections import Counter
 from datetime import datetime, timezone
-from typing import Optional
 
 from paper_trading.trail import DecisionTrail
 from sel_engine.states.health import EXPECTED_RATE_RANGES, HealthReport
@@ -86,15 +86,13 @@ class WeeklyReportGenerator:
 
         # ── Section 1: State Distribution ────────────────────────────────────
         sections.append("## 1. State Distribution\n")
-        total_active = health_report.active_bars or 1  # avoid div-by-zero
-        table_rows = ["| State | Count | Rate | Expected Range | Status |",
-                      "|---|---|---|---|---|"]
+        table_rows = ["| State | Count | Rate | Expected Range | Status |", "|---|---|---|---|---|"]
         for state in ALL_STATES:
             count = health_report.state_counts.get(state, 0)
             rate = health_report.state_rates.get(state, 0.0)
             lo, hi = EXPECTED_RATE_RANGES.get(state, (None, None))
             if lo is not None and hi is not None:
-                expected_str = f"[{lo*100:.0f}%, {hi*100:.0f}%]"
+                expected_str = f"[{lo * 100:.0f}%, {hi * 100:.0f}%]"
                 if rate < lo:
                     status = "⚠️ BELOW"
                 elif rate > hi:
@@ -104,9 +102,7 @@ class WeeklyReportGenerator:
             else:
                 expected_str = "N/A"
                 status = "—"
-            table_rows.append(
-                f"| {state} | {count} | {rate*100:.1f}% | {expected_str} | {status} |"
-            )
+            table_rows.append(f"| {state} | {count} | {rate * 100:.1f}% | {expected_str} | {status} |")
         sections.append("\n".join(table_rows))
         warnings = health_report.health_warnings
         sections.append(f"\nHealth warnings: {'; '.join(warnings) if warnings else 'None'}\n")
@@ -114,7 +110,7 @@ class WeeklyReportGenerator:
         # ── Section 2: State Transition Quality ──────────────────────────────
         sections.append("## 2. State Transition Quality\n")
         ltr = health_report.legal_transition_rate
-        sections.append(f"Legal transition rate: {ltr*100:.1f}%\n")
+        sections.append(f"Legal transition rate: {ltr * 100:.1f}%\n")
         ill = sorted(
             health_report.illegal_transition_types.items(),
             key=lambda kv: kv[1],
@@ -145,11 +141,7 @@ class WeeklyReportGenerator:
         ending_nav = trails[-1].nav_usdt
 
         # Accumulate realized PnL from fills only
-        week_pnl = sum(
-            t.realized_pnl_this_bar
-            for t in trails
-            if t.realized_pnl_this_bar is not None
-        )
+        week_pnl = sum(t.realized_pnl_this_bar for t in trails if t.realized_pnl_this_bar is not None)
         week_pnl_pct = (week_pnl / starting_nav * 100) if starting_nav else 0.0
         pnl_sign = "+" if week_pnl >= 0 else ""
 
@@ -167,7 +159,7 @@ class WeeklyReportGenerator:
         sections.append(
             f"Week PnL: {pnl_sign}${week_pnl:.2f} ({pnl_sign}{week_pnl_pct:.2f}%)  \n"
             f"Cumulative PnL: {pnl_sign}${week_pnl:.2f}  \n"
-            f"Max drawdown this week: {max_dd*100:.1f}%  \n"
+            f"Max drawdown this week: {max_dd * 100:.1f}%  \n"
             f"Starting NAV: ${starting_nav:,.2f}  \n"
             f"Ending NAV: ${ending_nav:,.2f}  \n"
         )
@@ -198,10 +190,7 @@ class WeeklyReportGenerator:
             # Look within next 24 bars for a risk-triggered close
             window_end = min(open_idx + 25, len(trails))
             for j in range(open_idx + 1, window_end):
-                if (
-                    trails[j].final_action == "close"
-                    and trails[j].risk_triggered is not None
-                ):
+                if trails[j].final_action == "close" and trails[j].risk_triggered is not None:
                     misfire_count += 1
                     break
 
@@ -217,9 +206,7 @@ class WeeklyReportGenerator:
 
         # ── Section 6: State-Decision Alignment ──────────────────────────────
         sections.append("## 6. State-Decision Alignment\n")
-        sections.append(
-            "Verifies decisions matched the configured YAML rules:"
-        )
+        sections.append("Verifies decisions matched the configured YAML rules:")
         sections.append("| State | Expected Action | Actual Action | Match Rate |")
         sections.append("|---|---|---|---|")
 
@@ -239,13 +226,9 @@ class WeeklyReportGenerator:
             state_rule_pairs[key] = (total, matched)
 
         if state_rule_pairs:
-            for (state, expected), (total, matched) in sorted(
-                state_rule_pairs.items()
-            ):
+            for (state, expected), (total, matched) in sorted(state_rule_pairs.items()):
                 rate = matched / total * 100 if total else 0
-                sections.append(
-                    f"| {state} | {expected} | {expected} | {rate:.0f}% |"
-                )
+                sections.append(f"| {state} | {expected} | {expected} | {rate:.0f}% |")
         else:
             sections.append("| (no state data) | — | — | — |")
 
@@ -263,12 +246,8 @@ class WeeklyReportGenerator:
             return sv[mid] if n % 2 else (sv[mid - 1] + sv[mid]) / 2
 
         closes = [t.close for t in trails]
-        states_seq = [t.current_state for t in trails]
-        total_n_all = sum(
-            1
-            for i, t in enumerate(trails)
-            if t.current_state is not None and t.close is not None
-        )
+        [t.current_state for t in trails]
+        total_n_all = sum(1 for i, t in enumerate(trails) if t.current_state is not None and t.close is not None)
         low_power = total_n_all < 30
 
         for state in ALL_STATES:
@@ -291,8 +270,8 @@ class WeeklyReportGenerator:
             sign_m = "+" if mean_ret >= 0 else ""
             sign_med = "+" if med_ret >= 0 else ""
             sections.append(
-                f"| {state} | {n} | {sign_m}{mean_ret*100:.1f}% "
-                f"| {sign_med}{med_ret*100:.1f}% | {pos_rate*100:.0f}% |"
+                f"| {state} | {n} | {sign_m}{mean_ret * 100:.1f}% "
+                f"| {sign_med}{med_ret * 100:.1f}% | {pos_rate * 100:.0f}% |"
             )
 
         note_power = (
@@ -301,8 +280,7 @@ class WeeklyReportGenerator:
             else "> Note: some states may have N < 30 — treat those rows with caution.\n"
         )
         sections.append(
-            "\n" + note_power +
-            "> These numbers should NOT be used for parameter calibration.\n"
+            "\n" + note_power + "> These numbers should NOT be used for parameter calibration.\n"
             "> Reporting only for self-falsification tracking.\n"
         )
 
@@ -313,9 +291,7 @@ class WeeklyReportGenerator:
         close_trails = [
             t
             for t in trails
-            if t.final_action == "close"
-            and t.realized_pnl_this_bar is not None
-            and t.realized_pnl_this_bar < 0
+            if t.final_action == "close" and t.realized_pnl_this_bar is not None and t.realized_pnl_this_bar < 0
         ]
         close_trails.sort(key=lambda t: t.realized_pnl_this_bar)  # most negative first
 
@@ -334,10 +310,7 @@ class WeeklyReportGenerator:
                 open_time = t.time.strftime("%Y-%m-%d %H:%M") if t.time else "unknown"
                 state = t.current_state or "None"
                 action = t.final_action
-                sections.append(
-                    f"| {rank} | {open_time} | {state} | {action} | "
-                    f"{open_time} | {pnl_str} | {reason} |"
-                )
+                sections.append(f"| {rank} | {open_time} | {state} | {action} | {open_time} | {pnl_str} | {reason} |")
 
         # ── Section 9: sel Hypothesis Health ─────────────────────────────────
         sections.append("\n## 9. sel Hypothesis Health\n")
@@ -352,24 +325,21 @@ class WeeklyReportGenerator:
             rate = health_report.state_rates.get(state, 0.0)
             if rate < lo:
                 hyp_lines.append(
-                    f"⚠️ WATCH: {state} rate ({rate*100:.1f}%) below expected floor "
-                    f"({lo*100:.1f}%). May indicate {state} conditions are too strict."
+                    f"⚠️ WATCH: {state} rate ({rate * 100:.1f}%) below expected floor "
+                    f"({lo * 100:.1f}%). May indicate {state} conditions are too strict."
                 )
             elif rate > hi:
                 hyp_lines.append(
-                    f"⚠️ WATCH: {state} rate ({rate*100:.1f}%) above expected ceiling "
-                    f"({hi*100:.1f}%). May indicate {state} conditions are too lenient."
+                    f"⚠️ WATCH: {state} rate ({rate * 100:.1f}%) above expected ceiling "
+                    f"({hi * 100:.1f}%). May indicate {state} conditions are too lenient."
                 )
 
         # Legal transition rate
         if ltr >= 0.80:
-            hyp_lines.append(
-                f"✅ PASS: Legal transition rate ({ltr*100:.1f}%) within acceptable range (>80%)."
-            )
+            hyp_lines.append(f"✅ PASS: Legal transition rate ({ltr * 100:.1f}%) within acceptable range (>80%).")
         else:
             hyp_lines.append(
-                f"⚠️ WATCH: Legal transition rate ({ltr*100:.1f}%) below 80% — "
-                f"state machine may have logic errors."
+                f"⚠️ WATCH: Legal transition rate ({ltr * 100:.1f}%) below 80% — state machine may have logic errors."
             )
 
         # Misfire rate
@@ -377,13 +347,10 @@ class WeeklyReportGenerator:
             misfire_pct = misfire_count / total_opens * 100
             if misfire_pct >= 30:
                 hyp_lines.append(
-                    f"⚠️ WATCH: Misfire rate ({misfire_pct:.0f}%) elevated — "
-                    f"sel assumptions may need recalibration."
+                    f"⚠️ WATCH: Misfire rate ({misfire_pct:.0f}%) elevated — sel assumptions may need recalibration."
                 )
             else:
-                hyp_lines.append(
-                    f"✅ PASS: Misfire rate ({misfire_pct:.0f}%) within acceptable range."
-                )
+                hyp_lines.append(f"✅ PASS: Misfire rate ({misfire_pct:.0f}%) within acceptable range.")
         else:
             hyp_lines.append("— Misfire rate: N/A (no opens this week).")
 

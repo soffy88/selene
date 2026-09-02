@@ -13,8 +13,6 @@ Signal-service 与 onchain-sentinel 的桥接层。
 import asyncio
 import json
 import logging
-import time
-from typing import Optional
 
 logger = logging.getLogger("signal.onchain_bridge")
 
@@ -36,7 +34,7 @@ async def consume_onchain_factor_updates(
     # never-initialised global — and imported a non-existent `ensure_consumer_group`
     # from streams, so this module raised on import and was never wired. (audit P1-a)
     from shared.db.connections import get_redis
-    from shared.events.streams import STREAM_SIGNAL_RAW, CG_SIGNAL
+    from shared.events.streams import CG_SIGNAL, STREAM_SIGNAL_RAW
 
     r = await get_redis()
     consumer = "signal-onchain-bridge"

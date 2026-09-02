@@ -1,7 +1,8 @@
 """Tests for the collector InsertGuard (optimization item #2)."""
+
 import pytest
 
-from sel_v2.data.insert_guard import InsertGuard, InsertFailureLimitExceeded
+from sel_v2.data.insert_guard import InsertFailureLimitExceeded, InsertGuard
 
 
 def test_isolated_failures_do_not_trip():

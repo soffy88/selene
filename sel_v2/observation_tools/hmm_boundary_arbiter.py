@@ -7,15 +7,15 @@ SHIFT_THRESHOLD in a single 4H step.
 
 Output label: "BOUNDARY_TO_HIGH" | "BOUNDARY_TO_LOW" | "STABLE"
 """
+
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
 
 from sel_v2.observation_tools.base import BarFeatures, ObservationResult, ObservationTool
 from sel_v2.observation_tools.bayesian_hmm import BayesianHMM
 
-SHIFT_THRESHOLD = 0.30   # v2.1 §8.2: posterior shift > 0.30 triggers boundary
+SHIFT_THRESHOLD = 0.30  # v2.1 §8.2: posterior shift > 0.30 triggers boundary
 
 
 class HMMBoundaryArbiter(ObservationTool):
@@ -25,6 +25,7 @@ class HMMBoundaryArbiter(ObservationTool):
     Fires when B1's HIGH_VOL posterior shifts by more than SHIFT_THRESHOLD
     in a single bar.  Transition direction is encoded in the label.
     """
+
     tool_id = "B2"
 
     def __init__(self, shift_threshold: float = SHIFT_THRESHOLD) -> None:

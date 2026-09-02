@@ -1,9 +1,10 @@
 import hashlib
-import yaml
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-import re
+
+import yaml
 
 CONFIG_PATH = Path(__file__).parent.parent / "configs" / "sel-decision-rules.yaml"
 
@@ -12,9 +13,9 @@ CONFIG_PATH = Path(__file__).parent.parent / "configs" / "sel-decision-rules.yam
 class DecisionRule:
     id: str
     current_state: str
-    previous_state: Optional[str]              # exact match (or "*" wildcard)
-    previous_state_pattern: Optional[str]       # regex pattern
-    action: str                                  # open_long | open_short | close | hold | no_action
+    previous_state: Optional[str]  # exact match (or "*" wildcard)
+    previous_state_pattern: Optional[str]  # regex pattern
+    action: str  # open_long | open_short | close | hold | no_action
     position_multiplier: Optional[float]
     notes: str
 
@@ -54,7 +55,7 @@ class ExecutionConfig:
 @dataclass
 class DecisionConfig:
     version: str
-    config_hash: str            # SHA256 of raw YAML content (first 16 hex chars)
+    config_hash: str  # SHA256 of raw YAML content (first 16 hex chars)
     rules: list[DecisionRule]
     position: PositionConfig
     account: AccountConfig

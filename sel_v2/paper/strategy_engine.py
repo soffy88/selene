@@ -38,9 +38,9 @@ from sel_v2.strategies.inverse_vocab import (
 from sel_v2.strategies.strategy1_entry import Strategy1EntryFilter
 from sel_v2.strategies.strategy2_entry import Strategy2EntryFilter
 from sel_v2.strategies.strategy_exit import (
-    ExitDecision,
     _P_CUSUM_REVERSE,
     _P_HOLD,
+    ExitDecision,
     check_strategy1_exit,
     check_strategy2_exit,
 )
@@ -62,12 +62,8 @@ _TYPE_A_SEQ_BARS = 6  # an Absorption within this many bars before a Sweep → T
 # Wave S2C — direction-aware §14.2 detection (inverse_vocab.py) at 4H-bar granularity.
 _ATR_WINDOW = 14  # bars for the ATR normaliser in Absorption's price_response
 _SWEEP_LOOKBACK_BARS = 12  # 48h / 4h — the "past 48h high/low" a Sweep must touch
-_VOCAB_HIST_WINDOW = (
-    180  # trailing window feeding the adaptive tf_net / price_response / vol pctiles
-)
-_LIQ_PULSE_FLOOR_BTC = (
-    50.0  # Step-4 absolute liquidation-pulse floor while the pctile is cold
-)
+_VOCAB_HIST_WINDOW = 180  # trailing window feeding the adaptive tf_net / price_response / vol pctiles
+_LIQ_PULSE_FLOOR_BTC = 50.0  # Step-4 absolute liquidation-pulse floor while the pctile is cold
 
 # Cache for the expensive price-only per-bar series (σ / Hawkes BR / TDA L¹), keyed on a
 # closes signature. The full-history replay runs on every tick; these series only change when a
@@ -92,9 +88,7 @@ def precompute_sigma_series(close: np.ndarray):
     return sigma, sigma_pctile
 
 
-def precompute_tda_pctile_series(
-    tda_l1: np.ndarray, pctile_window: int = 540, q: float = 0.95
-):
+def precompute_tda_pctile_series(tda_l1: np.ndarray, pctile_window: int = 540, q: float = 0.95):
     n = len(tda_l1)
     pctile = np.full(n, np.nan)
     for i in range(pctile_window, n):
@@ -152,8 +146,8 @@ class PaperStrategyEngine:
         self._s2_enabled = True
         try:
             from sel_v2.strategies.hawkes_intensity import (
-                HawkesParams,
                 HawkesIntensityTracker,
+                HawkesParams,
             )
 
             if self.hawkes_params is not None:
@@ -240,9 +234,7 @@ class PaperStrategyEngine:
         entropy_series=None,
     ) -> tuple[BarRunner, np.ndarray, np.ndarray]:
         closes = df["close"].values.astype(float)
-        sigma_series, sigma_pctile, hawkes_br, tda_l1, tda_pctile = (
-            self._precompute_price_features(closes)
-        )
+        sigma_series, sigma_pctile, hawkes_br, tda_l1, tda_pctile = self._precompute_price_features(closes)
 
         runner = BarRunner.from_precomputed(
             df=df,
@@ -290,9 +282,7 @@ class PaperStrategyEngine:
             intensity_coeff=0.0,
         )
 
-    def _collect_cusum_cross(
-        self, ts, cusum_type: str, c_pos: float, c_neg: float, threshold: float
-    ) -> None:
+    def _collect_cusum_cross(self, ts, cusum_type: str, c_pos: float, c_neg: float, threshold: float) -> None:
         """Record a CUSUM threshold-cross event into self._cusum_events, mirroring
         CUSUMShort.update's trigger judgment (C+ > h → 'up', C- > h → 'down', dominant on
         tie). Used for both accumulators: 'short' (S2, engine-owned) and 'mid' (S1, from the
@@ -308,13 +298,9 @@ class PaperStrategyEngine:
             else:
                 up = False
         if up:
-            self._cusum_events.append(
-                (_as_dt(ts), cusum_type, "up", float(c_pos), float(threshold), None)
-            )
+            self._cusum_events.append((_as_dt(ts), cusum_type, "up", float(c_pos), float(threshold), None))
         elif down:
-            self._cusum_events.append(
-                (_as_dt(ts), cusum_type, "down", float(c_neg), float(threshold), None)
-            )
+            self._cusum_events.append((_as_dt(ts), cusum_type, "down", float(c_neg), float(threshold), None))
 
     def _micro_vocab_series(self, df: pd.DataFrame, micro: Optional[dict]):
         """Per-bar Strategy-2 inputs from real microstructure (item: S2 vocab wiring).
@@ -343,11 +329,7 @@ class PaperStrategyEngine:
             v = (
                 taker_net[i]
                 if (taker_net is not None and np.isfinite(taker_net[i]))
-                else (
-                    lob_imb[i]
-                    if (lob_imb is not None and np.isfinite(lob_imb[i]))
-                    else np.nan
-                )
+                else (lob_imb[i] if (lob_imb is not None and np.isfinite(lob_imb[i])) else np.nan)
             )
             flow_dir[i] = 0.0 if not np.isfinite(v) else float(np.sign(v))
 
@@ -361,20 +343,13 @@ class PaperStrategyEngine:
                 continue
             vol_high = taker_vol[i] >= np.quantile(window, _VOCAB_VOL_Q)
             pm = (close[i] - open_[i]) / open_[i] if open_[i] else 0.0
-            if (
-                vol_high
-                and abs(pm) >= _SWEEP_MOVE
-                and np.sign(pm) == flow_dir[i]
-                and flow_dir[i] != 0
-            ):
+            if vol_high and abs(pm) >= _SWEEP_MOVE and np.sign(pm) == flow_dir[i] and flow_dir[i] != 0:
                 vocab[i].add("Sweep")
             if vol_high and abs(pm) <= _ABSORB_MOVE:
                 vocab[i].add("Absorption")
             # Crowding: persistent same-direction net flow.
             if flow_dir[i] != 0 and i >= _OFI_PERSIST_BARS - 1:
-                if all(
-                    flow_dir[i - k] == flow_dir[i] for k in range(_OFI_PERSIST_BARS)
-                ):
+                if all(flow_dir[i - k] == flow_dir[i] for k in range(_OFI_PERSIST_BARS)):
                     vocab[i].add("Crowding")
 
         # Type-A sequence: an Absorption (large limit orders soak up flow) followed
@@ -413,9 +388,7 @@ class PaperStrategyEngine:
 
         # ATR (true range, rolling mean) — the price_response normaliser.
         prev_close = np.concatenate([[close[0]], close[:-1]])
-        tr = np.maximum.reduce(
-            [high - low, np.abs(high - prev_close), np.abs(low - prev_close)]
-        )
+        tr = np.maximum.reduce([high - low, np.abs(high - prev_close), np.abs(low - prev_close)])
         atr = pd.Series(tr).rolling(_ATR_WINDOW, min_periods=1).mean().values
 
         taker_net = micro.get("taker_net") if micro else None
@@ -425,12 +398,7 @@ class PaperStrategyEngine:
         tf_net = np.full(n, np.nan)
         price_resp = np.full(n, np.nan)
         for i in range(n):
-            if (
-                taker_net is not None
-                and taker_vol is not None
-                and np.isfinite(taker_vol[i])
-                and taker_vol[i] > 0
-            ):
+            if taker_net is not None and taker_vol is not None and np.isfinite(taker_vol[i]) and taker_vol[i] > 0:
                 tf_net[i] = abs(taker_net[i]) / taker_vol[i]
             if atr[i] > 0:
                 price_resp[i] = abs(close[i] - open_[i]) / atr[i]
@@ -486,9 +454,7 @@ class PaperStrategyEngine:
                     continue
                 lo = max(0, i - _VOCAB_HIST_WINDOW)
                 verdict = adaptive_percentile(liq_vol[lo:i], float(liq_vol[i]), 0.95)
-                if verdict is True or (
-                    verdict is None and liq_vol[i] >= _LIQ_PULSE_FLOOR_BTC
-                ):
+                if verdict is True or (verdict is None and liq_vol[i] >= _LIQ_PULSE_FLOOR_BTC):
                     liq[i] = True
 
         if oi_series is not None:
@@ -527,18 +493,10 @@ class PaperStrategyEngine:
         was ever "stale" relative to itself). Returns a summary dict; positions/PnL live in
         `self.accounts`."""
         staleness = staleness or {}
-        block_s1_entry = staleness.get(
-            "funding_oi", StalenessEnforcement("funding_oi", False)
-        ).block_s1_entry
-        block_s2_entry = staleness.get(
-            "ticks", StalenessEnforcement("ticks", False)
-        ).block_s2_entry
-        pause_cusum_reversal = staleness.get(
-            "ticks", StalenessEnforcement("ticks", False)
-        ).pause_cusum_reversal_exit
-        stale_reason_codes = sorted(
-            e.reason_code for e in staleness.values() if e.stale and e.reason_code
-        )
+        block_s1_entry = staleness.get("funding_oi", StalenessEnforcement("funding_oi", False)).block_s1_entry
+        block_s2_entry = staleness.get("ticks", StalenessEnforcement("ticks", False)).block_s2_entry
+        pause_cusum_reversal = staleness.get("ticks", StalenessEnforcement("ticks", False)).pause_cusum_reversal_exit
+        stale_reason_codes = sorted(e.reason_code for e in staleness.values() if e.stale and e.reason_code)
         df = df.sort_values("time").reset_index(drop=True)
         # Total top-of-book depth per bar (bid+ask) feeds the Cascade thin-book condition
         # (audit P1-3); LOB entropy per bar feeds Coiling's entropy_low condition (follow-up
@@ -609,11 +567,7 @@ class PaperStrategyEngine:
 
             # Feed real trade arrivals up to this bar time into the S2 Hawkes tracker,
             # so λ*(t) captures recent trade clustering (item: tick→H1 wiring).
-            if (
-                self._s2_enabled
-                and tick_times is not None
-                and self._s2_tracker is not None
-            ):
+            if self._s2_enabled and tick_times is not None and self._s2_tracker is not None:
                 while tick_idx < n_ticks and tick_times[tick_idx] <= t_unix:
                     self._s2_tracker.add_event(float(tick_times[tick_idx]))
                     tick_idx += 1
@@ -722,17 +676,13 @@ class PaperStrategyEngine:
 
         return self._summary(df, states)
 
-    def bar_signal_series(
-        self, df: pd.DataFrame, oi_series=None, funding_series=None, ofi_series=None
-    ) -> np.ndarray:
+    def bar_signal_series(self, df: pd.DataFrame, oi_series=None, funding_series=None, ofi_series=None) -> np.ndarray:
         """Per-bar CUSUM-Short z-signal (standardised log return) — the momentum
         signal that feeds both strategies' triggers. Exposed so its predictive edge
         (IC / hit-rate vs forward returns) can be measured. Same feature pipeline as
         process_frame; no trades are taken."""
         df = df.sort_values("time").reset_index(drop=True)
-        _, sigma_series, log_returns = self._build_runner(
-            df, oi_series, funding_series, ofi_series
-        )
+        _, sigma_series, log_returns = self._build_runner(df, oi_series, funding_series, ofi_series)
         n = len(df)
         sig = np.full(n, np.nan)
         for i in range(n):
@@ -810,9 +760,7 @@ class PaperStrategyEngine:
     def _maybe_open_s1(self, dec, state, mark, ts, blocked: bool = False) -> None:
         if dec.action not in ("ENTER_LONG", "ENTER_SHORT"):
             return
-        if (
-            blocked
-        ):  # GL1 T0.4: funding/OI stale -> S1 risk check unavailable, no new entry
+        if blocked:  # GL1 T0.4: funding/OI stale -> S1 risk check unavailable, no new entry
             logger.info("S1 new entry blocked (STALE_FUNDING_OI)")
             return
         acct = self.accounts.subaccount_1
@@ -841,9 +789,7 @@ class PaperStrategyEngine:
                 mark,
             )
 
-    def _manage_s1_exits(
-        self, state, mark, ts, trig, pause_cusum_reversal: bool = False
-    ) -> None:
+    def _manage_s1_exits(self, state, mark, ts, trig, pause_cusum_reversal: bool = False) -> None:
         acct = self.accounts.subaccount_1
         for pos in list(acct.open_positions):
             meta = self._s1_meta.get(pos.id)
@@ -961,9 +907,7 @@ class PaperStrategyEngine:
                 direction,
                 mark,
                 ts,
-                cusum_peak=abs(
-                    trig.cusum_positive if direction == "LONG" else trig.cusum_negative
-                ),
+                cusum_peak=abs(trig.cusum_positive if direction == "LONG" else trig.cusum_negative),
             )
             logger.info(
                 "S2 OPEN %s %s lev=%.1f @ %.2f",
@@ -973,17 +917,13 @@ class PaperStrategyEngine:
                 mark,
             )
 
-    def _manage_s2_exits(
-        self, state, mark, ts, trig, pause_cusum_reversal: bool = False
-    ) -> None:
+    def _manage_s2_exits(self, state, mark, ts, trig, pause_cusum_reversal: bool = False) -> None:
         acct = self.accounts.subaccount_2
         for pos in list(acct.open_positions):
             meta = self._s2_meta.get(pos.id)
             if meta is None:
                 continue
-            cval = (
-                trig.cusum_positive if meta.direction == "LONG" else trig.cusum_negative
-            )
+            cval = trig.cusum_positive if meta.direction == "LONG" else trig.cusum_negative
             meta.cusum_peak = max(meta.cusum_peak, abs(cval))
             dec = check_strategy2_exit(
                 direction=meta.direction,
@@ -1000,9 +940,7 @@ class PaperStrategyEngine:
             applied = self._apply_exit(acct, pos.id, dec, mark, ts, is_s1=False)
             if applied == "batch":
                 meta.batches += 1
-                if meta.batches >= 3 and acct.close_position(
-                    pos.id, mark, ts, "batch_exit_final"
-                ):
+                if meta.batches >= 3 and acct.close_position(pos.id, mark, ts, "batch_exit_final"):
                     # third 1/3 batch — close the residual so the position terminates cleanly
                     self._forget(pos.id)
 
@@ -1032,16 +970,12 @@ class PaperStrategyEngine:
                 self._forget(pos_id)
             return "full"
         if action in ("REDUCE_50",):
-            acct.reduce_position(
-                pos_id, dec.partial_fraction or 0.5, mark, ts, dec.reason
-            )
+            acct.reduce_position(pos_id, dec.partial_fraction or 0.5, mark, ts, dec.reason)
             if is_s1 and pos_id in self._s1_meta:
                 self._s1_meta[pos_id].critical_reduced = True
             return "reduce"
         if action in ("EXIT_BATCH_33",):
-            acct.reduce_position(
-                pos_id, dec.partial_fraction or (1 / 3), mark, ts, dec.reason
-            )
+            acct.reduce_position(pos_id, dec.partial_fraction or (1 / 3), mark, ts, dec.reason)
             # caller (_manage_s2_exits) closes the residual after the third batch
             return "batch"
         # unknown action -> safest is full exit
@@ -1066,8 +1000,7 @@ class PaperStrategyEngine:
             "reason": getattr(d, "reason", ""),
             "step_reached": getattr(d, "step_reached", 0),
             "state_4h": state,
-            "direction": getattr(d, "direction", None)
-            or getattr(d, "cusum_direction", None),
+            "direction": getattr(d, "direction", None) or getattr(d, "cusum_direction", None),
             "timestamp": _as_dt(ts).isoformat(),
         }
 
@@ -1099,8 +1032,7 @@ class PaperStrategyEngine:
                         getattr(d, "reason", ""),
                         getattr(d, "step_reached", 0),
                         state,
-                        getattr(d, "direction", None)
-                        or getattr(d, "cusum_direction", None),
+                        getattr(d, "direction", None) or getattr(d, "cusum_direction", None),
                         snapshot,
                     )
                 )

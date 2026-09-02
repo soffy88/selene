@@ -13,28 +13,37 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 from fastapi import (
+    Depends,
     FastAPI,
-    WebSocket,
-    WebSocketDisconnect,
     HTTPException,
     Query,
-    Header,
-    Depends,
     Request,
+    WebSocket,
+    WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse
 
-from shared.db.redis_client import init_redis, get_redis, hgetall_json, get_json
+from shared.db.redis_client import get_json, get_redis, hgetall_json, init_redis
 from shared.events.streams import (
-    STREAM_SIGNAL_SCORED,
+    CG_GATEWAY,
+    STREAM_ONCHAIN_EVENTS,
     STREAM_ORDER_LIFECYCLE,
     STREAM_PORTFOLIO_STATE,
+    STREAM_SIGNAL_SCORED,
     STREAM_SYSTEM_ALERTS,
-    STREAM_ONCHAIN_EVENTS,
-    CG_GATEWAY,
-    consume,
     StreamEvent,
+    consume,
+)
+from shared.security.audit import get_ledger, record_halt_reset, record_write
+from shared.security.auth import (
+    GatewayAuthError,
+    IdempotentReplay,
+    Role,
+    assert_gateway_auth_ready,
+    authenticate,
+    reject_query_secrets,
+    require_role,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,13 +107,11 @@ async def _on_onchain(event: StreamEvent):
 async def lifespan(app: FastAPI):
     import os
 
-    from shared.security.auth import GatewayAuthError, assert_gateway_auth_ready
-
     try:
         assert_gateway_auth_ready(os.getenv("ENVIRONMENT", "development"))
     except GatewayAuthError:
         logger.critical("gateway boot refused: missing production auth secrets", exc_info=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
     init_redis(redis_url)
@@ -112,21 +119,11 @@ async def lifespan(app: FastAPI):
 
     # Start stream consumers for real-time WS push
     tasks = [
-        asyncio.create_task(
-            consume(STREAM_SIGNAL_SCORED, CG_GATEWAY, "gw-signals", _on_signal)
-        ),
-        asyncio.create_task(
-            consume(STREAM_ORDER_LIFECYCLE, CG_GATEWAY, "gw-orders", _on_order)
-        ),
-        asyncio.create_task(
-            consume(STREAM_PORTFOLIO_STATE, CG_GATEWAY, "gw-portfolio", _on_portfolio)
-        ),
-        asyncio.create_task(
-            consume(STREAM_SYSTEM_ALERTS, CG_GATEWAY, "gw-alerts", _on_alert)
-        ),
-        asyncio.create_task(
-            consume(STREAM_ONCHAIN_EVENTS, CG_GATEWAY, "gw-onchain", _on_onchain)
-        ),
+        asyncio.create_task(consume(STREAM_SIGNAL_SCORED, CG_GATEWAY, "gw-signals", _on_signal)),
+        asyncio.create_task(consume(STREAM_ORDER_LIFECYCLE, CG_GATEWAY, "gw-orders", _on_order)),
+        asyncio.create_task(consume(STREAM_PORTFOLIO_STATE, CG_GATEWAY, "gw-portfolio", _on_portfolio)),
+        asyncio.create_task(consume(STREAM_SYSTEM_ALERTS, CG_GATEWAY, "gw-alerts", _on_alert)),
+        asyncio.create_task(consume(STREAM_ONCHAIN_EVENTS, CG_GATEWAY, "gw-onchain", _on_onchain)),
     ]
     logger.info("Gateway: ready")
     yield
@@ -140,11 +137,7 @@ app = FastAPI(title="CryptoWatch v4 Gateway", version="4.0.0", lifespan=lifespan
 # CORS: tightened off "*" (item #21). Set GATEWAY_CORS_ORIGINS (comma-separated)
 # to your dashboard origin(s); defaults to localhost only.
 _cors_origins = [
-    o.strip()
-    for o in os.getenv(
-        "GATEWAY_CORS_ORIGINS", "http://localhost,http://localhost:80"
-    ).split(",")
-    if o.strip()
+    o.strip() for o in os.getenv("GATEWAY_CORS_ORIGINS", "http://localhost,http://localhost:80").split(",") if o.strip()
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -167,8 +160,6 @@ async def _production_read_auth(request: Request, call_next):
         return await call_next(request)
     if not path.startswith("/api"):
         return await call_next(request)
-    from shared.security.auth import Role, authenticate, reject_query_secrets
-
     try:
         reject_query_secrets(request)
         authenticate(
@@ -182,8 +173,6 @@ async def _production_read_auth(request: Request, call_next):
 
 
 # ── Auth (P0-2): production refuses to boot without secrets; writes are never anonymous.
-from shared.security.audit import get_ledger, record_halt_reset, record_write
-from shared.security.auth import IdempotentReplay, Role, require_role
 
 
 @app.exception_handler(IdempotentReplay)
@@ -293,15 +282,14 @@ async def metrics():
     """Prometheus exposition of key system gauges derived from Redis. Real metrics
     (no fake data); a Prometheus server scrapes this once added to compose."""
     from fastapi.responses import PlainTextResponse
-    from shared.metrics import render_prometheus
+
     from shared.db.redis_client import health_check
+    from shared.metrics import render_prometheus
 
     out = []
     redis_ok = await health_check()
     out.append({"name": "selene_up", "value": 1, "help": "gateway process is up"})
-    out.append(
-        {"name": "selene_redis_up", "value": redis_ok, "help": "redis reachable"}
-    )
+    out.append({"name": "selene_redis_up", "value": redis_ok, "help": "redis reachable"})
     out.append(
         {
             "name": "selene_ws_clients",
@@ -407,9 +395,7 @@ async def pending_signals():
     return {"pending": list(raw.values()), "count": len(raw)}
 
 
-@app.post(
-    "/api/v4/signals/{signal_id}/confirm", dependencies=[Depends(require_role(Role.OPERATOR))]
-)
+@app.post("/api/v4/signals/{signal_id}/confirm", dependencies=[Depends(require_role(Role.OPERATOR))])
 async def confirm_signal(signal_id: str):
     r = get_redis()
     await r.hset(
@@ -568,9 +554,7 @@ async def funding_positions():
 @app.post("/api/v4/funding/execute/{symbol}", dependencies=[Depends(require_role(Role.OPERATOR))])
 async def execute_funding_arb(symbol: str):
     r = get_redis()
-    await r.publish(
-        "cw4:commands", json.dumps({"cmd": "open_funding_arb", "symbol": symbol})
-    )
+    await r.publish("cw4:commands", json.dumps({"cmd": "open_funding_arb", "symbol": symbol}))
     return {"status": "command_sent", "symbol": symbol}
 
 
@@ -587,7 +571,6 @@ async def run_wfo(
     days_back: int = Query(180, le=365),
 ):
     import uuid
-    from fastapi import BackgroundTasks
 
     global _backtest_running
     if _backtest_running:
@@ -599,7 +582,7 @@ async def run_wfo(
         global _backtest_running
         _backtest_running = True
         try:
-            from backtest.engine import WFOEngine, WFOConfig
+            from backtest.engine import WFOConfig, WFOEngine
             from services.data.ingestion.market_provider import MarketDataRESTClient
 
             engine = WFOEngine(WFOConfig(train_days=90, test_days=30))
@@ -720,7 +703,6 @@ async def monitor_report():
 @app.post("/api/v4/monitor/trigger", dependencies=[Depends(require_role(Role.OPERATOR))])
 async def monitor_trigger(days: int = Query(1)):
     """手动触发立即生成简报"""
-    import asyncio
 
     # 异步调用 monitoring-service 的内部 HTTP
     import aiohttp
@@ -741,9 +723,7 @@ async def monitor_trigger(days: int = Query(1)):
 
 
 @app.get("/api/v4/monitor/mode-thresholds")
-@app.get(
-    "/api/v4/monitor/recommendation"
-)  # deprecated alias (Helios observe-only: prefer /mode-thresholds)
+@app.get("/api/v4/monitor/recommendation")  # deprecated alias (Helios observe-only: prefer /mode-thresholds)
 async def monitor_mode_thresholds():
     """返回模式切换门槛的【观察状态】（不是建议；Dashboard 首页展示用）。"""
     r = get_redis()
@@ -957,9 +937,7 @@ async def system_overview():
         },
         "regimes": {
             "distribution": regime_dist,
-            "dominant": max(regime_dist, key=regime_dist.get)
-            if regime_dist
-            else "UNKNOWN",
+            "dominant": max(regime_dist, key=regime_dist.get) if regime_dist else "UNKNOWN",
         },
         "monitor": recommendation,
         "signal_count": await safe_hlen("cw4:signals:recent"),
@@ -981,9 +959,7 @@ def _public_config_value(name: str, value: str) -> str:
 async def get_config(module: str):
     prefix = module.upper() + "_"
     cfg = {
-        k.replace(prefix, "").lower(): _public_config_value(k, v)
-        for k, v in os.environ.items()
-        if k.startswith(prefix)
+        k.replace(prefix, "").lower(): _public_config_value(k, v) for k, v in os.environ.items() if k.startswith(prefix)
     }
     return {"module": module, "config": cfg}
 
@@ -995,9 +971,7 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         # Send current state on connect
         market_data = await market_snapshot()
-        signals_resp = await list_signals(
-            limit=20, symbol=None, signal_type=None, regime=None, min_probability=0.0
-        )
+        signals_resp = await list_signals(limit=20, symbol=None, signal_type=None, regime=None, min_probability=0.0)
         await websocket.send_json(
             {
                 "type": "init",
@@ -1011,9 +985,7 @@ async def websocket_endpoint(websocket: WebSocket):
         # Keep-alive loop
         while True:
             await asyncio.sleep(25)
-            await websocket.send_json(
-                {"type": "ping", "ts": datetime.utcnow().isoformat()}
-            )
+            await websocket.send_json({"type": "ping", "ts": datetime.utcnow().isoformat()})
     except WebSocketDisconnect:
         ws_manager.disconnect(websocket)
     except Exception as e:

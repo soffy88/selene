@@ -38,9 +38,7 @@ def _opt_float(d: dict | None, key: str):
     return float(v)
 
 
-async def fetch_json(
-    session, path: str, params: dict | None = None, *, retries: int = 3
-):
+async def fetch_json(session, path: str, params: dict | None = None, *, retries: int = 3):
     """GET fapi{path} through BINANCE_PROXY, return parsed JSON (dict/list) or None.
     The proxy is flaky (intermittent TLS reset/timeout even on REST), so retry a few
     times with short backoff before giving up — a single dropped request must not cost
@@ -61,9 +59,7 @@ async def fetch_json(
     return None
 
 
-def build_deriv_row_binance(
-    premium: dict | None, oi: dict | None, symbol: str, now_ms: int
-):
+def build_deriv_row_binance(premium: dict | None, oi: dict | None, symbol: str, now_ms: int):
     """Map Binance premiumIndex + openInterest to a v2_derivatives_snapshots row
     (timestamp, symbol, funding_rate, open_interest, mark_price, index_price), or None
     when the required funding/OI are missing. premiumIndex carries mark+index+funding in

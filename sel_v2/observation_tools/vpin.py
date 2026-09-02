@@ -74,9 +74,7 @@ class VPINCalculator:
 
     # ── ingestion ──────────────────────────────────────────────────────────
 
-    def on_tick(
-        self, ts: datetime, price: float, size: float, side: str
-    ) -> list[Bucket]:
+    def on_tick(self, ts: datetime, price: float, size: float, side: str) -> list[Bucket]:
         """Feed one trade. Returns the list of buckets COMPLETED by this trade
         (empty most of the time; >1 if a single trade spans several buckets)."""
         completed: list[Bucket] = []
@@ -99,20 +97,12 @@ class VPINCalculator:
         return completed
 
     def _seal_bucket(self, ts: datetime, price: float) -> Bucket:
-        dur = (
-            (ts - self._cur_open_ts).total_seconds()
-            if self._cur_open_ts is not None
-            else 0.0
-        )
+        dur = (ts - self._cur_open_ts).total_seconds() if self._cur_open_ts is not None else 0.0
         # BVC price change is bucket-close to bucket-close (standard Easley/LdP/
         # O'Hara), NOT open-to-close within the bucket — a bucket completed by a
         # single large trade would otherwise always have dp = 0.
         prev_close = self._buckets[-1].close_price if self._buckets else None
-        dp = (
-            math.log(price / prev_close)
-            if prev_close and prev_close > 0 and price > 0
-            else 0.0
-        )
+        dp = math.log(price / prev_close) if prev_close and prev_close > 0 and price > 0 else 0.0
         bucket = Bucket(
             close_ts=ts,
             open_price=float(self._cur_open_price),
@@ -168,17 +158,13 @@ class VPINCalculator:
         """BVC-classified VPIN over the same window (validation control)."""
         if len(self._buckets) < self.n_buckets:
             return None
-        window = [
-            b for b in self._buckets[-self.n_buckets :] if b.bvc_buy_frac is not None
-        ]
+        window = [b for b in self._buckets[-self.n_buckets :] if b.bvc_buy_frac is not None]
         if len(window) < self.n_buckets:
             return None
         total = sum(b.v_total for b in window)
         if total <= 0:
             return None
-        return (
-            sum(abs((2.0 * b.bvc_buy_frac - 1.0) * b.v_total) for b in window) / total
-        )
+        return sum(abs((2.0 * b.bvc_buy_frac - 1.0) * b.v_total) for b in window) / total
 
     def percentile(self, q: float) -> Optional[float]:
         """Trailing-30d VPIN percentile; None until warmup_buckets completed."""

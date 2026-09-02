@@ -14,14 +14,14 @@ Replaces / augments the static hardcoded correlation groups in services/risk/mai
 
 Pure Python (stdlib only) so it is unit-testable without numpy/scipy.
 """
+
 from __future__ import annotations
 
 import math
-from typing import Optional
 
 # funding_adjusted_cost lives in shared/ (used by the portfolio service too); re-exported here
 # for backward compatibility with existing imports.
-from shared.quant import funding_adjusted_cost, FUNDING_HOURS  # noqa: F401
+from shared.quant import FUNDING_HOURS, funding_adjusted_cost  # noqa: F401
 
 
 def _mean(xs):
@@ -101,14 +101,18 @@ def correlated_exposure(positions: dict, returns_by_symbol: dict, threshold: flo
                 cluster_notional += abs(notional)
         frac = cluster_notional / gross
         if frac > best["max_fraction"]:
-            best = {"max_fraction": round(frac, 6), "anchor": anchor,
-                    "cluster": sorted(cluster), "gross": gross}
+            best = {"max_fraction": round(frac, 6), "anchor": anchor, "cluster": sorted(cluster), "gross": gross}
     return best
 
 
-def same_direction_correlated_exposure(candidate: str, cand_sign: int, cand_notional: float,
-                                       positions: dict, returns_by_symbol: dict,
-                                       threshold: float = 0.6):
+def same_direction_correlated_exposure(
+    candidate: str,
+    cand_sign: int,
+    cand_notional: float,
+    positions: dict,
+    returns_by_symbol: dict,
+    threshold: float = 0.6,
+):
     """Notional of the candidate order plus every *existing* same-direction position whose
     realized correlation with the candidate is >= threshold.
 
@@ -127,7 +131,7 @@ def same_direction_correlated_exposure(candidate: str, cand_sign: int, cand_noti
         pos_sign = 1 if str(pos.get("side", "LONG")).upper() in ("BUY", "LONG") else -1
         if pos_sign != cand_sign:
             continue
-        if sym == candidate:                      # candidate already has an open position
+        if sym == candidate:  # candidate already has an open position
             total += float(pos.get("notional", 0.0))
             continue
         if sym not in idx:
@@ -149,7 +153,7 @@ def parametric_var_correlated(positions: dict, returns_by_symbol: dict, confiden
     symbols, cov = covariance_matrix(returns_by_symbol)
     if not symbols:
         return 0.0
-    idx = {s: i for i, s in enumerate(symbols)}
+    {s: i for i, s in enumerate(symbols)}
     w = [float(positions.get(s, 0.0)) for s in symbols]
     if all(x == 0 for x in w):
         return 0.0
@@ -184,5 +188,3 @@ def stress_test(positions: dict, scenarios: dict):
             pnl += notional * float(shocks.get(sym, 0.0))
         out[name] = round(pnl, 6)
     return out
-
-

@@ -4,16 +4,18 @@ StateEngine — Wave 3 full pipeline entry point.
 FeatureVector → StateRecognizer → DwellFilter → CascadeCooling → LegalityChecker
              → StateRecord (with health metadata).
 """
+
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
 
 from sel_engine.features.schema import FeatureVector
-from .schema import StateLabel, StateRecord
-from .recognizer import StateRecognizer
-from .transition import DwellFilter, CascadeCooling, LegalityChecker
+
 from .health import HealthMonitor, HealthReport
+from .recognizer import StateRecognizer
+from .schema import StateLabel, StateRecord
+from .transition import CascadeCooling, DwellFilter, LegalityChecker
 
 
 class StateEngine:

@@ -20,23 +20,20 @@ Vocab mapping (for v2_inverse_vocab_events.vocab field):
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-from datetime import datetime
-from typing import Optional
 
 from sel_v2.observation_tools.base import BarFeatures, ObservationResult
 from sel_v2.observation_tools.bayesian_hmm import BayesianHMM
+from sel_v2.observation_tools.chan_tools import ChanDivergence, ChanPivot
+from sel_v2.observation_tools.hawkes_cascade_warning import HawkesCascadeWarning
 from sel_v2.observation_tools.hmm_boundary_arbiter import HMMBoundaryArbiter
-from sel_v2.observation_tools.tda_clustering import TDAClustering
+from sel_v2.observation_tools.killzone import KillzoneAnomaly
 from sel_v2.observation_tools.permutation_entropy import PermutationEntropy
+from sel_v2.observation_tools.swing_structure import SwingStructureTool
+from sel_v2.observation_tools.tda_clustering import TDAClustering
 from sel_v2.observation_tools.transfer_entropy_rolling import TransferEntropyRolling
 from sel_v2.observation_tools.wavelet_multifractal import WaveletMultifractal
-from sel_v2.observation_tools.hawkes_cascade_warning import HawkesCascadeWarning
-from sel_v2.observation_tools.chan_tools import ChanDivergence, ChanPivot
-from sel_v2.observation_tools.killzone import KillzoneAnomaly
-from sel_v2.observation_tools.swing_structure import SwingStructureTool
 
 logger = logging.getLogger(__name__)
 
@@ -141,9 +138,7 @@ class ObservationRunner:
             await self._persist(bar, results)
         return results
 
-    async def _persist(
-        self, bar: BarFeatures, results: list[ObservationResult]
-    ) -> None:
+    async def _persist(self, bar: BarFeatures, results: list[ObservationResult]) -> None:
         for result in results:
             if not result.signal:
                 continue
@@ -233,20 +228,12 @@ def run_recent_observations(
         ts = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
         bar = BarFeatures(
             timestamp=ts,
-            log_return=float(np.log(closes[i] / closes[i - 1]))
-            if closes[i - 1] > 0
-            else 0.0,
+            log_return=float(np.log(closes[i] / closes[i - 1])) if closes[i - 1] > 0 else 0.0,
             volume=float(vols[i]),
             funding_rate=(
-                float(funding_series[i])
-                if funding_series is not None and np.isfinite(funding_series[i])
-                else None
+                float(funding_series[i]) if funding_series is not None and np.isfinite(funding_series[i]) else None
             ),
-            open_interest=(
-                float(oi_series[i])
-                if oi_series is not None and np.isfinite(oi_series[i])
-                else None
-            ),
+            open_interest=(float(oi_series[i]) if oi_series is not None and np.isfinite(oi_series[i]) else None),
             high=float(highs[i]) if highs is not None else None,
             low=float(lows[i]) if lows is not None else None,
             close=float(closes[i]),
@@ -254,9 +241,7 @@ def run_recent_observations(
         )
         results = runner.process_bar_sync(bar)  # last iteration = current reading
         if fired_sink is not None:
-            fired_sink.extend(
-                r for r in results if r.signal and r.tool_id in _LENS_TOOL_IDS
-            )
+            fired_sink.extend(r for r in results if r.signal and r.tool_id in _LENS_TOOL_IDS)
     return results
 
 
@@ -271,9 +256,7 @@ async def persist_lens_vocab_events(conn, fired) -> int:
     for r in fired:
         meta = dict(r.metadata)
         associated_state = meta.pop("associated_state", None)
-        meta.update(
-            {"label": r.label, "confidence": r.confidence, "threshold": r.threshold}
-        )
+        meta.update({"label": r.label, "confidence": r.confidence, "threshold": r.threshold})
         try:
             await conn.execute(
                 """

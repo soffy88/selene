@@ -16,12 +16,10 @@ from datetime import datetime
 import asyncpg
 import redis.asyncio as aioredis
 
+from sel_v2.data.insert_guard import InsertFailureLimitExceeded, InsertGuard
 from sel_v2.db.migrations import apply_schema
-from sel_v2.data.insert_guard import InsertGuard, InsertFailureLimitExceeded
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("v2_derivatives_adapter")
 
 _guard = InsertGuard("v2_derivatives_snapshots")
@@ -91,13 +89,9 @@ async def main():
                     _guard.ok()
                     insert_count += 1
                     if insert_count == 1:
-                        logger.info(
-                            "INSERT row 1 to v2_derivatives_snapshots (via md adapter)"
-                        )
+                        logger.info("INSERT row 1 to v2_derivatives_snapshots (via md adapter)")
                     if insert_count % 10 == 0:
-                        logger.info(
-                            f"v2_derivatives_snapshots cumulative inserts: {insert_count}"
-                        )
+                        logger.info(f"v2_derivatives_snapshots cumulative inserts: {insert_count}")
                 except Exception as db_e:
                     _guard.fail(db_e)
         except InsertFailureLimitExceeded:

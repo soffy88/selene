@@ -1,4 +1,5 @@
 """StateOutputService: main integration point for Wave 4 paper trading interface."""
+
 from __future__ import annotations
 
 import logging
@@ -61,7 +62,7 @@ class StateOutputService:
             H_history=self._H_history,
             OI_history=self._OI_history,
             OI_current=oi_current,
-            total_depth_24h_mean=None,   # TODO: compute from orderbook history
+            total_depth_24h_mean=None,  # TODO: compute from orderbook history
             spread_bps_24h_mean=None,
             bids=bids,
             asks=asks,

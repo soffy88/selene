@@ -1,4 +1,5 @@
 """Persist FeatureVector and StateRecord to sel hypertables via upsert."""
+
 import dataclasses
 import json
 import logging
@@ -66,14 +67,28 @@ async def write_feature_vector(pool: asyncpg.Pool, fv: FeatureVector) -> None:
     data_quality = json.dumps(avail_dict)
 
     params = (
-        fv.time, fv.symbol,
-        fv.close, fv.delta_p_pct, fv.sigma_p_24h,
-        fv.H, fv.H_sample_count,
-        fv.top_5_bid_size, fv.top_5_ask_size, fv.total_depth, fv.spread_bps,
-        fv.TF, fv.OI, fv.funding_rate,
-        fv.LV, fv.absorption_ratio,
-        fv.price_autocorr_12h, fv.price_autocorr_24h, fv.price_autocorr_48h,
-        fv.sigma_p_d2, fv.H_change_rate_std_12h, fv.OI_hurst,
+        fv.time,
+        fv.symbol,
+        fv.close,
+        fv.delta_p_pct,
+        fv.sigma_p_24h,
+        fv.H,
+        fv.H_sample_count,
+        fv.top_5_bid_size,
+        fv.top_5_ask_size,
+        fv.total_depth,
+        fv.spread_bps,
+        fv.TF,
+        fv.OI,
+        fv.funding_rate,
+        fv.LV,
+        fv.absorption_ratio,
+        fv.price_autocorr_12h,
+        fv.price_autocorr_24h,
+        fv.price_autocorr_48h,
+        fv.sigma_p_d2,
+        fv.H_change_rate_std_12h,
+        fv.OI_hurst,
         data_quality,
     )
     async with pool.acquire() as conn:
@@ -81,9 +96,7 @@ async def write_feature_vector(pool: asyncpg.Pool, fv: FeatureVector) -> None:
     logger.debug("wrote sel_features row: %s %s", fv.symbol, fv.time.isoformat())
 
 
-async def write_oi_snapshot(
-    pool: asyncpg.Pool, symbol: str, ts, oi_value: float
-) -> None:
+async def write_oi_snapshot(pool: asyncpg.Pool, symbol: str, ts, oi_value: float) -> None:
     sql = """
         INSERT INTO sel_oi_history (time, symbol, oi_value)
         VALUES ($1, $2, $3)
@@ -93,9 +106,7 @@ async def write_oi_snapshot(
         await conn.execute(sql, ts, symbol, oi_value)
 
 
-async def write_funding_snapshot(
-    pool: asyncpg.Pool, symbol: str, ts, funding_rate: float
-) -> None:
+async def write_funding_snapshot(pool: asyncpg.Pool, symbol: str, ts, funding_rate: float) -> None:
     sql = """
         INSERT INTO sel_funding_history (time, symbol, funding_rate)
         VALUES ($1, $2, $3)
@@ -150,12 +161,19 @@ async def write_state_record(pool: asyncpg.Pool, record: "StateRecord") -> None:
     async with pool.acquire() as conn:
         await conn.execute(
             _UPSERT_STATE_SQL,
-            record.time, record.symbol,
-            state_val, record.none_reason.value, record.reason,
-            record.cold_start, record.is_legal_transition,
-            from_val, quantiles_json,
+            record.time,
+            record.symbol,
+            state_val,
+            record.none_reason.value,
+            record.reason,
+            record.cold_start,
+            record.is_legal_transition,
+            from_val,
+            quantiles_json,
         )
     logger.debug(
         "wrote sel_state_sequence: %s %s state=%s",
-        record.symbol, record.time.isoformat(), state_val,
+        record.symbol,
+        record.time.isoformat(),
+        state_val,
     )

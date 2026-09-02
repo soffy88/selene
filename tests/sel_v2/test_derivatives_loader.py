@@ -8,11 +8,11 @@ Tests:
 - partial coverage → NaN before first snapshot, values after
 - connection failure → all NaN (no exception propagated)
 """
+
 import math
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import numpy as np
 import pytest
 
 from sel_v2.scheduler.derivatives_loader import load_oi_funding_series
@@ -47,6 +47,7 @@ def _make_conn(rows) -> AsyncMock:
 
 
 # ── Basic asof join ───────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_asof_join_exact_match():
@@ -100,8 +101,8 @@ async def test_asof_join_multiple_bars_partial_coverage():
     snap2 = _mock_row(_ts(2026, 4, 27, 16), oi=1.1e6, fr=0.0002)
 
     bar_tss = [
-        _ts(2026, 4, 27, 4),   # before any snapshot → NaN
-        _ts(2026, 4, 27, 8),   # exact match snap1
+        _ts(2026, 4, 27, 4),  # before any snapshot → NaN
+        _ts(2026, 4, 27, 8),  # exact match snap1
         _ts(2026, 4, 27, 12),  # between snap1 and snap2 → snap1
         _ts(2026, 4, 27, 20),  # after snap2 → snap2
     ]
@@ -113,11 +114,12 @@ async def test_asof_join_multiple_bars_partial_coverage():
     oi = result["open_interest"]
     assert math.isnan(oi[0])
     assert oi[1] == pytest.approx(1e6)
-    assert oi[2] == pytest.approx(1e6)    # asof = snap1
+    assert oi[2] == pytest.approx(1e6)  # asof = snap1
     assert oi[3] == pytest.approx(1.1e6)  # asof = snap2
 
 
 # ── Edge cases ────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_empty_bar_timestamps():

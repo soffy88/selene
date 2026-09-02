@@ -2,6 +2,7 @@
 
 Previously the source history window ignored `lag` (correct only at lag=1).
 """
+
 import numpy as np
 
 from sel_v2.offline.transfer_entropy import symbolic_te

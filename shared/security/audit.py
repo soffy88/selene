@@ -48,9 +48,7 @@ class IdempotencyLedger:
         return self._store.lookup_write(request_id)
 
     def remember(self, request_id: str, *, status_code: int, body: Any, path: str, actor: str) -> None:
-        self._store.remember_write(
-            request_id, status_code=status_code, body=body, path=path, actor=actor
-        )
+        self._store.remember_write(request_id, status_code=status_code, body=body, path=path, actor=actor)
 
     def reset(self) -> None:
         import shared.ledger.sqlite_store as store_mod

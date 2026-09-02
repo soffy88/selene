@@ -7,11 +7,12 @@ Priority order (highest → lowest):
 4. Daily drawdown exceeded → NO_ACTION (pause new opens, allow closes)
 5. Consecutive losses stop → NO_ACTION (24H pause, allow closes)
 """
+
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Optional
 
 from decision.config import RiskConfig
@@ -24,15 +25,16 @@ logger = logging.getLogger(__name__)
 # Result / event dataclasses
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class RiskCheckResult:
     passed: bool
     force_action: Optional[DecisionAction]  # if not passed: the forced action (CLOSE or NO_ACTION)
-    triggered_rule: Optional[str]           # e.g. "single_trade_max_loss", "cascade"
+    triggered_rule: Optional[str]  # e.g. "single_trade_max_loss", "cascade"
     details: str
-    rule_2_subtype: Optional[str] = None       # "missing_data" | "no_match" (signal_lag only)
+    rule_2_subtype: Optional[str] = None  # "missing_data" | "no_match" (signal_lag only)
     none_reasons_in_lag: Optional[dict] = None  # {"missing_data": N, "no_match": N, ...} lag window dist
-    alert_required: bool = False               # True when candidate B suppresses close and needs operator alert
+    alert_required: bool = False  # True when candidate B suppresses close and needs operator alert
 
 
 @dataclass
@@ -47,6 +49,7 @@ class RiskEvent:
 # ---------------------------------------------------------------------------
 # RiskGate
 # ---------------------------------------------------------------------------
+
 
 def _classify_lag_subtype(none_reasons: Optional[dict]) -> str:
     """Return 'missing_data' if any collector-fault bar in the lag window; else 'no_match'."""
@@ -148,17 +151,12 @@ class RiskGate:
             self._pause_until = bar_time + timedelta(hours=24)
             return self._fire(
                 "consecutive_loss_stop",
-                (
-                    f"{account.consecutive_losses} consecutive losses "
-                    f">= {self.config.consecutive_loss_stop}"
-                ),
+                (f"{account.consecutive_losses} consecutive losses >= {self.config.consecutive_loss_stop}"),
                 DecisionAction.NO_ACTION,
                 bar_time,
             )
 
-        return RiskCheckResult(
-            passed=True, force_action=None, triggered_rule=None, details="ok"
-        )
+        return RiskCheckResult(passed=True, force_action=None, triggered_rule=None, details="ok")
 
     # ------------------------------------------------------------------
     # Event log
@@ -180,9 +178,7 @@ class RiskGate:
         }
 
     @classmethod
-    def from_state_dict(
-        cls, config: RiskConfig, symbol: str, state: dict
-    ) -> "RiskGate":
+    def from_state_dict(cls, config: RiskConfig, symbol: str, state: dict) -> "RiskGate":
         """Restore a RiskGate from a previously persisted state dict."""
         gate = cls(config, symbol)
         if state.get("pause_until"):
@@ -201,10 +197,7 @@ class RiskGate:
         none_reasons_in_lag: Optional[dict],
         bar_time: datetime,
     ) -> RiskCheckResult:
-        details = (
-            f"State signal lag {lag_hours:.1f}H > {self.config.signal_lag_max_hours}H"
-            f" [subtype={subtype}]"
-        )
+        details = f"State signal lag {lag_hours:.1f}H > {self.config.signal_lag_max_hours}H [subtype={subtype}]"
         # Candidate B: collector fault (missing_data) → HOLD + alert; genuine lag (no_match) → CLOSE.
         if subtype == "missing_data":
             force_action = DecisionAction.NO_ACTION

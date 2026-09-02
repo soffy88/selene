@@ -23,11 +23,12 @@ Threshold:
   7-day rolling 70th-percentile of realised λ* values (v2.1 §5.1 placeholder).
   Recalibrated each time fit_gmm() is called or from offline H2 reference.
 """
+
 from __future__ import annotations
 
 import math
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Deque, List, Optional, Tuple
 
 import numpy as np
@@ -66,6 +67,7 @@ class HawkesParams:
         (i.e. Wave 1 calibration has not been run).  Silent fallback is not allowed.
         """
         from sel_v2.strategies.params_loader import load_strategy_params
+
         params = load_strategy_params(
             strategy="h2",
             param_names=["mu_ref", "alpha_ref", "beta_ref"],
@@ -80,8 +82,8 @@ class HawkesParams:
 
 @dataclass
 class HawkesObservation:
-    timestamp: float   # Unix seconds
-    intensity: float   # λ*(t) at this event
+    timestamp: float  # Unix seconds
+    intensity: float  # λ*(t) at this event
 
 
 class HawkesIntensityTracker:
@@ -94,11 +96,10 @@ class HawkesIntensityTracker:
         lam = tracker.intensity(t)    # query λ*(t) at arbitrary t ≥ last event
     """
 
-    def __init__(self, params: Optional[HawkesParams] = None,
-                 store_history: bool = True) -> None:
+    def __init__(self, params: Optional[HawkesParams] = None, store_history: bool = True) -> None:
         self.params = params or HawkesParams.from_h2_reference()
         self._last_t: Optional[float] = None
-        self._A: float = 0.0          # recursive term Σ exp(-β(t-t_i))
+        self._A: float = 0.0  # recursive term Σ exp(-β(t-t_i))
         # Intensity only needs the recursive state (_A, _last_t). When feeding a
         # high-volume tick stream, set store_history=False to bound memory — the
         # event history is only used by update_params()/recent_intensities().
@@ -195,10 +196,13 @@ class HawkesIntensityTracker:
         if N >= 20 and T > 0:
             chunk_size = T / max(int(N / 5), 2)
             n_chunks = int(T / chunk_size)
-            counts = np.array([
-                np.sum((event_times >= i * chunk_size) & (event_times < (i + 1) * chunk_size))
-                for i in range(n_chunks)
-            ], dtype=float)
+            counts = np.array(
+                [
+                    np.sum((event_times >= i * chunk_size) & (event_times < (i + 1) * chunk_size))
+                    for i in range(n_chunks)
+                ],
+                dtype=float,
+            )
             mean_c = float(np.mean(counts))
             var_c = float(np.var(counts)) if len(counts) > 1 else 0.0
             if mean_c > 0 and var_c > 0:
@@ -219,6 +223,7 @@ class HawkesIntensityTracker:
 
 
 # ── Rolling threshold tracker ────────────────────────────────────────────────
+
 
 class RollingIntensityThreshold:
     """
@@ -245,6 +250,7 @@ class RollingIntensityThreshold:
         if len(self._buffer) < 20:
             return None
         from oprim import percentile_value
+
         values = np.array([v for _, v in self._buffer])
         return float(percentile_value(values, self.quantile))
 
@@ -256,7 +262,7 @@ class RollingIntensityThreshold:
         """
         th = self.threshold(t)
         if th is None:
-            return True   # pass-through: not enough data to filter
+            return True  # pass-through: not enough data to filter
         return intensity > th
 
     def _evict(self, now: float) -> None:

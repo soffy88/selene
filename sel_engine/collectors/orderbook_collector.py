@@ -7,10 +7,10 @@ total_depth, and spread_bps features to be populated.
 
 OKX endpoint: GET /api/v5/market/books?instId=BTC-USDT-SWAP&sz=20
 """
+
 import asyncio
 import json
 import logging
-import os
 from datetime import datetime, timezone
 
 import aiohttp
@@ -72,13 +72,15 @@ async def _sample_once(
     H = compute_orderbook_entropy(bids)
     depth = compute_depth_features(bids, asks)
 
-    sample_payload = json.dumps({
-        "H": H,
-        "top_5_bid": depth["top_5_bid_size"],
-        "top_5_ask": depth["top_5_ask_size"],
-        "spread_bps": depth["spread_bps"],
-        "ts": now.isoformat(),
-    })
+    sample_payload = json.dumps(
+        {
+            "H": H,
+            "top_5_bid": depth["top_5_bid_size"],
+            "top_5_ask": depth["top_5_ask_size"],
+            "spread_bps": depth["spread_bps"],
+            "ts": now.isoformat(),
+        }
+    )
 
     h_key = f"{REDIS_H_SAMPLES_PREFIX}:{symbol}:{bar_ts}"
     depth_key = f"{REDIS_DEPTH_SAMPLES_PREFIX}:{symbol}:{bar_ts}"
@@ -91,11 +93,17 @@ async def _sample_once(
     # Persist 5-min bucket to DB if pool available
     if pool is not None:
         from sel_engine.db.writer import write_orderbook_sample
+
         bucket = now.replace(minute=(now.minute // 5) * 5, second=0, microsecond=0)
         try:
             await write_orderbook_sample(
-                pool, symbol, bucket, H,
-                depth["top_5_bid_size"], depth["top_5_ask_size"], depth["spread_bps"],
+                pool,
+                symbol,
+                bucket,
+                H,
+                depth["top_5_bid_size"],
+                depth["top_5_ask_size"],
+                depth["spread_bps"],
             )
         except Exception as exc:
             logger.warning("orderbook sample DB write failed: %s", exc)
@@ -110,9 +118,11 @@ async def run_orderbook_collector(
     """Main loop: sample orderbook every 60s indefinitely."""
     if redis is None:
         from shared.db.connections import get_redis
+
         redis = await get_redis()
     if pool is None:
         from shared.db.connections import get_pg
+
         pool = await get_pg()
 
     async with aiohttp.ClientSession() as session:

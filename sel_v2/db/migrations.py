@@ -9,6 +9,7 @@ TimescaleDB-specific statements (create_hypertable / compression policies) are
 downgraded to a warning when the extension is unavailable, so the table DDL
 still applies against a plain PostgreSQL instance (e.g. local dev / CI).
 """
+
 import logging
 import os
 from pathlib import Path
@@ -69,7 +70,8 @@ async def apply_schema(pool: asyncpg.Pool) -> None:
                 if _is_tolerable(stmt):
                     logger.warning(
                         "Skipping non-critical statement (timescale absent / dup rows?): %s\n%s",
-                        exc, stmt[:120],
+                        exc,
+                        stmt[:120],
                     )
                     continue
                 logger.error("Migration statement failed: %s\n%s", exc, stmt[:200])
@@ -92,4 +94,5 @@ async def run_migrations(pool: asyncpg.Pool | None = None) -> None:
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(run_migrations())

@@ -18,7 +18,6 @@ from services.scanner.main import (
     wilder_rsi,
 )
 
-
 # ── wilder_rsi ────────────────────────────────────────────────────────────────
 
 
@@ -125,9 +124,7 @@ def test_discovery_filters_and_ranks():
 def test_discovery_volume_surge_boosts_rank():
     tickers = [_tick("AAAUSDT", 10.0, 60e6), _tick("BBBUSDT", 12.0, 30e6)]
     prev = {"AAAUSDT": 20e6, "BBBUSDT": 30e6}  # AAA 量能 3 倍激增
-    out = discover_candidates(
-        tickers, prev, exclude=set(), min_quote_volume=20e6, min_change_pct=5.0, top_n=2
-    )
+    out = discover_candidates(tickers, prev, exclude=set(), min_quote_volume=20e6, min_change_pct=5.0, top_n=2)
     assert out[0]["symbol"] == "AAAUSDT"  # 10×3.0=30 > 12×1.0
     assert out[0]["volume_surge"] == pytest.approx(3.0)  # 截断上限
 
@@ -135,9 +132,7 @@ def test_discovery_volume_surge_boosts_rank():
 def test_discovery_top_n_and_malformed_rows():
     tickers = [_tick(f"S{i}USDT", 5.0 + i, 30e6) for i in range(10)]
     tickers.append({"symbol": "BADUSDT"})  # 缺字段 → 跳过不炸
-    out = discover_candidates(
-        tickers, {}, exclude=set(), min_quote_volume=20e6, min_change_pct=5.0, top_n=3
-    )
+    out = discover_candidates(tickers, {}, exclude=set(), min_quote_volume=20e6, min_change_pct=5.0, top_n=3)
     assert len(out) == 3
     assert out[0]["symbol"] == "S9USDT"
 

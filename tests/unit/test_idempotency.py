@@ -1,8 +1,11 @@
 """Idempotency-key helpers for order placement (Phase 3 execution-safety)."""
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-from services.execution.adapters.base import sanitize_client_id, is_duplicate_order
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+
+from services.execution.adapters.base import is_duplicate_order, sanitize_client_id
 
 
 class TestSanitize:
@@ -21,6 +24,7 @@ class TestSanitize:
         # mirrors services/execution/main.py:_client_oid
         def client_oid(order_id, kind="O"):
             return f"{order_id.replace('-', '')[:31]}{kind}"
+
         oid = "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
         o, c = client_oid(oid, "O"), client_oid(oid, "C")
         assert o != c

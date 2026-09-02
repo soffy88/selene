@@ -1,11 +1,13 @@
 """Tests for PositionTracker."""
-import pytest
+
 from datetime import datetime, timezone
 
+import pytest
+
+from decision.config import load_config
 from paper_trading.fills import FillSimulator
 from paper_trading.positions import PositionTracker
-from paper_trading.schema import Position, PositionSide, SimulatedFill
-from decision.config import load_config
+from paper_trading.schema import PositionSide, SimulatedFill
 
 _T = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
 _HASH = "abc123"
@@ -44,6 +46,7 @@ def _make_fill(
 
 
 # ---------------------------------------------------------------------------
+
 
 class TestPositionTrackerOpenClose:
     def test_initial_no_position(self):

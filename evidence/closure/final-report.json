@@ -1,9 +1,10 @@
 {
-  "wave": "FINAL",
+  "wave": "A-G",
   "baseline_sha": "24137634f777e7d993434faafc2d418e31f7b7b1",
+  "starting_sha": "e51c5d203cc75321447bd183be5ec0cae99677a8",
   "branch": "closure/p0-safety",
   "status": "OWNER_BLOCKED",
-  "generated_at": "2026-09-01T20:30:00Z",
+  "generated_at": "2026-09-01T23:59:00Z",
   "gates": {
     "P0-1": "PASS",
     "P0-2": "PASS",
@@ -11,15 +12,15 @@
     "P0-4": "PASS",
     "P1-1": "PASS",
     "P1-2": "PASS",
-    "P1-3": "BLOCKED",
+    "P1-3": "BLOCKED_INSUFFICIENT_DATA",
     "P1-4": "BLOCKED",
     "P1-5": "OWNER_BLOCKED",
-    "P2-1": "PARTIAL",
+    "P2-1": "PASS",
     "P2-2": "PARTIAL",
-    "P2-3": "BLOCKED",
+    "P2-3": "PARTIAL",
     "P2-4": "PASS",
     "P2-5": "PASS",
-    "P3-1": "PARTIAL",
+    "P3-1": "OWNER_BLOCKED",
     "P3-2": "PARTIAL",
     "P3-3": "PASS"
   },
@@ -32,13 +33,11 @@
     "PUBLIC_PRODUCT_READY": "PARTIAL"
   },
   "open_blockers": [
-    "P1-3 OOS closed trades < 100 (BLOCKED_INSUFFICIENT_DATA); no artifact with gate_verdict=PASS",
-    "P1-4 shadow has not run 30 days / 3 regimes",
-    "P1-5 PR #8/#9 merge window is owner-only",
-    "P2-1 full-repo 394 Ruff issues not cleared; required lint is scoped to new packages (0 errors)",
-    "P2-3 fresh compose with Helios postgres/redis not executed in this environment",
-    "P3-1 LICENSE is OWNER_BLOCKED",
-    "P3-2 existing index.html not fully replaced by a TS SPA; identity modules + banner added"
+    "P1-3 OOS observed_live closed trades = 0 (BLOCKED_INSUFFICIENT_DATA); gate remains 100",
+    "P1-4 shadow records days_run=0 regimes=0; gate remains 30 days / 3 regimes",
+    "P1-5 PR #8/#9 share head feat/selene-md-adapter@b0f8cb7; not merged",
+    "P2-3 isolated compose is postgres+redis only; scanner..gateway containers not started; compose-smoke PARTIAL",
+    "P3-1 LICENSE is OWNER_BLOCKED; README states all rights reserved"
   ],
   "owner_blocked": [
     "license",

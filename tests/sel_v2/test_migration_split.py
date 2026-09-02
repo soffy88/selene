@@ -4,6 +4,7 @@ A '--' comment containing a ';' previously produced a comment-only fragment,
 and executing that via asyncpg crashed the collector on startup. The splitter
 must strip comments before splitting on ';'.
 """
+
 from pathlib import Path
 
 from sel_v2.db.migrations import _split_statements
@@ -21,11 +22,7 @@ def test_no_comment_only_or_empty_fragments():
 
 
 def test_semicolon_inside_comment_does_not_split():
-    sql = (
-        "CREATE TABLE a (x int);\n"
-        "-- note: compress after 2 days; then retain\n"
-        "ALTER TABLE a SET (y);\n"
-    )
+    sql = "CREATE TABLE a (x int);\n-- note: compress after 2 days; then retain\nALTER TABLE a SET (y);\n"
     stmts = _split_statements(sql)
     assert stmts == ["CREATE TABLE a (x int)", "ALTER TABLE a SET (y)"]
 

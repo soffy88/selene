@@ -2,23 +2,21 @@
 Tests for sel_engine Wave 4 — paper_interface module.
 All tests use mocks/fakes — no real DB or Redis connections required.
 """
+
 from __future__ import annotations
 
-import asyncio
-import json
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from sel_engine.features.schema import FeatureVector, FeatureAvailability
-from sel_engine.states.schema import StateLabel, StateRecord
-from sel_engine.paper_interface.schema import StateOutput, StateChangeEvent
+from sel_engine.features.schema import FeatureVector
 from sel_engine.paper_interface.events import StateEventEmitter
+from sel_engine.paper_interface.schema import StateOutput
 from sel_engine.paper_interface.service import StateOutputService
 from sel_engine.paper_interface.store import StateStore, _row_to_output
-
+from sel_engine.states.schema import StateLabel, StateRecord
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -113,6 +111,7 @@ def _make_state_output(
 
 
 # ── 1. StateOutputService._to_output() — state/direction extraction ───────────
+
 
 class TestToOutput:
     def _make_service(self) -> StateOutputService:
@@ -209,6 +208,7 @@ class TestToOutput:
 
 # ── 2. Feature completeness calculation ──────────────────────────────────────
 
+
 class TestFeatureCompleteness:
     def _make_service(self) -> StateOutputService:
         svc = StateOutputService("BTCUSDT")
@@ -274,6 +274,7 @@ class TestFeatureCompleteness:
 
 
 # ── 3. StateEventEmitter.emit_if_changed() ────────────────────────────────────
+
 
 class TestStateEventEmitter:
     @pytest.mark.asyncio
@@ -354,6 +355,7 @@ class TestStateEventEmitter:
 
 # ── 4. StateStore — SQL generation with mock pool ─────────────────────────────
 
+
 class TestStateStore:
     def _make_mock_pool(self, fetchrow_return=None, fetch_return=None):
         """Return an AsyncMock pool that yields a mock connection."""
@@ -416,6 +418,7 @@ class TestStateStore:
 
 class _AsyncContextManager:
     """Helper: async context manager that yields a fixed value."""
+
     def __init__(self, value):
         self._value = value
 
@@ -427,6 +430,7 @@ class _AsyncContextManager:
 
 
 # ── 5. _row_to_output — DB row → StateOutput conversion ─────────────────────
+
 
 class TestRowToOutput:
     def _make_row(self, **overrides) -> dict:
@@ -490,6 +494,7 @@ class TestRowToOutput:
 
 # ── 6. Health warning propagation ────────────────────────────────────────────
 
+
 class TestHealthWarning:
     def _make_service_with_warnings(self, warnings: list[str]) -> StateOutputService:
         svc = StateOutputService("BTCUSDT")
@@ -521,6 +526,7 @@ class TestHealthWarning:
 
 
 # ── 7. End-to-end: process_bar() with mock pg/redis ──────────────────────────
+
 
 class TestProcessBarEndToEnd:
     def _make_service(self) -> StateOutputService:

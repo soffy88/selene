@@ -3,9 +3,8 @@ CryptoWatch v4 — Capital Allocation
 Kelly Criterion + Risk Parity for position sizing.
 These are the formulas that determine HOW MUCH to bet, not whether to bet.
 """
+
 import logging
-import math
-from typing import Optional
 
 from shared.quant import funding_adjusted_cost
 
@@ -14,11 +13,12 @@ logger = logging.getLogger(__name__)
 
 # ── Kelly Criterion ───────────────────────────────────────────────────────────
 
+
 def kelly_fraction(
     win_probability: float,
-    risk_reward:     float,
-    fraction:        float = 0.5,   # Half Kelly by default (ADR-103)
-    cost:            float = 0.0,   # fee + expected slippage, fraction (e.g. 0.0008 = 0.08%)
+    risk_reward: float,
+    fraction: float = 0.5,  # Half Kelly by default (ADR-103)
+    cost: float = 0.0,  # fee + expected slippage, fraction (e.g. 0.0008 = 0.08%)
 ) -> float:
     """
     Cost-adjusted Kelly.
@@ -43,17 +43,17 @@ def kelly_fraction(
         return 0.0
 
     full_kelly = (p * b_net - q * (1.0 + cost)) / b_net
-    adjusted   = full_kelly * fraction
+    adjusted = full_kelly * fraction
     return max(0.0, round(adjusted, 6))
 
 
 def position_size_from_kelly(
-    account_equity:    float,
-    kelly_f:           float,         # from kelly_fraction()
-    entry_price:       float,
-    stop_price:        float,
-    max_position_pct:  float = 0.10,  # hard cap: 10% of equity per position
-    drawdown_scalar:   float = 1.0,   # shrinks with portfolio drawdown level
+    account_equity: float,
+    kelly_f: float,  # from kelly_fraction()
+    entry_price: float,
+    stop_price: float,
+    max_position_pct: float = 0.10,  # hard cap: 10% of equity per position
+    drawdown_scalar: float = 1.0,  # shrinks with portfolio drawdown level
 ) -> float:
     """
     Convert Kelly fraction to actual position quantity.
@@ -67,18 +67,19 @@ def position_size_from_kelly(
     if stop_dist == 0 or entry_price == 0:
         return 0.0
 
-    risk_amount   = account_equity * kelly_f * drawdown_scalar
-    quantity      = risk_amount / stop_dist
+    risk_amount = account_equity * kelly_f * drawdown_scalar
+    quantity = risk_amount / stop_dist
 
     # Apply max position cap
-    max_notional  = account_equity * max_position_pct
-    max_quantity  = max_notional / entry_price
-    quantity      = min(quantity, max_quantity)
+    max_notional = account_equity * max_position_pct
+    max_quantity = max_notional / entry_price
+    quantity = min(quantity, max_quantity)
 
     return round(quantity, 8)
 
 
 # ── Risk Parity ───────────────────────────────────────────────────────────────
+
 
 def risk_parity_weights(volatilities: dict[str, float]) -> dict[str, float]:
     """
@@ -117,8 +118,8 @@ def risk_parity_weights(volatilities: dict[str, float]) -> dict[str, float]:
     return rounded
 
 
-
 # ── Portfolio-level sizing ────────────────────────────────────────────────────
+
 
 class CapitalAllocator:
     """
@@ -128,16 +129,16 @@ class CapitalAllocator:
 
     def __init__(
         self,
-        total_equity:       float,
-        kelly_fraction_:    float = 0.5,
-        target_volatility:  float = 0.20,
+        total_equity: float,
+        kelly_fraction_: float = 0.5,
+        target_volatility: float = 0.20,
         max_single_pos_pct: float = 0.10,
-        round_trip_cost:    float = 0.0012,   # 0.12% = fee(2×taker 0.05%) + 0.02% slippage
+        round_trip_cost: float = 0.0012,  # 0.12% = fee(2×taker 0.05%) + 0.02% slippage
     ):
-        self.equity          = total_equity
-        self.kelly_f         = kelly_fraction_
-        self.target_vol      = target_volatility
-        self.max_pos_pct     = max_single_pos_pct
+        self.equity = total_equity
+        self.kelly_f = kelly_fraction_
+        self.target_vol = target_volatility
+        self.max_pos_pct = max_single_pos_pct
         self.round_trip_cost = round_trip_cost
         self._strategy_vols: dict[str, float] = {}
         self._strategy_allocations: dict[str, float] = {}
@@ -155,15 +156,15 @@ class CapitalAllocator:
 
     def compute_position_size(
         self,
-        strategy:        str,
+        strategy: str,
         win_probability: float,
-        risk_reward:     float,
-        entry_price:     float,
-        stop_price:      float,
+        risk_reward: float,
+        entry_price: float,
+        stop_price: float,
         drawdown_scalar: float = 1.0,
-        funding_rate:    float | None = None,
-        side:            str = "LONG",
-        hold_hours:      float = 24.0,
+        funding_rate: float | None = None,
+        side: str = "LONG",
+        hold_hours: float = 24.0,
     ) -> dict:
         """
         Full pipeline: Risk Parity allocation → Kelly fraction → quantity.
@@ -178,7 +179,9 @@ class CapitalAllocator:
 
         # Kelly fraction within strategy allocation (cost-adjusted)
         kf = kelly_fraction(
-            win_probability, risk_reward, self.kelly_f,
+            win_probability,
+            risk_reward,
+            self.kelly_f,
             cost=cost,
         )
 
@@ -196,14 +199,14 @@ class CapitalAllocator:
         risk_usd = qty * abs(entry_price - stop_price)
 
         return {
-            "quantity":         qty,
-            "notional_usd":     round(notional, 2),
-            "risk_usd":         round(risk_usd, 2),
-            "risk_pct_equity":  round(risk_usd / self.equity, 6) if self.equity > 0 else 0,
-            "kelly_fraction":   kf,
-            "strategy_alloc":   round(strategy_alloc, 6),
+            "quantity": qty,
+            "notional_usd": round(notional, 2),
+            "risk_usd": round(risk_usd, 2),
+            "risk_pct_equity": round(risk_usd / self.equity, 6) if self.equity > 0 else 0,
+            "kelly_fraction": kf,
+            "strategy_alloc": round(strategy_alloc, 6),
             "strategy_capital": round(strategy_capital, 2),
-            "drawdown_scalar":  drawdown_scalar,
+            "drawdown_scalar": drawdown_scalar,
             "cost_with_funding": round(cost, 6),
         }
 
@@ -211,8 +214,5 @@ class CapitalAllocator:
         return {
             "weights": self._strategy_allocations,
             "total_equity": self.equity,
-            "strategy_capitals": {
-                k: round(self.equity * v, 2)
-                for k, v in self._strategy_allocations.items()
-            },
+            "strategy_capitals": {k: round(self.equity * v, 2) for k, v in self._strategy_allocations.items()},
         }

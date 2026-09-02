@@ -1,4 +1,5 @@
 """StateEventEmitter: publishes state change events to Redis Stream (Wave 4)."""
+
 from __future__ import annotations
 
 import json
@@ -64,7 +65,10 @@ class StateEventEmitter:
         )
         logger.info(
             "state_change emitted: %s %s -> %s at %s",
-            symbol, prev_state, current.state, current.bar_time,
+            symbol,
+            prev_state,
+            current.state,
+            current.bar_time,
         )
         return True
 

@@ -1,10 +1,11 @@
-import os
 import json
-import asyncpg
-from fastapi import APIRouter, Query, HTTPException
-from typing import Dict, List, Optional
-from pydantic import BaseModel
+import os
 from datetime import datetime
+from typing import Dict, Optional
+
+import asyncpg
+from fastapi import APIRouter, Query
+from pydantic import BaseModel
 
 router = APIRouter()
 pool = None
@@ -32,9 +33,7 @@ class StateHealth(BaseModel):
     state_counts: Dict[str, int] = {}
     health_warning_count: int = 0
     current_state: Optional[str] = None
-    current_state_dwell_bars: Optional[int] = (
-        None  # 4H bars the current state has held (Wave S2C)
-    )
+    current_state_dwell_bars: Optional[int] = None  # 4H bars the current state has held (Wave S2C)
 
 
 def normalize_symbol(symbol: str) -> str:
@@ -62,26 +61,19 @@ async def state_health(symbol: str = Query("BTC-USDT")):
     symbol = normalize_symbol(symbol)
     p = await get_pool()
     async with p.acquire() as conn:
-        count = await conn.fetchval(
-            "SELECT count(*) FROM v2_bars_4h WHERE symbol=$1", symbol
-        )
-        latest = await conn.fetchval(
-            "SELECT max(time) FROM v2_bars_4h WHERE symbol=$1", symbol
-        )
+        count = await conn.fetchval("SELECT count(*) FROM v2_bars_4h WHERE symbol=$1", symbol)
+        latest = await conn.fetchval("SELECT max(time) FROM v2_bars_4h WHERE symbol=$1", symbol)
         sc_rows = await conn.fetch(
             "SELECT state, count(*)::int AS cnt FROM v2_state_history "
             "WHERE timestamp > NOW() - INTERVAL '24 hours' GROUP BY state"
         )
         warn_count = await conn.fetchval(
-            "SELECT count(*) FROM v2_state_history "
-            "WHERE timestamp > NOW() - INTERVAL '30 days' AND state IS NULL"
+            "SELECT count(*) FROM v2_state_history WHERE timestamp > NOW() - INTERVAL '30 days' AND state IS NULL"
         )
         # Current-state dwell (Wave S2C): how many consecutive most-recent 4H bars share the
         # latest state. Counted from the recent tail rather than trusting duration_4h, so a
         # gap/backfill can't inflate it.
-        dwell_rows = await conn.fetch(
-            "SELECT state FROM v2_state_history ORDER BY timestamp DESC LIMIT 1000"
-        )
+        dwell_rows = await conn.fetch("SELECT state FROM v2_state_history ORDER BY timestamp DESC LIMIT 1000")
 
         count = count or 0
         satiation = min(count / 180 * 100, 100.0)
@@ -115,9 +107,7 @@ async def state_health(symbol: str = Query("BTC-USDT")):
 
 
 @router.get("/sel/state/history")
-async def state_history(
-    symbol: str = Query("BTC-USDT"), hours: int = 24, limit: int = 100
-):
+async def state_history(symbol: str = Query("BTC-USDT"), hours: int = 24, limit: int = 100):
     """Recent regime states with the fields that actually exist in v2_state_history:
     the state, where it transitioned FROM, the transition trigger (Release/Stress/Exhaustion),
     how long it has held (duration_4h), feature completeness (computed from state_features),
@@ -214,9 +204,7 @@ async def sel_observations():
     p = await get_pool()
     async with p.acquire() as conn:
         try:
-            rows = await conn.fetch(
-                "SELECT * FROM v2_observation_latest ORDER BY tool_id"
-            )
+            rows = await conn.fetch("SELECT * FROM v2_observation_latest ORDER BY tool_id")
         except Exception:
             return []
     out = []
@@ -294,9 +282,7 @@ async def sel_counterfactual():
             "entry_time": int(r["entry_time"].timestamp()),
             "entry_price": float(r["entry_price"]),
             "exit_time": int(r["exit_time"].timestamp()) if r["exit_time"] else None,
-            "exit_price": float(r["exit_price"])
-            if r["exit_price"] is not None
-            else None,
+            "exit_price": float(r["exit_price"]) if r["exit_price"] is not None else None,
             "pnl_usdt": float(r["pnl_usdt"]) if r["pnl_usdt"] is not None else None,
             "exit_reason": r["exit_reason"],
         }
@@ -320,9 +306,7 @@ async def sel_counterfactual():
 async def cusum_recent(strategy: str = "all", limit: int = 20):
     p = await get_pool()
     async with p.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT * FROM v2_cusum_events ORDER BY timestamp DESC LIMIT $1", limit
-        )
+        rows = await conn.fetch("SELECT * FROM v2_cusum_events ORDER BY timestamp DESC LIMIT $1", limit)
         return [record_to_dict(r) for r in rows]
 
 
@@ -330,9 +314,7 @@ async def cusum_recent(strategy: str = "all", limit: int = 20):
 async def trades_open():
     p = await get_pool()
     async with p.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT * FROM v2_trades WHERE exit_time IS NULL ORDER BY entry_time DESC"
-        )
+        rows = await conn.fetch("SELECT * FROM v2_trades WHERE exit_time IS NULL ORDER BY entry_time DESC")
         return [record_to_dict(r) for r in rows]
 
 
@@ -366,12 +348,8 @@ async def strategy_summary(symbol: str = Query("BTC-USDT")):
             "  round(coalesce(sum(pnl_usdt) FILTER (WHERE exit_time IS NOT NULL), 0)::numeric, 2) AS realized_pnl "
             "FROM v2_trades GROUP BY strategy"
         )
-        latest = await conn.fetchrow(
-            "SELECT state, timestamp FROM v2_state_history ORDER BY timestamp DESC LIMIT 1"
-        )
-        bars = await conn.fetchval(
-            "SELECT count(*) FROM v2_bars_4h WHERE symbol = $1", sym
-        )
+        latest = await conn.fetchrow("SELECT state, timestamp FROM v2_state_history ORDER BY timestamp DESC LIMIT 1")
+        bars = await conn.fetchval("SELECT count(*) FROM v2_bars_4h WHERE symbol = $1", sym)
         # Latest per-strategy decision ("why no entry this bar"); table may not exist yet.
         try:
             dec_rows = await conn.fetch("SELECT * FROM v2_paper_latest_decision")
@@ -390,9 +368,7 @@ async def strategy_summary(symbol: str = Query("BTC-USDT")):
             "closed_trades": closed,
             "realized_pnl": float(r["realized_pnl"]) if r else 0.0,
             "win_rate": round(wins / closed, 3) if closed else None,
-            "last_decision": decisions.get(
-                name
-            ),  # {action, reason, step_reached, state_4h, ...}
+            "last_decision": decisions.get(name),  # {action, reason, step_reached, state_4h, ...}
         }
 
     return {
@@ -409,9 +385,7 @@ async def strategy_summary(symbol: str = Query("BTC-USDT")):
 async def phase_current():
     p = await get_pool()
     async with p.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT * FROM v2_strategy_phase_history ORDER BY timestamp DESC LIMIT 1"
-        )
+        row = await conn.fetchrow("SELECT * FROM v2_strategy_phase_history ORDER BY timestamp DESC LIMIT 1")
         return record_to_dict(row) or {}
 
 
@@ -419,9 +393,7 @@ async def phase_current():
 async def decision_trail_recent(limit: int = 20):
     p = await get_pool()
     async with p.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT * FROM v2_decision_trail ORDER BY timestamp DESC LIMIT $1", limit
-        )
+        rows = await conn.fetch("SELECT * FROM v2_decision_trail ORDER BY timestamp DESC LIMIT $1", limit)
         return [record_to_dict(r) for r in rows]
 
 

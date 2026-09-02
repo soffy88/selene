@@ -16,10 +16,10 @@ high-/low-frequency wavelet ENERGY RATIO — it is NOT a multifractal analysis
 (no MFDFA, wavelet leaders, or singularity spectrum). Treat the output as an
 energy-concentration heuristic; a true multifractal spectrum is future work.
 """
+
 from __future__ import annotations
 
 from collections import deque
-from datetime import datetime
 
 import numpy as np
 import pywt
@@ -28,9 +28,9 @@ from sel_v2.observation_tools.base import BarFeatures, ObservationResult, Observ
 
 WAVELET = "db4"
 DWT_LEVELS = 6
-WINDOW_BARS = 64        # must be ≥ 2^DWT_LEVELS for complete decomposition
-MIN_BARS = 32           # minimum to produce at least a partial decomposition
-QUANTILE_WINDOW = 360   # bars for rolling 90th-pct
+WINDOW_BARS = 64  # must be ≥ 2^DWT_LEVELS for complete decomposition
+MIN_BARS = 32  # minimum to produce at least a partial decomposition
+QUANTILE_WINDOW = 360  # bars for rolling 90th-pct
 DEFAULT_THRESHOLD = 2.0  # high/low energy ratio
 
 
@@ -44,7 +44,7 @@ def _energy_ratio(x: np.ndarray, wavelet: str = WAVELET, level: int = DWT_LEVELS
         # coeffs[0] = approx, coeffs[1..] = details from finest to coarsest
         # detail[0] = finest (level 1), detail[-1] = coarsest
         details = coeffs[1:]
-        energies = [float(np.sum(c ** 2)) for c in details]
+        energies = [float(np.sum(c**2)) for c in details]
         if len(energies) < 2:
             return 0.0
         high_freq = sum(energies[:2])
@@ -60,6 +60,7 @@ class WaveletMultifractal(ObservationTool):
     """
     W2 — rolling wavelet multifractal anomaly detector  (v2.1 §9.2).
     """
+
     tool_id = "W2"
 
     def __init__(

@@ -25,22 +25,22 @@ import websockets
 
 logger = logging.getLogger("eth.worker")
 
-REDIS_URL     = os.environ.get("REDIS_URL", "redis://:changeme@redis:6379/0")
-INFURA_KEY    = os.environ.get("INFURA_KEY", "")
+REDIS_URL = os.environ.get("REDIS_URL", "redis://:changeme@redis:6379/0")
+INFURA_KEY = os.environ.get("INFURA_KEY", "")
 THRESHOLD_ETH = float(os.environ.get("THRESHOLD_ETH", 500))
 
-WSS_URL  = f"wss://mainnet.infura.io/ws/v3/{INFURA_KEY}"
-RPC_URL  = f"https://mainnet.infura.io/v3/{INFURA_KEY}"
-STREAM   = "onchain.events"
+WSS_URL = f"wss://mainnet.infura.io/ws/v3/{INFURA_KEY}"
+RPC_URL = f"https://mainnet.infura.io/v3/{INFURA_KEY}"
+STREAM = "onchain.events"
 
 # ERC-20 Transfer topic
 ERC20_TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
 TOKEN_META = {
-    "0xdac17f958d2ee523a2206206994597c13d831ec7": (6,  "USDT",  5_000_000),
-    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": (6,  "USDC",  5_000_000),
-    "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599": (8,  "WBTC",  10),
-    "0x6b175474e89094c44da98b954eedeac495271d0f": (18, "DAI",   5_000_000),
+    "0xdac17f958d2ee523a2206206994597c13d831ec7": (6, "USDT", 5_000_000),
+    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": (6, "USDC", 5_000_000),
+    "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599": (8, "WBTC", 10),
+    "0x6b175474e89094c44da98b954eedeac495271d0f": (18, "DAI", 5_000_000),
     "0xae7ab96520de3a18e5e111b5eaab095312d7fe84": (18, "stETH", 1_000),
 }
 
@@ -71,16 +71,17 @@ async def get_redis():
 
 async def emit(event: dict):
     r = await get_redis()
-    encoded = {k: json.dumps(v) if not isinstance(v, (str, bytes)) else v
-               for k, v in event.items()}
+    encoded = {k: json.dumps(v) if not isinstance(v, (str, bytes)) else v for k, v in event.items()}
     await r.xadd(STREAM, encoded, maxlen=50000, approximate=True)
 
 
 # ── RPC 工具 ──────────────────────────────────────────
 async def rpc_call(session: aiohttp.ClientSession, method: str, params: list):
-    async with session.post(RPC_URL, json={
-        "jsonrpc": "2.0", "method": method, "params": params, "id": 1
-    }, timeout=aiohttp.ClientTimeout(total=8)) as r:
+    async with session.post(
+        RPC_URL,
+        json={"jsonrpc": "2.0", "method": method, "params": params, "id": 1},
+        timeout=aiohttp.ClientTimeout(total=8),
+    ) as r:
         d = await r.json()
         return d.get("result")
 
@@ -94,7 +95,7 @@ async def process_block(session: aiohttp.ClientSession, block_hex: str):
         return
 
     gas_total = 0
-    tx_count  = len(block.get("transactions", []))
+    tx_count = len(block.get("transactions", []))
 
     tasks = []
     for tx in block.get("transactions", []):
@@ -118,26 +119,25 @@ async def process_block(session: aiohttp.ClientSession, block_hex: str):
 
 async def emit_eth_transfer(tx: dict, value_eth: float, block_num: int):
     frm = (tx.get("from") or "").lower()
-    to  = (tx.get("to")   or "contract").lower()
+    to = (tx.get("to") or "contract").lower()
 
-    sev = ("critical" if value_eth >= THRESHOLD_ETH * 10 else
-           "high"     if value_eth >= THRESHOLD_ETH * 3  else "medium")
+    sev = "critical" if value_eth >= THRESHOLD_ETH * 10 else "high" if value_eth >= THRESHOLD_ETH * 3 else "medium"
 
     ev = {
-        "id":         uuid.uuid4().hex,
-        "chain":      "ETH",
-        "symbol":     "ETHUSDT",
+        "id": uuid.uuid4().hex,
+        "chain": "ETH",
+        "symbol": "ETHUSDT",
         "event_type": "whale_transfer",
-        "from_addr":  frm,
-        "to_addr":    to,
-        "amount":     value_eth,
+        "from_addr": frm,
+        "to_addr": to,
+        "amount": value_eth,
         "amount_usd": value_eth * _eth_price[0],
-        "severity":   sev,
+        "severity": sev,
         "meta": {
-            "tx_hash":    tx.get("hash", ""),
-            "block":      block_num,
+            "tx_hash": tx.get("hash", ""),
+            "block": block_num,
             "from_label": KNOWN_EXCHANGES.get(frm) or SMART_WALLETS.get(frm, ""),
-            "to_label":   KNOWN_EXCHANGES.get(to)  or SMART_WALLETS.get(to,  ""),
+            "to_label": KNOWN_EXCHANGES.get(to) or SMART_WALLETS.get(to, ""),
         },
         "ts": time.time(),
     }
@@ -147,11 +147,17 @@ async def emit_eth_transfer(tx: dict, value_eth: float, block_num: int):
 
 async def scan_erc20_logs(session: aiohttp.ClientSession, block_hex: str, block_num: int):
     try:
-        logs = await rpc_call(session, "eth_getLogs", [{
-            "fromBlock": block_hex,
-            "toBlock":   block_hex,
-            "topics":    [ERC20_TRANSFER],
-        }])
+        logs = await rpc_call(
+            session,
+            "eth_getLogs",
+            [
+                {
+                    "fromBlock": block_hex,
+                    "toBlock": block_hex,
+                    "topics": [ERC20_TRANSFER],
+                }
+            ],
+        )
         if not logs:
             return
 
@@ -162,7 +168,7 @@ async def scan_erc20_logs(session: aiohttp.ClientSession, block_hex: str, block_
 
             decimals, symbol, threshold = TOKEN_META[token_addr]
             try:
-                amount = int(lg.get("data", "0x0"), 16) / (10 ** decimals)
+                amount = int(lg.get("data", "0x0"), 16) / (10**decimals)
             except ValueError:
                 continue
             if amount < threshold:
@@ -170,35 +176,36 @@ async def scan_erc20_logs(session: aiohttp.ClientSession, block_hex: str, block_
 
             topics = lg.get("topics", [])
             frm = ("0x" + topics[1][26:]).lower() if len(topics) > 1 else ""
-            to  = ("0x" + topics[2][26:]).lower() if len(topics) > 2 else ""
+            to = ("0x" + topics[2][26:]).lower() if len(topics) > 2 else ""
 
             # USD 估算（简化）
-            usd_per_token = {"USDT": 1.0, "USDC": 1.0, "DAI": 1.0,
-                             "WBTC": 83000.0, "stETH": _eth_price[0]}.get(symbol, 1.0)
+            usd_per_token = {"USDT": 1.0, "USDC": 1.0, "DAI": 1.0, "WBTC": 83000.0, "stETH": _eth_price[0]}.get(
+                symbol, 1.0
+            )
             amount_usd = amount * usd_per_token
 
             sev = "critical" if amount_usd > 50_000_000 else "high" if amount_usd > 10_000_000 else "medium"
 
             ev = {
-                "id":         uuid.uuid4().hex,
-                "chain":      "ETH",
-                "symbol":     "ETHUSDT",
+                "id": uuid.uuid4().hex,
+                "chain": "ETH",
+                "symbol": "ETHUSDT",
                 "event_type": "erc20_transfer",
-                "from_addr":  frm,
-                "to_addr":    to,
-                "amount":     amount,
+                "from_addr": frm,
+                "to_addr": to,
+                "amount": amount,
                 "amount_usd": amount_usd,
-                "severity":   sev,
+                "severity": sev,
                 "meta": {
-                    "token":      symbol,
-                    "block":      block_num,
+                    "token": symbol,
+                    "block": block_num,
                     "from_label": KNOWN_EXCHANGES.get(frm, ""),
-                    "to_label":   KNOWN_EXCHANGES.get(to,  ""),
+                    "to_label": KNOWN_EXCHANGES.get(to, ""),
                 },
                 "ts": time.time(),
             }
             await emit(ev)
-            logger.info(f"💰 ERC20 {amount:,.0f} {symbol} | ${amount_usd/1e6:.1f}M | {sev}")
+            logger.info(f"💰 ERC20 {amount:,.0f} {symbol} | ${amount_usd / 1e6:.1f}M | {sev}")
 
     except Exception as e:
         logger.warning(f"scan_erc20_logs: {e}")
@@ -214,17 +221,17 @@ async def poll_gas(session: aiohttp.ClientSession):
             if prev is not None and abs(gwei - prev) >= 25:
                 logger.info(f"⛽ Gas 剧变 {prev:.0f} → {gwei:.0f} Gwei")
                 ev = {
-                    "id":         uuid.uuid4().hex,
-                    "chain":      "ETH",
-                    "symbol":     "ETHUSDT",
+                    "id": uuid.uuid4().hex,
+                    "chain": "ETH",
+                    "symbol": "ETHUSDT",
                     "event_type": "gas_spike",
-                    "from_addr":  "",
-                    "to_addr":    "",
-                    "amount":     gwei,
+                    "from_addr": "",
+                    "to_addr": "",
+                    "amount": gwei,
                     "amount_usd": 0,
-                    "severity":   "high" if gwei > 100 else "medium",
-                    "meta":       {"prev_gwei": prev, "curr_gwei": gwei},
-                    "ts":         time.time(),
+                    "severity": "high" if gwei > 100 else "medium",
+                    "meta": {"prev_gwei": prev, "curr_gwei": gwei},
+                    "ts": time.time(),
                 }
                 await emit(ev)
             prev = gwei
@@ -239,7 +246,7 @@ async def poll_eth_price():
             async with aiohttp.ClientSession() as s:
                 async with s.get(
                     "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
-                    timeout=aiohttp.ClientTimeout(total=8)
+                    timeout=aiohttp.ClientTimeout(total=8),
                 ) as r:
                     if r.ok:
                         d = await r.json()
@@ -271,19 +278,23 @@ async def main():
             try:
                 logger.info("Connecting Infura WSS...")
                 async with websockets.connect(WSS_URL, ping_interval=20) as ws:
-                    await ws.send(json.dumps({
-                        "jsonrpc": "2.0",
-                        "method": "eth_subscribe",
-                        "params": ["newHeads"],
-                        "id": 1,
-                    }))
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "jsonrpc": "2.0",
+                                "method": "eth_subscribe",
+                                "params": ["newHeads"],
+                                "id": 1,
+                            }
+                        )
+                    )
                     resp = json.loads(await ws.recv())
                     sub_id = resp.get("result")
                     logger.info(f"✅ Infura 已连接 | sub={sub_id}")
                     retry = 5
 
                     async for raw in ws:
-                        msg    = json.loads(raw)
+                        msg = json.loads(raw)
                         result = msg.get("params", {}).get("result", {})
                         block_hex = result.get("number")
                         if block_hex:

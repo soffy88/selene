@@ -8,11 +8,12 @@ This is the test that surfaced the recognizer/strategy label mismatch ('Drifting
 'Drifting-Charged'); without the engine's label adapter, zero trades occur.
 """
 
-import sys, os
+import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
@@ -26,9 +27,7 @@ def _scenario():
     t0 = datetime(2024, 1, 1, tzinfo=timezone.utc)
     times = [t0 + timedelta(hours=4 * i) for i in range(n)]
     rets = rng.normal(0, 0.01, n)
-    rets[470:500] += (
-        0.009  # gentle up-drift -> CUSUM-Mid accumulates while σ stays mid-band
-    )
+    rets[470:500] += 0.009  # gentle up-drift -> CUSUM-Mid accumulates while σ stays mid-band
     rets[505:515] -= 0.04  # reversal/drop -> drawdown & cusum-reverse exits
     close = 30000 * np.exp(np.cumsum(rets))
     df = pd.DataFrame(
@@ -41,9 +40,7 @@ def _scenario():
             "volume": 1000.0,
         }
     )
-    funding = np.full(
-        n, 0.0008
-    )  # persistent positive funding -> unlocks Drifting-Charged
+    funding = np.full(n, 0.0008)  # persistent positive funding -> unlocks Drifting-Charged
     return df, funding
 
 
@@ -64,9 +61,7 @@ def test_full_pipeline_produces_real_trades():
     assert len(closed) >= 1, "no trades — label mismatch or entry path broken"
     # exits are driven by real strategy conditions, not a catch-all
     reasons = " ".join(c.exit_reason for c in closed).lower()
-    assert any(
-        k in reasons for k in ("drawdown", "cusum", "time stop", "cascade", "state")
-    )
+    assert any(k in reasons for k in ("drawdown", "cusum", "time stop", "cascade", "state"))
 
 
 def test_nav_is_consistent_with_realized_pnl():

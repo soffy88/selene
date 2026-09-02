@@ -1,13 +1,13 @@
 """JSON logging helper tests (optimization item #23)."""
+
 import json
 import logging
 
-from shared.logging_config import JsonFormatter, set_request_id, get_request_id
+from shared.logging_config import JsonFormatter, get_request_id, set_request_id
 
 
 def _record(msg="hello", level=logging.INFO, name="svc.mod"):
-    return logging.LogRecord(name=name, level=level, pathname=__file__,
-                             lineno=1, msg=msg, args=(), exc_info=None)
+    return logging.LogRecord(name=name, level=level, pathname=__file__, lineno=1, msg=msg, args=(), exc_info=None)
 
 
 def test_json_formatter_basic_fields():
@@ -44,6 +44,7 @@ def test_json_formatter_exception_field():
         raise ValueError("boom")
     except ValueError:
         import sys
+
         rec = logging.LogRecord("n", logging.ERROR, __file__, 1, "failed", (), sys.exc_info())
     d = json.loads(JsonFormatter().format(rec))
     assert "exc" in d and "ValueError" in d["exc"]

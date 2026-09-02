@@ -1,11 +1,12 @@
 """Tests for FillSimulator."""
-import pytest
+
 from datetime import datetime, timezone
+
+import pytest
 
 from decision.config import load_config
 from paper_trading.fills import FillSimulator
 from paper_trading.schema import Position, PositionSide
-
 
 _T = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
 _HASH = "abc123"
@@ -23,6 +24,7 @@ def exec_cfg():
 
 
 # ---------------------------------------------------------------------------
+
 
 class TestSimulateOpen:
     def test_open_long_fill_price_above_mark(self, sim, exec_cfg):
@@ -129,9 +131,7 @@ class TestSimulateClose:
         entry = 60_000.0
         mark = 57_000.0  # -5%
         pos = self._open_position(entry, 2000.0, PositionSide.LONG)
-        _, pnl = sim.simulate_close(
-            time=_T, symbol="BTCUSDT", position=pos, mark_price=mark, config_hash=_HASH
-        )
+        _, pnl = sim.simulate_close(time=_T, symbol="BTCUSDT", position=pos, mark_price=mark, config_hash=_HASH)
         assert pnl < 0
 
     def test_close_short_with_profit(self, sim):
@@ -139,9 +139,7 @@ class TestSimulateClose:
         entry = 60_000.0
         mark = 57_000.0  # price fell
         pos = self._open_position(entry, 2000.0, PositionSide.SHORT)
-        _, pnl = sim.simulate_close(
-            time=_T, symbol="BTCUSDT", position=pos, mark_price=mark, config_hash=_HASH
-        )
+        _, pnl = sim.simulate_close(time=_T, symbol="BTCUSDT", position=pos, mark_price=mark, config_hash=_HASH)
         assert pnl > 0
 
     def test_partial_close_uses_specified_size(self, sim):
@@ -164,9 +162,7 @@ class TestSimulateClose:
         mark = 63_000.0
         size = 2000.0
         pos = self._open_position(entry, size, PositionSide.LONG)
-        fill, pnl = sim.simulate_close(
-            time=_T, symbol="BTCUSDT", position=pos, mark_price=mark, config_hash=_HASH
-        )
+        fill, pnl = sim.simulate_close(time=_T, symbol="BTCUSDT", position=pos, mark_price=mark, config_hash=_HASH)
         fill_price = mark * (1 - exec_cfg.slippage_close_pct)
         fee = size * exec_cfg.taker_fee_pct
         expected_pnl = (fill_price - entry) / entry * size - fee

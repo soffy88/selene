@@ -16,8 +16,8 @@ import types
 import numpy as np
 import pytest
 
-from backtest.engine import WFOEngine, WFOConfig, WFOResult
-from backtest.cpcv import pbo_proxy, pbo_from_stats
+from backtest.cpcv import pbo_from_stats, pbo_proxy
+from backtest.engine import WFOConfig, WFOEngine, WFOResult
 
 BASE_MS = 1_700_000_000_000
 HOUR_MS = 3_600_000
@@ -50,9 +50,7 @@ def _make_funding(n: int) -> list[dict]:
 
 
 def _cfg() -> WFOConfig:
-    return WFOConfig(
-        train_days=3, test_days=1, step_days=1, embargo_days=1, min_oos_trades=1
-    )
+    return WFOConfig(train_days=3, test_days=1, step_days=1, embargo_days=1, min_oos_trades=1)
 
 
 # ── PBO overfit detection (pure, no oskill) ───────────────────────────────────
@@ -105,9 +103,7 @@ def _install_fake_oskill(monkeypatch, capture, kwargs_seen=None):
         groups = [g for g in np.array_split(np.arange(n_total), n_folds) if len(g)]
         sharpes = []
         for gi, test_idx in enumerate(groups):
-            train_idx = np.concatenate(
-                [groups[j] for j in range(len(groups)) if j != gi]
-            )
+            train_idx = np.concatenate([groups[j] for j in range(len(groups)) if j != gi])
             r = np.asarray(backtest_fn(train_idx, test_idx), dtype=float)
             capture.append(r)
             s = float(r.mean() / r.std()) if r.std() > 0 else 0.0

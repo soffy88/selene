@@ -1,12 +1,12 @@
 """Tests for sel_v2.data.ofi_persister — the point-in-time OFI feature store (P1-5)."""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from sel_v2.data.ofi_persister import merge_ofi_rows, persist_ofi, _UPSERT_SQL
+from sel_v2.data.ofi_persister import _UPSERT_SQL, merge_ofi_rows, persist_ofi
 
 
 def _b(h):
@@ -14,11 +14,10 @@ def _b(h):
 
 
 def test_merge_combines_flow_and_lob_sorted():
-    flow = [{"b": _b(8), "net": 5.0, "vol": 100.0},
-            {"b": _b(0), "net": -2.0, "vol": 50.0}]
+    flow = [{"b": _b(8), "net": 5.0, "vol": 100.0}, {"b": _b(0), "net": -2.0, "vol": 50.0}]
     lob = [{"b": _b(8), "imb": 1.5}]
     rows = merge_ofi_rows(flow, lob)
-    assert [r["time"] for r in rows] == [_b(0), _b(8)]      # ascending
+    assert [r["time"] for r in rows] == [_b(0), _b(8)]  # ascending
     assert rows[0]["taker_net"] == -2.0 and rows[0]["lob_imb"] is None
     assert rows[1]["taker_net"] == 5.0 and rows[1]["lob_imb"] == 1.5
 
@@ -53,6 +52,7 @@ class _FakePool:
 
             async def __aexit__(self_inner, *a):
                 return False
+
         return _Ctx()
 
 

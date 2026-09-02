@@ -8,17 +8,16 @@ Usage:
     # Demo mode (no args, no DB required):
     python -m paper_trading.scripts.replay_cli
 """
+
 from __future__ import annotations
 
 import argparse
-import sys
 from datetime import datetime, timezone
-from typing import Optional
-
 
 # ---------------------------------------------------------------------------
 # Synthetic trail factory for demo mode
 # ---------------------------------------------------------------------------
+
 
 def _make_synthetic_trails(n: int = 5):
     """Create *n* synthetic DecisionTrail records for demo / testing."""
@@ -40,6 +39,7 @@ def _make_synthetic_trails(n: int = 5):
     nav = 10_000.0
     for i in range(n):
         from datetime import timedelta
+
         t = base_time + timedelta(hours=i)
         trail = DecisionTrail(
             time=t,
@@ -48,7 +48,7 @@ def _make_synthetic_trails(n: int = 5):
             using_claude_default=True,
             current_state=states[i % len(states)],
             previous_state=prev_states[i % len(prev_states)],
-            state_history=[s for s in states[:i + 1]],
+            state_history=[s for s in states[: i + 1]],
             state_reason=f"synthetic bar {i}",
             close=60_000.0 + i * 100,
             sigma_p_24h=0.15 + i * 0.01,
@@ -84,11 +84,12 @@ def _make_synthetic_trails(n: int = 5):
 # Print summary table
 # ---------------------------------------------------------------------------
 
+
 def _print_table(original: list, replayed: list) -> None:
     header = f"{'Time':20s} {'State':20s} {'Proposed':12s} {'Final':12s} {'Risk':25s} {'PnL':10s}"
     print(header)
     print("-" * len(header))
-    for orig, rep in zip(original, replayed):
+    for _orig, rep in zip(original, replayed, strict=False):
         risk = rep.risk_triggered or "-"
         pnl = f"{rep.realized_pnl_this_bar:.2f}" if rep.realized_pnl_this_bar is not None else "-"
         state = rep.current_state or "None"
@@ -97,7 +98,7 @@ def _print_table(original: list, replayed: list) -> None:
 
     print()
     # Delta summary: count where final_action changed vs original
-    changed = sum(1 for o, r in zip(original, replayed) if o.final_action != r.final_action)
+    changed = sum(1 for o, r in zip(original, replayed, strict=False) if o.final_action != r.final_action)
     print(f"Total bars: {len(replayed)}  |  Decision changed vs original: {changed}")
     risk_triggers = sum(1 for r in replayed if r.risk_triggered is not None)
     print(f"Risk triggers: {risk_triggers}")
@@ -107,9 +108,11 @@ def _print_table(original: list, replayed: list) -> None:
 # Async DB-backed load + replay
 # ---------------------------------------------------------------------------
 
+
 async def _run_db(symbol: str, start: datetime, end: datetime) -> None:
-    import asyncpg  # type: ignore
     import os
+
+    import asyncpg  # type: ignore
 
     url = os.environ.get("TIMESCALE_URL", "postgresql://test:test@localhost/test")
     # Convert SQLAlchemy-style URL to asyncpg format
@@ -118,6 +121,7 @@ async def _run_db(symbol: str, start: datetime, end: datetime) -> None:
     pool = await asyncpg.create_pool(url)
     try:
         from paper_trading.db.trail_store import TrailStore
+
         trails = await TrailStore.query_range(pool, symbol, start, end)
     finally:
         await pool.close()
@@ -128,6 +132,7 @@ async def _run_db(symbol: str, start: datetime, end: datetime) -> None:
 
     from decision.config import load_config
     from paper_trading.replay import DecisionReplayer
+
     config = load_config()
     replayer = DecisionReplayer(config)
     replayed = replayer.replay(trails)
@@ -137,6 +142,7 @@ async def _run_db(symbol: str, start: datetime, end: datetime) -> None:
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="DecisionTrail replay tool")

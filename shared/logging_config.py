@@ -6,6 +6,7 @@ single-line JSON object (service, level, logger, message, timestamp, plus a
 correlation id when set via set_request_id()), which a log aggregator can parse.
 Default stays human text so nothing breaks until a deployment opts in.
 """
+
 from __future__ import annotations
 
 import contextvars
@@ -52,15 +53,13 @@ def setup_logging(service: str = "", level: int | None = None) -> None:
     """Configure the root logger. LOG_FORMAT=json → JSON lines, else human text.
     Service name is taken from the arg or the SERVICE_NAME env var."""
     service = service or os.getenv("SERVICE_NAME", "")
-    lvl = level if level is not None else getattr(
-        logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+    lvl = level if level is not None else getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
 
     handler = logging.StreamHandler()
     if os.getenv("LOG_FORMAT", "text").lower() == "json":
         handler.setFormatter(JsonFormatter(service))
     else:
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+        handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
 
     root = logging.getLogger()
     root.handlers[:] = [handler]

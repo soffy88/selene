@@ -47,9 +47,7 @@ from sel_v2.offline.leg_census import (
     census,
 )
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("capture_monitor")
 
 SYMBOL = os.environ.get("SYMBOLS", "BTC-USDT")
@@ -72,9 +70,7 @@ async def _load(pool, window_days: int = WINDOW_DAYS):
         SYMBOL,
         window_days,
     )
-    state_rows = await pool.fetch(
-        "SELECT timestamp, state FROM v2_state_history ORDER BY timestamp ASC"
-    )
+    state_rows = await pool.fetch("SELECT timestamp, state FROM v2_state_history ORDER BY timestamp ASC")
     state_by_ts = {r["timestamp"]: r["state"] for r in state_rows}
     times, high, low, close, states = [], [], [], [], []
     for r in bar_rows:
@@ -91,9 +87,7 @@ async def _load(pool, window_days: int = WINDOW_DAYS):
 
 def _domain_fraction(times, start_idx: int, end_idx: int) -> float:
     n = end_idx - start_idx + 1
-    in_domain = sum(
-        1 for i in range(start_idx, end_idx + 1) if times[i] >= DOMAIN_START
-    )
+    in_domain = sum(1 for i in range(start_idx, end_idx + 1) if times[i] >= DOMAIN_START)
     return in_domain / n
 
 
@@ -104,26 +98,24 @@ def _modal_state(states, start_idx: int, end_idx: int) -> str:
 def run_one_config(name: str, cfg, high, low, close, states, times) -> dict:
     legs, _tail_bars = census(high, low, close, states, cfg)
     legs_total = len(legs)
-    wiki_legs = [l for l in legs if _is_wiki_spec(l)]
+    wiki_legs = [leg for leg in legs if _is_wiki_spec(leg)]
     in_domain = [
-        l
-        for l in wiki_legs
-        if _domain_fraction(times, l.start_idx, l.end_idx) >= DOMAIN_OVERLAP_THRESHOLD
+        leg for leg in wiki_legs if _domain_fraction(times, leg.start_idx, leg.end_idx) >= DOMAIN_OVERLAP_THRESHOLD
     ]
-    captured = [l for l in in_domain if l.surging_overlap >= CAPTURE_OVERLAP_THRESHOLD]
-    missed = [l for l in in_domain if l.surging_overlap < CAPTURE_OVERLAP_THRESHOLD]
+    captured = [leg for leg in in_domain if leg.surging_overlap >= CAPTURE_OVERLAP_THRESHOLD]
+    missed = [leg for leg in in_domain if leg.surging_overlap < CAPTURE_OVERLAP_THRESHOLD]
     capture_rate = len(captured) / len(in_domain) if in_domain else None
 
     missed_detail = [
         {
-            "start": times[l.start_idx].isoformat(),
-            "end": times[l.end_idx].isoformat(),
-            "direction": "long" if l.direction == 1 else "short",
-            "duration_days": round(l.duration_days, 2),
-            "push_count": l.push_count,
-            "modal_state": _modal_state(states, l.start_idx, l.end_idx),
+            "start": times[leg.start_idx].isoformat(),
+            "end": times[leg.end_idx].isoformat(),
+            "direction": "long" if leg.direction == 1 else "short",
+            "duration_days": round(leg.duration_days, 2),
+            "push_count": leg.push_count,
+            "modal_state": _modal_state(states, leg.start_idx, leg.end_idx),
         }
-        for l in missed
+        for leg in missed
     ]
     return {
         "threshold": name,
@@ -181,9 +173,7 @@ def _build_section(run_at, window_start, window_end, results: list[dict]) -> str
         lines.append(f"### {r['threshold']} — missed legs ({len(r['missed_detail'])})")
         lines.append("")
         if r["missed_detail"]:
-            lines.append(
-                "| start | end | direction | duration (d) | push | modal annotation |"
-            )
+            lines.append("| start | end | direction | duration (d) | push | modal annotation |")
             lines.append("|---|---|---|---:|---:|---|")
             for m in r["missed_detail"]:
                 lines.append(
@@ -202,19 +192,12 @@ async def run_once() -> list[dict]:
     try:
         times, high, low, close, states = await _load(pool)
         if not times:
-            raise RuntimeError(
-                "v2_bars_4h / v2_state_history unreadable or empty — STOP per Wave red line"
-            )
+            raise RuntimeError("v2_bars_4h / v2_state_history unreadable or empty — STOP per Wave red line")
         run_at = datetime.now(timezone.utc)
         window_start, window_end = times[0], times[-1]
-        logger.info(
-            "loaded %d bars, window %s -> %s", len(close), window_start, window_end
-        )
+        logger.info("loaded %d bars, window %s -> %s", len(close), window_start, window_end)
 
-        results = [
-            run_one_config(name, cfg, high, low, close, states, times)
-            for name, cfg in CONFIGS
-        ]
+        results = [run_one_config(name, cfg, high, low, close, states, times) for name, cfg in CONFIGS]
         for r in results:
             logger.info(
                 "%s: legs_total=%d legs_spec=%d in_domain=%d captured=%d capture_rate=%s",
@@ -252,9 +235,7 @@ async def run_once() -> list[dict]:
 
 def _seconds_until_next_run(now: datetime) -> float:
     days_ahead = (RUN_WEEKDAY - now.weekday()) % 7
-    candidate = (now + timedelta(days=days_ahead)).replace(
-        hour=RUN_HOUR, minute=RUN_MINUTE, second=0, microsecond=0
-    )
+    candidate = (now + timedelta(days=days_ahead)).replace(hour=RUN_HOUR, minute=RUN_MINUTE, second=0, microsecond=0)
     if candidate <= now:
         candidate += timedelta(days=7)
     return (candidate - now).total_seconds()

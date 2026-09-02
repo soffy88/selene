@@ -68,10 +68,7 @@ def test_vpin_pilot_stats_empty_and_filled():
     from datetime import datetime, timedelta, timezone
 
     t0 = datetime(2026, 7, 6, tzinfo=timezone.utc)
-    series = [
-        (t0 + timedelta(minutes=30 * i), 0.2 + 0.01 * (i % 10), 0.25 + 0.01 * (i % 10))
-        for i in range(120)
-    ]
+    series = [(t0 + timedelta(minutes=30 * i), 0.2 + 0.01 * (i % 10), 0.25 + 0.01 * (i % 10)) for i in range(120)]
     stats = vpin_pilot_stats(series, bucket_minutes=[30.0] * 120)
     assert stats["n_vpin_points"] == 120
     d = stats["distribution"]

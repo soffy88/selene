@@ -15,8 +15,6 @@ Redis 写入目标：
   signal.scored stream       ← 读 regime + win_probability，叠加到推送消息
 """
 
-import asyncio
-import json
 import logging
 import math
 import time
@@ -30,27 +28,27 @@ logger = logging.getLogger("onchain.scorer")
 
 # ── Regime 调整倍数（与 cw4 RegimeDetector 对齐）
 REGIME_MULTIPLIERS = {
-    "TRENDING_UP":      1.3,
-    "TRENDING_DOWN":    0.9,
-    "RANGING":          1.0,
-    "HIGH_VOLATILITY":  0.7,
-    "ACCUMULATION":     1.2,
-    "UNKNOWN":          1.0,
+    "TRENDING_UP": 1.3,
+    "TRENDING_DOWN": 0.9,
+    "RANGING": 1.0,
+    "HIGH_VOLATILITY": 0.7,
+    "ACCUMULATION": 1.2,
+    "UNKNOWN": 1.0,
 }
 
 # ── 链上信号语义权重 [-1, +1]
 SIGNAL_WEIGHTS = {
-    "whale_inflow_exchange":  -0.4,   # 流入交易所 → 抛压 → bearish
-    "whale_outflow_exchange": +0.4,   # 提出交易所 → 囤币 → bullish
-    "whale_unknown":           0.0,
-    "miner_sell":             -0.3,
-    "miner_accumulate":       +0.2,
-    "smart_wallet_long":      +0.5,
-    "smart_wallet_exit":      -0.5,
-    "dormant_wake":           -0.2,   # 休眠地址激活 → 解套出逃
-    "net_exchange_outflow":   +0.35,
-    "net_exchange_inflow":    -0.35,
-    "rune_volume_spike":      +0.15,
+    "whale_inflow_exchange": -0.4,  # 流入交易所 → 抛压 → bearish
+    "whale_outflow_exchange": +0.4,  # 提出交易所 → 囤币 → bullish
+    "whale_unknown": 0.0,
+    "miner_sell": -0.3,
+    "miner_accumulate": +0.2,
+    "smart_wallet_long": +0.5,
+    "smart_wallet_exit": -0.5,
+    "dormant_wake": -0.2,  # 休眠地址激活 → 解套出逃
+    "net_exchange_outflow": +0.35,
+    "net_exchange_inflow": -0.35,
+    "rune_volume_spike": +0.15,
 }
 
 # ── 已知地址标签（生产环境对接 Arkham / Etherscan Labels）
@@ -77,23 +75,24 @@ SMART_WALLETS: dict = {
 @dataclass
 class RawOnchainEvent:
     """从 BTC/ETH/SOL worker 传来的原始链上事件"""
-    id:          str   = field(default_factory=lambda: uuid.uuid4().hex)
-    chain:       str   = ""
-    symbol:      str   = "BTCUSDT"
-    event_type:  str   = ""     # whale_transfer / exchange_flow / miner / smart_wallet / rune
-    from_addr:   str   = ""
-    to_addr:     str   = ""
-    amount:      float = 0.0
-    amount_usd:  float = 0.0
-    severity:    str   = "medium"
-    meta:        dict  = field(default_factory=dict)
-    ts:          float = field(default_factory=time.time)
+
+    id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    chain: str = ""
+    symbol: str = "BTCUSDT"
+    event_type: str = ""  # whale_transfer / exchange_flow / miner / smart_wallet / rune
+    from_addr: str = ""
+    to_addr: str = ""
+    amount: float = 0.0
+    amount_usd: float = 0.0
+    severity: str = "medium"
+    meta: dict = field(default_factory=dict)
+    ts: float = field(default_factory=time.time)
 
     def classify(self) -> str:
         fa = self.from_addr.lower()
         ta = self.to_addr.lower()
-        is_from_ex    = fa in KNOWN_EXCHANGES
-        is_to_ex      = ta in KNOWN_EXCHANGES
+        is_from_ex = fa in KNOWN_EXCHANGES
+        is_to_ex = ta in KNOWN_EXCHANGES
         is_from_miner = fa in KNOWN_MINERS
         is_from_smart = fa in SMART_WALLETS
         is_smart_exit = is_from_smart and is_to_ex
@@ -122,11 +121,11 @@ class OnchainScorer:
     """
 
     def __init__(self, symbol: str, ewma_alpha: float = 0.15):
-        self.symbol  = symbol
-        self._alpha  = ewma_alpha
-        self._score  = 0.0
+        self.symbol = symbol
+        self._alpha = ewma_alpha
+        self._score = 0.0
         self._event_log: deque = deque(maxlen=500)
-        self._ex_inflow:  float = 0.0
+        self._ex_inflow: float = 0.0
         self._ex_outflow: float = 0.0
         self._last_regime = "UNKNOWN"
         self._last_win_prob: Optional[float] = None
@@ -152,22 +151,24 @@ class OnchainScorer:
 
         # 交易所流量累计
         if signal_class == "whale_inflow_exchange":
-            self._ex_inflow  += event.amount
+            self._ex_inflow += event.amount
         elif signal_class == "whale_outflow_exchange":
             self._ex_outflow += event.amount
 
-        self._event_log.append({
-            "id":          event.id,
-            "class":       signal_class,
-            "weighted":    round(weighted, 4),
-            "score_after": round(self._score, 4),
-            "amount_usd":  event.amount_usd,
-            "ts":          event.ts,
-        })
+        self._event_log.append(
+            {
+                "id": event.id,
+                "class": signal_class,
+                "weighted": round(weighted, 4),
+                "score_after": round(self._score, 4),
+                "amount_usd": event.amount_usd,
+                "ts": event.ts,
+            }
+        )
 
         logger.info(
             f"[{self.symbol}] {signal_class} | "
-            f"${event.amount_usd/1e6:.1f}M | sev={event.severity} | "
+            f"${event.amount_usd / 1e6:.1f}M | sev={event.severity} | "
             f"w={weighted:+.3f} → score={self._score:+.4f}"
         )
         return self._score
@@ -182,8 +183,8 @@ class OnchainScorer:
     def update_from_scored(self, win_prob: float, ci_lo: float, ci_hi: float):
         """cw4 signal-service 返回的最新评分，用于推送时展示"""
         self._last_win_prob = win_prob
-        self._last_ci_lo    = ci_lo
-        self._last_ci_hi    = ci_hi
+        self._last_ci_lo = ci_lo
+        self._last_ci_hi = ci_hi
 
     # ── 综合评分（用于推送决策）─────────────────────
     def composite_score(self) -> dict:
@@ -192,36 +193,36 @@ class OnchainScorer:
         这是 P3 决策层的核心输出。
         """
         onchain_adj = self.apply_regime(self._last_regime)
-        net_flow    = (self._ex_outflow - self._ex_inflow)
-        net_flow_norm = max(-1.0, min(1.0, net_flow / 1000.0))  # 1000 BTC = 满分
+        net_flow = self._ex_outflow - self._ex_inflow
+        max(-1.0, min(1.0, net_flow / 1000.0))  # 1000 BTC = 满分
 
         result = {
-            "symbol":            self.symbol,
-            "onchain_score":     round(self._score, 4),
-            "regime_adj_score":  round(onchain_adj, 4),
+            "symbol": self.symbol,
+            "onchain_score": round(self._score, 4),
+            "regime_adj_score": round(onchain_adj, 4),
             "net_exchange_flow": round(net_flow, 2),
-            "regime":            self._last_regime,
+            "regime": self._last_regime,
         }
 
         if self._last_win_prob is not None:
             # 融合：cw4 win_prob 70% 权重 + onchain 30% 权重调整
-            onchain_adj_prob = (onchain_adj + 1) / 2   # [-1,+1] → [0,1]
+            onchain_adj_prob = (onchain_adj + 1) / 2  # [-1,+1] → [0,1]
             fused_prob = 0.70 * self._last_win_prob + 0.30 * onchain_adj_prob
-            result["cw4_win_prob"]   = round(self._last_win_prob, 4)
+            result["cw4_win_prob"] = round(self._last_win_prob, 4)
             result["fused_win_prob"] = round(fused_prob, 4)
-            result["ci_lo"]          = round(self._last_ci_lo or 0, 4)
-            result["ci_hi"]          = round(self._last_ci_hi or 0, 4)
+            result["ci_lo"] = round(self._last_ci_lo or 0, 4)
+            result["ci_hi"] = round(self._last_ci_hi or 0, 4)
             # 信号是否具有可交易性（融合后胜率超阈值）
-            result["actionable"]     = fused_prob >= 0.56
+            result["actionable"] = fused_prob >= 0.56
 
         return result
 
     def get_state(self) -> dict:
         state = self.composite_score()
         state["recent_events"] = list(self._event_log)[-10:]
-        state["updated_at"]    = datetime.utcnow().isoformat()
+        state["updated_at"] = datetime.utcnow().isoformat()
         return state
 
     def decay(self, hours: float = 1.0):
         """每小时自然衰减 5%"""
-        self._score *= (0.95 ** hours)
+        self._score *= 0.95**hours

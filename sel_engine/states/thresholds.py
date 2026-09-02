@@ -1,7 +1,9 @@
 """Rolling quantile calculator for strictly causal state recognition."""
-import numpy as np
-from typing import Optional
+
 from collections import deque
+from typing import Optional
+
+import numpy as np
 
 
 class RollingQuantileCalculator:
@@ -10,6 +12,7 @@ class RollingQuantileCalculator:
     quantile rank of the current value against that window.
     Strictly causal: window contains only past values (not current bar).
     """
+
     WINDOW = 720  # 30 days × 24H bars
     MIN_VALUES = 10  # minimum non-None values to compute a quantile
 

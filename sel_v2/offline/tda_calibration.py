@@ -13,17 +13,16 @@ Output: analysis/tda_calibration_v1.md
 Usage:
     python -m sel_v2.offline.tda_calibration [--data analysis/data/btc_4h.parquet]
 """
+
 from __future__ import annotations
 
 import argparse
 import logging
 import os
-from datetime import datetime
 
 import numpy as np
 import pandas as pd
 from ripser import ripser
-from scipy.spatial.distance import cdist
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -47,6 +46,7 @@ CONTROL_EVENTS = [
 
 # ── Takens Embedding ──────────────────────────────────────────────────────────
 
+
 def takens_embed(x: np.ndarray, d: int = 4, tau: int = 1) -> np.ndarray:
     """
     Takens delay embedding.
@@ -58,7 +58,7 @@ def takens_embed(x: np.ndarray, d: int = 4, tau: int = 1) -> np.ndarray:
     n = len(x) - (d - 1) * tau
     if n <= 0:
         raise ValueError(f"Series too short for embedding: n={len(x)}, d={d}, tau={tau}")
-    return np.stack([x[i * tau: i * tau + n] for i in range(d)], axis=1)
+    return np.stack([x[i * tau : i * tau + n] for i in range(d)], axis=1)
 
 
 def estimate_tau(x: np.ndarray, max_lag: int = 20) -> int:
@@ -74,7 +74,7 @@ def estimate_tau(x: np.ndarray, max_lag: int = 20) -> int:
     for lag in range(1, max_lag + 1):
         x1 = x_disc[:-lag]
         x2 = x_disc[lag:]
-        joint = np.bincount(x1 * n_bins + x2, minlength=n_bins ** 2).reshape(n_bins, n_bins)
+        joint = np.bincount(x1 * n_bins + x2, minlength=n_bins**2).reshape(n_bins, n_bins)
         p_joint = joint / joint.sum()
         p1 = p_joint.sum(axis=1)
         p2 = p_joint.sum(axis=0)
@@ -91,6 +91,7 @@ def estimate_tau(x: np.ndarray, max_lag: int = 20) -> int:
 
 
 # ── Persistence Landscape ─────────────────────────────────────────────────────
+
 
 def persistence_diagram_to_landscape(
     dgm: np.ndarray,
@@ -163,10 +164,7 @@ def compute_pl_l1(
             return 0.0
 
         x_max = float(dgm_finite[:, 1].max()) * 1.1
-        landscape = persistence_landscape_l1_norm = 0.0
-        pl = persistence_diagram_to_landscape(
-            dgm_finite, resolution=resolution, x_max=x_max, k=k
-        )
+        pl = persistence_diagram_to_landscape(dgm_finite, resolution=resolution, x_max=x_max, k=k)
         l1_norm = float(np.trapezoid(np.abs(pl), np.linspace(0, x_max, resolution)))
         return l1_norm
 
@@ -176,6 +174,7 @@ def compute_pl_l1(
 
 
 # ── Rolling TDA analysis ──────────────────────────────────────────────────────
+
 
 def run_rolling_tda(
     returns: np.ndarray,
@@ -194,7 +193,7 @@ def run_rolling_tda(
 
     for wi in range(n_windows):
         start = wi * step
-        seg = returns[start: start + window]
+        seg = returns[start : start + window]
         l1_series[wi] = compute_pl_l1(seg, d=d, tau=tau)
         if wi % 20 == 0:
             logger.info("  TDA window %d/%d (index %d)", wi, n_windows, start)
@@ -203,6 +202,7 @@ def run_rolling_tda(
 
 
 # ── Main calibration ──────────────────────────────────────────────────────────
+
 
 def run_tda_calibration(
     data_path: str = "analysis/data/btc_4h.parquet",
@@ -254,7 +254,7 @@ def run_tda_calibration(
     thresholds_97 = []
     for i in range(len(l1_series)):
         start = max(0, i - q_window_steps)
-        segment = l1_series[start: i + 1]
+        segment = l1_series[start : i + 1]
         thresholds_90.append(np.quantile(segment, 0.90))
         thresholds_95.append(np.quantile(segment, 0.95))
         thresholds_97.append(np.quantile(segment, 0.97))
@@ -267,35 +267,45 @@ def run_tda_calibration(
         bar_idx = int(np.argmin(diffs))
         # Find corresponding window
         if bar_idx < window:
-            event_results.append({
-                "date": event_date_str, "label": label, "desc": desc,
-                "in_range": False,
-            })
+            event_results.append(
+                {
+                    "date": event_date_str,
+                    "label": label,
+                    "desc": desc,
+                    "in_range": False,
+                }
+            )
             continue
 
         win_idx = (bar_idx - window) // step
         if win_idx >= len(l1_series):
-            event_results.append({
-                "date": event_date_str, "label": label, "desc": desc,
-                "in_range": False,
-            })
+            event_results.append(
+                {
+                    "date": event_date_str,
+                    "label": label,
+                    "desc": desc,
+                    "in_range": False,
+                }
+            )
             continue
 
         l1_val = l1_series[win_idx]
         q90 = thresholds_90[win_idx]
         q95 = thresholds_95[win_idx]
 
-        event_results.append({
-            "date": event_date_str,
-            "label": label,
-            "desc": desc,
-            "in_range": True,
-            "l1_norm": l1_val,
-            "threshold_90": q90,
-            "threshold_95": q95,
-            "above_90": l1_val > q90,
-            "above_95": l1_val > q95,
-        })
+        event_results.append(
+            {
+                "date": event_date_str,
+                "label": label,
+                "desc": desc,
+                "in_range": True,
+                "l1_norm": l1_val,
+                "threshold_90": q90,
+                "threshold_95": q95,
+                "above_90": l1_val > q90,
+                "above_95": l1_val > q95,
+            }
+        )
 
     # Summary stats
     l1_mean = float(np.mean(l1_series[l1_series > 0]))
@@ -354,15 +364,21 @@ def _persist_to_db(result: dict, db_url: str | None) -> dict | None:
         return None
     try:
         from sel_v2.strategies.params_loader import save_strategy_params
+
         save_strategy_params(strategy="tda1", params=params, db_url=db_url)
-        logger.info("Persisted TDA1 L^1 thresholds to v2_strategy_params "
-                    "(p90=%.6f p95=%.6f p97=%.6f)",
-                    params["l1_threshold_p90"], params["l1_threshold_p95"],
-                    params["l1_threshold_p97"])
+        logger.info(
+            "Persisted TDA1 L^1 thresholds to v2_strategy_params (p90=%.6f p95=%.6f p97=%.6f)",
+            params["l1_threshold_p90"],
+            params["l1_threshold_p95"],
+            params["l1_threshold_p97"],
+        )
         return params
     except Exception as exc:  # noqa: BLE001
-        logger.error("Failed to persist TDA1 thresholds to v2_strategy_params (%s). "
-                     "The live TDA condition will keep using the placeholder.", exc)
+        logger.error(
+            "Failed to persist TDA1 thresholds to v2_strategy_params (%s). "
+            "The live TDA condition will keep using the placeholder.",
+            exc,
+        )
         return None
 
 
@@ -377,11 +393,11 @@ def _write_report(result: dict, output_path: str) -> None:
         "",
         f"**Date**: {pd.Timestamp.now().date()}  ",
         "**Method**: Takens Embedding → Vietoris-Rips → Persistent Homology (H1) → Landscape L^1 norm  ",
-        f"**Library**: ripser  ",
+        "**Library**: ripser  ",
         f"**Embedding**: d={result['d']}, τ={result['tau']} (estimated τ={result['tau_estimated']})  ",
         f"**Window**: {result['window']} 4H bars ({result['window'] * 4}h)  ",
         f"**Step**: {result['step']} bars  ",
-        f"**Data**: BTC-USDT 4H log returns  ",
+        "**Data**: BTC-USDT 4H log returns  ",
         f"**Coverage**: {result['coverage_start']} → {result['coverage_end']}  ",
         f"**N bars**: {result['n_bars']}  ",
         "",
@@ -407,9 +423,7 @@ def _write_report(result: dict, output_path: str) -> None:
 
     for ev in event_results:
         if not ev["in_range"]:
-            lines.append(
-                f"| {ev['date']} | {ev['label']} | N/A | N/A | N/A | N/A | N/A |"
-            )
+            lines.append(f"| {ev['date']} | {ev['label']} | N/A | N/A | N/A | N/A | N/A |")
         else:
             a90 = "✅" if ev.get("above_90") else "❌"
             a95 = "✅" if ev.get("above_95") else "❌"
@@ -427,9 +441,9 @@ def _write_report(result: dict, output_path: str) -> None:
     lines += [
         "",
         f"**Cascade events above 95th %tile**: {cascade_tp}/{len(cascade_events)} "
-        f"({'N/A — no in-range events' if not cascade_events else f'{cascade_tp/len(cascade_events)*100:.0f}% sensitivity'})",
+        f"({'N/A — no in-range events' if not cascade_events else f'{cascade_tp / len(cascade_events) * 100:.0f}% sensitivity'})",
         f"**Control events above 95th %tile (false positive rate)**: {control_fp}/{len(control_events)} "
-        f"({'N/A' if not control_events else f'{control_fp/len(control_events)*100:.0f}%'})",
+        f"({'N/A' if not control_events else f'{control_fp / len(control_events) * 100:.0f}%'})",
         "",
     ]
 
@@ -451,7 +465,7 @@ def _write_report(result: dict, output_path: str) -> None:
         "",
         "## Computational Performance",
         "",
-        f"| Metric | Value |",
+        "| Metric | Value |",
         "|---|---|",
         f"| Total windows computed | {len(l1_series)} |",
         f"| Window size | {result['window']} bars ({result['window'] * 4}h) |",
@@ -539,12 +553,12 @@ def _design_validation(
         if control_fp / n_control <= 0.25:
             lines.append(
                 f"\n✅ **False positive rate**: {control_fp}/{n_control} control events "
-                f"({control_fp/n_control*100:.0f}%) exceeded threshold. Acceptable specificity."
+                f"({control_fp / n_control * 100:.0f}%) exceeded threshold. Acceptable specificity."
             )
         else:
             lines.append(
                 f"\n⚠️ **High false positive rate**: {control_fp}/{n_control} control events "
-                f"({control_fp/n_control*100:.0f}%) exceeded threshold. "
+                f"({control_fp / n_control * 100:.0f}%) exceeded threshold. "
                 "TDA1 may generate too many spurious Critical signals. "
                 "Combine with Hawkes branching ratio (H2) per v2.1 spec."
             )
@@ -561,19 +575,13 @@ def _design_validation(
 def main() -> None:
     parser = argparse.ArgumentParser(description="TDA1 Persistence Landscape calibration")
     parser.add_argument("--data", default="analysis/data/btc_4h.parquet")
-    parser.add_argument("--window", type=int, default=50,
-                        help="Sliding window size in bars")
-    parser.add_argument("--step", type=int, default=5,
-                        help="Step size between windows")
-    parser.add_argument("--d", type=int, default=4,
-                        help="Takens embedding dimension")
-    parser.add_argument("--tau", type=int, default=1,
-                        help="Takens time delay (bars)")
+    parser.add_argument("--window", type=int, default=50, help="Sliding window size in bars")
+    parser.add_argument("--step", type=int, default=5, help="Step size between windows")
+    parser.add_argument("--d", type=int, default=4, help="Takens embedding dimension")
+    parser.add_argument("--tau", type=int, default=1, help="Takens time delay (bars)")
     parser.add_argument("--output", default="analysis/tda_calibration_v1.md")
-    parser.add_argument("--no-persist", action="store_true",
-                        help="Skip writing L^1 thresholds to v2_strategy_params")
-    parser.add_argument("--db-url", default=None,
-                        help="Postgres DSN override for param persistence")
+    parser.add_argument("--no-persist", action="store_true", help="Skip writing L^1 thresholds to v2_strategy_params")
+    parser.add_argument("--db-url", default=None, help="Postgres DSN override for param persistence")
     args = parser.parse_args()
 
     run_tda_calibration(

@@ -82,12 +82,8 @@ class BarFeatures:
     # ── LOB entropy (wired to v2_lob_snapshots.entropy; see GL1 T0.1) ─────────
     entropy_4h: Optional[float] = None  # mean Shannon entropy of LOB over the bar
     entropy_pctile: Optional[float] = None  # rank in 30-day history
-    entropy_variance: Optional[float] = (
-        None  # rolling variance of entropy_4h (GL1 T0.1)
-    )
-    entropy_variance_rising: Optional[bool] = (
-        None  # entropy variance trending up (3-bar monotone)
-    )
+    entropy_variance: Optional[float] = None  # rolling variance of entropy_4h (GL1 T0.1)
+    entropy_variance_rising: Optional[bool] = None  # entropy variance trending up (3-bar monotone)
 
     # ── OI / Funding (STUB) ──────────────────────────────────────────────────
     oi_change_rate: Optional[float] = None  # OI % change per 4H bar

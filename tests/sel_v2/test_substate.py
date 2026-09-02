@@ -66,9 +66,7 @@ def test_re_push_counts_and_stop_ratchets_to_a_higher_low():
     second_repush = out[second_repush_idx]
     assert second_repush.push_count == 2
     assert second_repush.stop_level == 1040.0
-    assert (
-        second_repush.stop_level > first_repush.stop_level
-    )  # ratcheted UP, never down
+    assert second_repush.stop_level > first_repush.stop_level  # ratcheted UP, never down
 
 
 # ── STRUCTURE_BREAK detection + leg reset ───────────────────────────────────

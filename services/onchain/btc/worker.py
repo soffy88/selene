@@ -24,13 +24,13 @@ import websockets
 
 logger = logging.getLogger("btc.worker")
 
-REDIS_URL       = os.environ.get("REDIS_URL", "redis://:changeme@redis:6379/0")
-THRESHOLD_BTC   = float(os.environ.get("THRESHOLD_BTC", 100))
+REDIS_URL = os.environ.get("REDIS_URL", "redis://:changeme@redis:6379/0")
+THRESHOLD_BTC = float(os.environ.get("THRESHOLD_BTC", 100))
 THRESHOLD_MINER = float(os.environ.get("THRESHOLD_MINER", 500))
 
-WSS_URL   = "wss://mempool.space/api/v1/ws"
-API_BASE  = "https://mempool.space/api"
-STREAM    = "onchain.events"
+WSS_URL = "wss://mempool.space/api/v1/ws"
+API_BASE = "https://mempool.space/api"
+STREAM = "onchain.events"
 
 KNOWN_EXCHANGES = {
     "1ck6khy6mhgyvmrq4paafkydrg1ejbh1ce": "Binance",
@@ -56,15 +56,13 @@ async def get_redis():
 async def emit_event(event: dict):
     """写入 Redis Stream"""
     r = await get_redis()
-    encoded = {k: json.dumps(v) if not isinstance(v, (str, bytes)) else v
-               for k, v in event.items()}
+    encoded = {k: json.dumps(v) if not isinstance(v, (str, bytes)) else v for k, v in event.items()}
     await r.xadd(STREAM, encoded, maxlen=50000, approximate=True)
 
 
 async def analyze_tx(session: aiohttp.ClientSession, txid: str, btc_price: float):
     try:
-        async with session.get(f"{API_BASE}/tx/{txid}",
-                               timeout=aiohttp.ClientTimeout(total=8)) as r:
+        async with session.get(f"{API_BASE}/tx/{txid}", timeout=aiohttp.ClientTimeout(total=8)) as r:
             if r.status != 200:
                 return
             tx = await r.json()
@@ -74,11 +72,11 @@ async def analyze_tx(session: aiohttp.ClientSession, txid: str, btc_price: float
             return
 
         # 地址提取
-        in_addrs  = [i.get("prevout", {}).get("scriptpubkey_address", "") for i in tx.get("vin", [])]
+        in_addrs = [i.get("prevout", {}).get("scriptpubkey_address", "") for i in tx.get("vin", [])]
         out_addrs = [o.get("scriptpubkey_address", "") for o in tx.get("vout", [])]
 
-        primary_from = in_addrs[0]  if in_addrs  else ""
-        primary_to   = out_addrs[0] if out_addrs else ""
+        primary_from = in_addrs[0] if in_addrs else ""
+        primary_to = out_addrs[0] if out_addrs else ""
 
         fa = primary_from.lower()
         ta = primary_to.lower()
@@ -101,22 +99,22 @@ async def analyze_tx(session: aiohttp.ClientSession, txid: str, btc_price: float
             dormant_years = int(age_days / 365)
 
         event = {
-            "id":          uuid.uuid4().hex,
-            "chain":       "BTC",
-            "symbol":      "BTCUSDT",
-            "event_type":  "miner_transfer" if fa in KNOWN_MINERS else "whale_transfer",
-            "from_addr":   primary_from,
-            "to_addr":     primary_to,
-            "amount":      out_total_btc,
-            "amount_usd":  out_total_btc * btc_price,
-            "severity":    severity,
-            "meta":        {
-                "txid":          txid,
+            "id": uuid.uuid4().hex,
+            "chain": "BTC",
+            "symbol": "BTCUSDT",
+            "event_type": "miner_transfer" if fa in KNOWN_MINERS else "whale_transfer",
+            "from_addr": primary_from,
+            "to_addr": primary_to,
+            "amount": out_total_btc,
+            "amount_usd": out_total_btc * btc_price,
+            "severity": severity,
+            "meta": {
+                "txid": txid,
                 "dormant_years": dormant_years,
-                "in_count":      len(in_addrs),
-                "out_count":     len(out_addrs),
-                "from_label":    KNOWN_MINERS.get(fa) or KNOWN_EXCHANGES.get(fa, ""),
-                "to_label":      KNOWN_EXCHANGES.get(ta, ""),
+                "in_count": len(in_addrs),
+                "out_count": len(out_addrs),
+                "from_label": KNOWN_MINERS.get(fa) or KNOWN_EXCHANGES.get(fa, ""),
+                "to_label": KNOWN_EXCHANGES.get(ta, ""),
             },
             "ts": time.time(),
         }
@@ -132,14 +130,13 @@ async def poll_mempool_txs(session: aiohttp.ClientSession, btc_price_ref: list):
     seen = set()
     while True:
         try:
-            async with session.get(f"{API_BASE}/mempool/recent",
-                                   timeout=aiohttp.ClientTimeout(total=10)) as r:
+            async with session.get(f"{API_BASE}/mempool/recent", timeout=aiohttp.ClientTimeout(total=10)) as r:
                 if r.ok:
                     txs = await r.json()
                     tasks = []
                     for tx in txs:
                         txid = tx.get("txid", "")
-                        val  = tx.get("value", 0) / 1e8
+                        val = tx.get("value", 0) / 1e8
                         if txid and txid not in seen and val >= THRESHOLD_BTC:
                             seen.add(txid)
                             tasks.append(analyze_tx(session, txid, btc_price_ref[0]))
@@ -159,7 +156,7 @@ async def poll_btc_price(price_ref: list):
             async with aiohttp.ClientSession() as s:
                 async with s.get(
                     "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
-                    timeout=aiohttp.ClientTimeout(total=8)
+                    timeout=aiohttp.ClientTimeout(total=8),
                 ) as r:
                     if r.ok:
                         d = await r.json()
@@ -170,9 +167,7 @@ async def poll_btc_price(price_ref: list):
 
 
 async def main():
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s [btc %(levelname)s] %(message)s",
-                        datefmt="%H:%M:%S")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [btc %(levelname)s] %(message)s", datefmt="%H:%M:%S")
     btc_price = [83000.0]  # 可变引用
 
     async with aiohttp.ClientSession() as session:

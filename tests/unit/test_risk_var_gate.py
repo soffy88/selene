@@ -4,6 +4,7 @@ The enforced VaR gate now uses correlation-aware post-trade VaR (w'Σw) as the
 primary path and a scaled equity-series historical VaR as fallback, replacing
 the arbitrary `var_pct + allocated/equity*0.15` estimate.
 """
+
 import asyncio
 
 import pytest
@@ -21,6 +22,7 @@ def _reset_state(monkeypatch):
 def _set_corr_returns(monkeypatch, data):
     async def fake(symbols):
         return data
+
     monkeypatch.setattr(rm, "_get_corr_returns", fake)
 
 
@@ -41,7 +43,7 @@ def test_correlated_path_allows_small_var(monkeypatch):
 
 
 def test_fallback_used_when_no_corr_returns(monkeypatch):
-    _set_corr_returns(monkeypatch, {})   # no per-symbol data
+    _set_corr_returns(monkeypatch, {})  # no per-symbol data
     # Build an equity history with ~2% per-bar swings.
     hist = []
     eq = 10_000.0

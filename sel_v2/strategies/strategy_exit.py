@@ -17,10 +17,11 @@ All checkers are PURE functions — they receive all state as arguments and retu
 an ExitDecision. Position state updates (tracking peak CUSUM, batch count) are
 managed by the caller (SubAccount).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from typing import Literal, Optional
 
 from sel_v2.strategies.cusum_short import CUSUMTrigger
@@ -28,11 +29,11 @@ from sel_v2.strategies.cusum_short import CUSUMTrigger
 ExitAction = Literal["HOLD", "REDUCE_50", "EXIT_BATCH_33", "EXIT_FULL"]
 
 # §13.3: Strategy 1 thresholds
-S1_DRAWDOWN_STOP: float = -0.03   # -3%
-S1_TIME_STOP_HOURS: int = 168     # 7 days
+S1_DRAWDOWN_STOP: float = -0.03  # -3%
+S1_TIME_STOP_HOURS: int = 168  # 7 days
 
 # §14.3: Strategy 2 thresholds
-S2_DRAWDOWN_STOP: float = -0.02   # -2%
+S2_DRAWDOWN_STOP: float = -0.02  # -2%
 S2_TIME_STOP_HOURS: int = 24
 
 # §14.3: CUSUM regression batch thresholds (fraction of peak remaining)
@@ -64,6 +65,7 @@ _P_HOLD = 99
 
 # ── Shared helper ──────────────────────────────────────────────────────────────
 
+
 def _unrealized_pnl_pct(
     direction: Literal["LONG", "SHORT"],
     entry_price: float,
@@ -75,6 +77,7 @@ def _unrealized_pnl_pct(
 
 
 # ── Strategy 1 exit checker ───────────────────────────────────────────────────
+
 
 def check_strategy1_exit(
     direction: Literal["LONG", "SHORT"],
@@ -111,71 +114,76 @@ def check_strategy1_exit(
 
     # ── L3: Cascade red line ──────────────────────────────────────────────────
     if state_4h == "Cascade":
-        _update(ExitDecision(
-            action="EXIT_FULL",
-            reason="Cascade red line — immediate full exit",
-            priority=_P_CASCADE,
-        ))
+        _update(
+            ExitDecision(
+                action="EXIT_FULL",
+                reason="Cascade red line — immediate full exit",
+                priority=_P_CASCADE,
+            )
+        )
 
     # ── L2: drawdown stop -3% ─────────────────────────────────────────────────
     pnl_pct = _unrealized_pnl_pct(direction, entry_price, mark_price)
     if pnl_pct <= S1_DRAWDOWN_STOP:
-        _update(ExitDecision(
-            action="EXIT_FULL",
-            reason=f"Drawdown {pnl_pct:.2%} ≤ {S1_DRAWDOWN_STOP:.0%} stop",
-            priority=_P_DRAWDOWN,
-        ))
+        _update(
+            ExitDecision(
+                action="EXIT_FULL",
+                reason=f"Drawdown {pnl_pct:.2%} ≤ {S1_DRAWDOWN_STOP:.0%} stop",
+                priority=_P_DRAWDOWN,
+            )
+        )
 
     # ── L2: CUSUM reverse trigger ─────────────────────────────────────────────
     if cusum_trigger.triggered:
-        reverse = (
-            (direction == "LONG" and cusum_trigger.direction == "SHORT") or
-            (direction == "SHORT" and cusum_trigger.direction == "LONG")
+        reverse = (direction == "LONG" and cusum_trigger.direction == "SHORT") or (
+            direction == "SHORT" and cusum_trigger.direction == "LONG"
         )
         if reverse:
-            _update(ExitDecision(
-                action="EXIT_FULL",
-                reason=(
-                    f"CUSUM reverse: holding {direction}, "
-                    f"triggered {cusum_trigger.direction}"
-                ),
-                priority=_P_CUSUM_REVERSE,
-            ))
+            _update(
+                ExitDecision(
+                    action="EXIT_FULL",
+                    reason=(f"CUSUM reverse: holding {direction}, triggered {cusum_trigger.direction}"),
+                    priority=_P_CUSUM_REVERSE,
+                )
+            )
 
     # ── L2: state transition from Surging → Drifting / Critical ──────────────
     if prev_state_4h == "Surging" and state_4h in ("Drifting-Calm", "Drifting-Charged", "Critical"):
-        _update(ExitDecision(
-            action="EXIT_FULL",
-            reason=f"State exit: Surging → {state_4h}",
-            priority=_P_STATE_EXIT,
-        ))
+        _update(
+            ExitDecision(
+                action="EXIT_FULL",
+                reason=f"State exit: Surging → {state_4h}",
+                priority=_P_STATE_EXIT,
+            )
+        )
 
     # ── L2: Critical → reduce 50% (once only) ────────────────────────────────
-    if (
-        state_4h == "Critical"
-        and not critical_already_reduced
-        and prev_state_4h not in (None, "Critical", "Cascade")
-    ):
-        _update(ExitDecision(
-            action="REDUCE_50",
-            reason="Critical state entered — reduce position 50%",
-            priority=_P_CRITICAL_REDUCE,
-            partial_fraction=0.50,
-        ))
+    if state_4h == "Critical" and not critical_already_reduced and prev_state_4h not in (None, "Critical", "Cascade"):
+        _update(
+            ExitDecision(
+                action="REDUCE_50",
+                reason="Critical state entered — reduce position 50%",
+                priority=_P_CRITICAL_REDUCE,
+                partial_fraction=0.50,
+            )
+        )
 
     # ── L3: Time Stop 7 days ──────────────────────────────────────────────────
     holding_hours = (current_time - entry_time).total_seconds() / 3600
     if holding_hours >= S1_TIME_STOP_HOURS:
-        _update(ExitDecision(
-            action="EXIT_FULL",
-            reason=f"Time stop: held {holding_hours:.1f}h ≥ {S1_TIME_STOP_HOURS}h",
-            priority=_P_TIME_STOP,
-        ))
+        _update(
+            ExitDecision(
+                action="EXIT_FULL",
+                reason=f"Time stop: held {holding_hours:.1f}h ≥ {S1_TIME_STOP_HOURS}h",
+                priority=_P_TIME_STOP,
+            )
+        )
 
     return best
 
 
 # ── Strategy 2 exit checker ───────────────────────────────────────────────────
+
 
 def check_strategy2_exit(
     direction: Literal["LONG", "SHORT"],
@@ -212,58 +220,58 @@ def check_strategy2_exit(
 
     # ── L3: Cascade red line ──────────────────────────────────────────────────
     if state_4h == "Cascade":
-        _update(ExitDecision(
-            action="EXIT_FULL",
-            reason="Cascade red line — immediate full exit",
-            priority=_P_CASCADE,
-        ))
+        _update(
+            ExitDecision(
+                action="EXIT_FULL",
+                reason="Cascade red line — immediate full exit",
+                priority=_P_CASCADE,
+            )
+        )
 
     # ── L2: drawdown stop -2% ─────────────────────────────────────────────────
     pnl_pct = _unrealized_pnl_pct(direction, entry_price, mark_price)
     if pnl_pct <= S2_DRAWDOWN_STOP:
-        _update(ExitDecision(
-            action="EXIT_FULL",
-            reason=f"Drawdown {pnl_pct:.2%} ≤ {S2_DRAWDOWN_STOP:.0%} stop",
-            priority=_P_DRAWDOWN,
-        ))
+        _update(
+            ExitDecision(
+                action="EXIT_FULL",
+                reason=f"Drawdown {pnl_pct:.2%} ≤ {S2_DRAWDOWN_STOP:.0%} stop",
+                priority=_P_DRAWDOWN,
+            )
+        )
 
     # ── L2: CUSUM reverse trigger → full immediate exit ───────────────────────
     if cusum_trigger.triggered:
-        reverse = (
-            (direction == "LONG" and cusum_trigger.direction == "SHORT") or
-            (direction == "SHORT" and cusum_trigger.direction == "LONG")
+        reverse = (direction == "LONG" and cusum_trigger.direction == "SHORT") or (
+            direction == "SHORT" and cusum_trigger.direction == "LONG"
         )
         if reverse:
-            _update(ExitDecision(
-                action="EXIT_FULL",
-                reason=(
-                    f"CUSUM reverse: holding {direction}, "
-                    f"triggered {cusum_trigger.direction}"
-                ),
-                priority=_P_CUSUM_REVERSE,
-            ))
+            _update(
+                ExitDecision(
+                    action="EXIT_FULL",
+                    reason=(f"CUSUM reverse: holding {direction}, triggered {cusum_trigger.direction}"),
+                    priority=_P_CUSUM_REVERSE,
+                )
+            )
 
     # ── L2: new high SL (same direction accumulator created new peak) ─────────
     # SL fires when same-direction C creates a new max AFTER position was opened.
     # Proxy: if cusum_trigger.triggered in same direction, a new extreme is forming.
     if cusum_trigger.triggered and cusum_trigger.direction == direction:
-        _update(ExitDecision(
-            action="EXIT_FULL",
-            reason=(
-                f"CUSUM new-high SL: same-direction trigger while holding "
-                f"{direction} — entry assumption invalidated"
-            ),
-            priority=_P_CUSUM_NEW_HIGH,
-        ))
+        _update(
+            ExitDecision(
+                action="EXIT_FULL",
+                reason=(
+                    f"CUSUM new-high SL: same-direction trigger while holding "
+                    f"{direction} — entry assumption invalidated"
+                ),
+                priority=_P_CUSUM_NEW_HIGH,
+            )
+        )
 
     # ── L2: CUSUM regression batch exit ──────────────────────────────────────
     if cusum_peak_since_entry > 0 and batches_triggered < 3:
         # Current C value in the entry direction
-        current_c = (
-            cusum_trigger.cusum_positive
-            if direction == "LONG"
-            else cusum_trigger.cusum_negative
-        )
+        current_c = cusum_trigger.cusum_positive if direction == "LONG" else cusum_trigger.cusum_negative
         decay_ratio = current_c / cusum_peak_since_entry
 
         next_batch = batches_triggered + 1
@@ -272,34 +280,37 @@ def check_strategy2_exit(
 
         if decay_ratio <= threshold:
             if batches_triggered < 2:
-                _update(ExitDecision(
-                    action="EXIT_BATCH_33",
-                    reason=(
-                        f"CUSUM regression batch {next_batch}/3: "
-                        f"C={current_c:.3f} / peak={cusum_peak_since_entry:.3f} "
-                        f"({decay_ratio:.0%} ≤ {threshold:.0%} threshold)"
-                    ),
-                    priority=_P_CUSUM_BATCH,
-                    partial_fraction=1.0 / 3.0,
-                ))
+                _update(
+                    ExitDecision(
+                        action="EXIT_BATCH_33",
+                        reason=(
+                            f"CUSUM regression batch {next_batch}/3: "
+                            f"C={current_c:.3f} / peak={cusum_peak_since_entry:.3f} "
+                            f"({decay_ratio:.0%} ≤ {threshold:.0%} threshold)"
+                        ),
+                        priority=_P_CUSUM_BATCH,
+                        partial_fraction=1.0 / 3.0,
+                    )
+                )
             else:
                 # batch 3 → final remaining position exits fully
-                _update(ExitDecision(
-                    action="EXIT_FULL",
-                    reason=(
-                        f"CUSUM regression batch 3/3: "
-                        f"C={current_c:.3f} at baseline threshold"
-                    ),
-                    priority=_P_CUSUM_BATCH,
-                ))
+                _update(
+                    ExitDecision(
+                        action="EXIT_FULL",
+                        reason=(f"CUSUM regression batch 3/3: C={current_c:.3f} at baseline threshold"),
+                        priority=_P_CUSUM_BATCH,
+                    )
+                )
 
     # ── L3: Time Stop 24h ─────────────────────────────────────────────────────
     holding_hours = (current_time - entry_time).total_seconds() / 3600
     if holding_hours >= S2_TIME_STOP_HOURS:
-        _update(ExitDecision(
-            action="EXIT_FULL",
-            reason=f"Time stop: held {holding_hours:.1f}h ≥ {S2_TIME_STOP_HOURS}h",
-            priority=_P_TIME_STOP,
-        ))
+        _update(
+            ExitDecision(
+                action="EXIT_FULL",
+                reason=f"Time stop: held {holding_hours:.1f}h ≥ {S2_TIME_STOP_HOURS}h",
+                priority=_P_TIME_STOP,
+            )
+        )
 
     return best

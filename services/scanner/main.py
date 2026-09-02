@@ -54,11 +54,7 @@ MIN_24H_CHANGE_PCT = float(os.environ.get("MIN_24H_CHANGE_PCT", "5.0"))
 TOP_N = int(os.environ.get("SCANNER_TOP_N", "5"))
 
 # 常驻核心币:HMM regime 检测器覆盖的三个 + 始终有信号面
-CORE_SYMBOLS = [
-    s.strip()
-    for s in os.environ.get("CORE_SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT").split(",")
-    if s.strip()
-]
+CORE_SYMBOLS = [s.strip() for s in os.environ.get("CORE_SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT").split(",") if s.strip()]
 # 发现阶段排除:核心币(单列)+ 稳定币/法币对(涨跌无趋势意义)
 _STABLE_BASES = {"USDC", "FDUSD", "TUSD", "BUSD", "DAI", "EUR", "USDP", "AEUR", "USD1"}
 
@@ -186,9 +182,7 @@ class BinanceScanClient:
         last: Optional[Exception] = None
         for attempt in range(3):
             try:
-                async with self._s.get(
-                    self._base + path, params=params, proxy=self._proxy
-                ) as r:
+                async with self._s.get(self._base + path, params=params, proxy=self._proxy) as r:
                     r.raise_for_status()
                     return await r.json()
             except aiohttp.ClientResponseError:
@@ -219,9 +213,7 @@ class BinanceScanClient:
         ]
 
     async def funding_history(self, symbol: str, limit: int = 30) -> list[float]:
-        raw = await self._get(
-            "/fapi/v1/fundingRate", {"symbol": symbol, "limit": limit}
-        )
+        raw = await self._get("/fapi/v1/fundingRate", {"symbol": symbol, "limit": limit})
         return [float(r["fundingRate"]) for r in raw]
 
     async def funding_rate_now(self, symbol: str) -> Optional[float]:
@@ -302,9 +294,7 @@ class MarketScanner:
                 [
                     {
                         **c,
-                        "discovered_at": time.strftime(
-                            "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
-                        ),
+                        "discovered_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                     }
                     for c in cands
                 ]
@@ -383,9 +373,7 @@ class MarketScanner:
         # 止损止盈永远不触发)。取最后一根(成形中)K 线的最新 close ≈ 当前价,60s 刷新。
         if klines:
             r = get_redis()
-            await r.hset(
-                "cw4:prices", symbol, json.dumps({"price": klines[-1]["close"]})
-            )
+            await r.hset("cw4:prices", symbol, json.dumps({"price": klines[-1]["close"]}))
         k = latest_closed(klines, now_ms, self._interval_ms)
         if k and k["open_time"] > st.last_open_time:
             st.closes.append(k["close"])
@@ -405,9 +393,7 @@ class MarketScanner:
                 },
             )
             st.last_open_time = k["open_time"]
-            logger.info(
-                "candle %s open_time=%s close=%s", symbol, k["open_time"], k["close"]
-            )
+            logger.info("candle %s open_time=%s close=%s", symbol, k["open_time"], k["close"])
 
         if time.monotonic() - st.last_raw_pub >= RAW_REFRESH_S:
             await self._publish_raw(symbol, st)
@@ -428,9 +414,7 @@ class MarketScanner:
                 try:
                     await self.feed_once(symbol)
                 except Exception as e:  # noqa: BLE001
-                    logger.warning(
-                        "feed %s failed: %s: %s", symbol, type(e).__name__, e
-                    )
+                    logger.warning("feed %s failed: %s: %s", symbol, type(e).__name__, e)
             await asyncio.sleep(FEED_INTERVAL_S)
 
 
@@ -438,9 +422,7 @@ async def main() -> None:
     from shared.db.redis_client import init_redis
 
     init_redis(os.environ.get("REDIS_URL", "redis://helios-redis:6379/3"))
-    timeout = aiohttp.ClientTimeout(
-        total=float(os.environ.get("SCANNER_TIMEOUT_S", "20"))
-    )
+    timeout = aiohttp.ClientTimeout(total=float(os.environ.get("SCANNER_TIMEOUT_S", "20")))
     async with aiohttp.ClientSession(timeout=timeout) as session:
         scanner = MarketScanner(BinanceScanClient(session))
         logger.info(
@@ -456,9 +438,7 @@ async def main() -> None:
         try:
             await scanner.scan_once()
         except Exception as e:  # noqa: BLE001
-            logger.warning(
-                "startup scan failed (will retry in loop): %s: %s", type(e).__name__, e
-            )
+            logger.warning("startup scan failed (will retry in loop): %s: %s", type(e).__name__, e)
         await asyncio.gather(scanner.discovery_loop(), scanner.feed_loop())
 
 

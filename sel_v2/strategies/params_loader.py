@@ -8,6 +8,7 @@ Connection: reads POSTGRES_HOST / POSTGRES_PORT / POSTGRES_USER /
             POSTGRES_PASSWORD / POSTGRES_DB from environment, same as
             the rest of the Selene services.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -56,15 +57,14 @@ def load_strategy_params(
 
     def _as_float(v) -> float:
         if isinstance(v, str):
-            v = json.loads(v)   # jsonb arrives as a JSON string
+            v = json.loads(v)  # jsonb arrives as a JSON string
         return float(v)
 
     async def _fetch() -> dict[str, float]:
         conn = await asyncpg.connect(url)
         try:
             rows = await conn.fetch(
-                "SELECT param_key, param_value FROM v2_strategy_params "
-                "WHERE param_key = ANY($1)",
+                "SELECT param_key, param_value FROM v2_strategy_params WHERE param_key = ANY($1)",
                 list(key_for.keys()),
             )
             return {key_for[r["param_key"]]: _as_float(r["param_value"]) for r in rows}
@@ -105,8 +105,7 @@ def save_strategy_params(
         db_url:   Optional DSN override. Falls back to environment variables.
     """
     url = db_url or _default_db_url()
-    rows = [(f"{strategy}_{name}", json.dumps(float(value)))
-            for name, value in params.items()]
+    rows = [(f"{strategy}_{name}", json.dumps(float(value))) for name, value in params.items()]
 
     async def _store() -> None:
         conn = await asyncpg.connect(url)

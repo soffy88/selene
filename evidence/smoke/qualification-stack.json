@@ -1,0 +1,59 @@
+{
+  "generated_at": "2026-09-01T23:53:34.659552+00:00",
+  "status": "PARTIAL",
+  "docker": true,
+  "postgres_25432": true,
+  "redis_26379": true,
+  "exec_mode": "PAPER",
+  "limited_live": false,
+  "auto_mainnet": false,
+  "checks": [
+    {
+      "name": "wait_qualification",
+      "returncode": 0
+    },
+    {
+      "name": "scanner_to_gateway_chain",
+      "status": "PASS",
+      "impl": "in-process PAPER (compose has postgres+redis only)",
+      "stages": [
+        {
+          "name": "scanner",
+          "status": "PASS"
+        },
+        {
+          "name": "signal",
+          "status": "PASS"
+        },
+        {
+          "name": "portfolio",
+          "status": "PASS"
+        },
+        {
+          "name": "risk",
+          "status": "PASS"
+        },
+        {
+          "name": "execution",
+          "status": "PASS"
+        },
+        {
+          "name": "order_lifecycle",
+          "status": "PASS"
+        },
+        {
+          "name": "gateway",
+          "status": "PASS"
+        }
+      ],
+      "duplicate_side_effects": 0,
+      "exec_mode": "PAPER"
+    },
+    {
+      "name": "compose_service_set",
+      "status": "PARTIAL",
+      "detail": "isolated compose does not start scanner/signal/portfolio/risk/execution/gateway containers"
+    }
+  ],
+  "note": "Never claims full compose-smoke PASS unless scanner..gateway processes are up."
+}

@@ -7,18 +7,19 @@ Mount into an existing gateway:
 Endpoints read from TimescaleDB / Redis — they do NOT call the in-memory
 StateEngine directly, so they work across process boundaries.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 try:
     from fastapi import APIRouter, Depends, HTTPException, Query
+
     _FASTAPI_AVAILABLE = True
 except ImportError:
     _FASTAPI_AVAILABLE = False
@@ -34,6 +35,7 @@ if _FASTAPI_AVAILABLE:
     async def _get_pg_pool():
         """Yield a connection pool.  Override by providing pool at app startup."""
         import asyncpg
+
         url = os.environ.get(
             "TIMESCALE_URL",
             "postgresql://cw4:changeme@timescaledb:5432/cw4",
@@ -59,6 +61,8 @@ if _FASTAPI_AVAILABLE:
         finally:
             await client.aclose()
 
+    _REDIS_DEP = Depends(_get_redis)
+
     # ------------------------------------------------------------------
     # Endpoints
     # ------------------------------------------------------------------
@@ -66,7 +70,7 @@ if _FASTAPI_AVAILABLE:
     @router.get("/state/current")
     async def get_current_state(
         symbol: str = Query(default="BTCUSDT", description="Trading pair symbol"),
-        redis=Depends(_get_redis),
+        redis=_REDIS_DEP,
     ) -> dict:
         """
         Returns the current (latest) sel state for a symbol.
@@ -74,14 +78,17 @@ if _FASTAPI_AVAILABLE:
         Falls back to DB if key not present.
         """
         from .events import _CURRENT_STATE_KEY_PREFIX
+
         key = f"{_CURRENT_STATE_KEY_PREFIX}:{symbol}"
         raw = await redis.get(key)
         if raw is not None:
             return json.loads(raw)
 
         # Fallback: DB query
-        from .store import StateStore
         import asyncpg
+
+        from .store import StateStore
+
         url = os.environ.get(
             "TIMESCALE_URL",
             "postgresql://cw4:changeme@timescaledb:5432/cw4",
@@ -117,8 +124,10 @@ if _FASTAPI_AVAILABLE:
         limit: int = Query(default=200, ge=1, le=1000),
     ) -> list:
         """Returns state history for the past N hours."""
-        from .store import StateStore
         import asyncpg
+
+        from .store import StateStore
+
         url = os.environ.get(
             "TIMESCALE_URL",
             "postgresql://cw4:changeme@timescaledb:5432/cw4",
@@ -159,8 +168,10 @@ if _FASTAPI_AVAILABLE:
         Note: this report is generated from DB-persisted records, not the in-memory engine.
         For a richer report, callers should maintain their own StateEngine instance.
         """
-        from .store import StateStore
         import asyncpg
+
+        from .store import StateStore
+
         url = os.environ.get(
             "TIMESCALE_URL",
             "postgresql://cw4:changeme@timescaledb:5432/cw4",
@@ -202,10 +213,11 @@ if _FASTAPI_AVAILABLE:
         symbol: str = Query(default="BTCUSDT"),
         last_id: str = Query(default="0"),
         count: int = Query(default=100, ge=1, le=1000),
-        redis=Depends(_get_redis),
+        redis=_REDIS_DEP,
     ) -> dict:
         """Returns events from the Redis stream since last_id."""
         from .events import StateEventEmitter
+
         stream_key = f"{StateEventEmitter.STREAM_KEY_PREFIX}:{symbol}"
         try:
             raw_entries = await redis.xread(

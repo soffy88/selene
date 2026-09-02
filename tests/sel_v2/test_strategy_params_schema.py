@@ -11,6 +11,7 @@ sel_v2/data/, so it never caught this reader-side drift.
 
 No database is required — this parses SQL text on both sides.
 """
+
 from __future__ import annotations
 
 import re
@@ -62,8 +63,7 @@ def _selected_columns() -> set[str]:
     cannot bleed across statements into surrounding code. Aggregates like
     count(*) and a bare * select no named column and are ignored.
     """
-    pat = re.compile(
-        r"SELECT\s+([\w\s,]+?)\s+FROM\s+" + TABLE, re.IGNORECASE)
+    pat = re.compile(r"SELECT\s+([\w\s,]+?)\s+FROM\s+" + TABLE, re.IGNORECASE)
     cols: set[str] = set()
     for path in READER_FILES:
         for match in pat.finditer(path.read_text()):
@@ -92,6 +92,4 @@ def test_flat_key_value_shape():
     assert "param_key" in cols
     assert "param_value" in cols
     # the old versioned columns must not silently reappear
-    assert "param_name" not in cols, (
-        "v2_strategy_params reverted to the versioned param_name shape that breaks readers"
-    )
+    assert "param_name" not in cols, "v2_strategy_params reverted to the versioned param_name shape that breaks readers"

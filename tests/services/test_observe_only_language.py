@@ -5,14 +5,16 @@ surface used to say "建议切换到 AUTO_EXEC（全自动执行）" — both an
 nudge toward disabling the live-safety gate. It must now report threshold *status* only,
 never a switch recommendation.
 """
+
 from services.monitoring.report import generate_recommendation
 
 # Imperative advice phrasings that must never appear in the mode surface.
 _FORBIDDEN = ["建议切换", "推荐切换", "建议切换到", "should switch", "recommend switching"]
 
 
-def _inputs(mean_ic=0.06, mean_ir=1.5, avg_prob=0.62, per_day=3, stable=True,
-            total_n=40, fill_rate=0.9, dd=0.0, circuit=False):
+def _inputs(
+    mean_ic=0.06, mean_ir=1.5, avg_prob=0.62, per_day=3, stable=True, total_n=40, fill_rate=0.9, dd=0.0, circuit=False
+):
     return dict(
         ic_analysis={"mean_ic": mean_ic, "mean_ir": mean_ir, "total_n": total_n},
         signal_analysis={"per_day": per_day, "avg_win_prob": avg_prob},
@@ -35,8 +37,8 @@ def test_thresholds_met_reports_status_not_advice():
 
 def test_auto_exec_thresholds_never_phrased_as_advice():
     rec = generate_recommendation(
-        current_mode="CONFIRM_THEN_EXEC",
-        **_inputs(mean_ic=0.10, mean_ir=2.0, total_n=80, fill_rate=0.95))
+        current_mode="CONFIRM_THEN_EXEC", **_inputs(mean_ic=0.10, mean_ir=2.0, total_n=80, fill_rate=0.95)
+    )
     assert rec["next_mode"] == "AUTO_EXEC"
     for bad in _FORBIDDEN:
         assert bad not in rec["action"]

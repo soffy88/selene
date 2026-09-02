@@ -11,11 +11,10 @@ STUB: data-starved until ≥ 90-day funding history has accumulated.
 Signal fires when STE(funding→returns) exceeds the rolling 90th-percentile
 threshold, indicating funding rate is causally predictive of price.
 """
+
 from __future__ import annotations
 
 from collections import deque
-from datetime import datetime
-from typing import Optional
 
 import numpy as np
 
@@ -23,9 +22,9 @@ from sel_v2.observation_tools.base import BarFeatures, ObservationResult, Observ
 from sel_v2.offline.transfer_entropy import symbolic_te
 
 WINDOW_BARS = 30
-MIN_BARS = 15            # STE needs at least this many observations
-QUANTILE_WINDOW = 360    # bars for rolling 90th-pct
-DEFAULT_THRESHOLD = 0.10 # bits; seeded until history accumulates
+MIN_BARS = 15  # STE needs at least this many observations
+QUANTILE_WINDOW = 360  # bars for rolling 90th-pct
+DEFAULT_THRESHOLD = 0.10  # bits; seeded until history accumulates
 
 
 class TransferEntropyRolling(ObservationTool):
@@ -35,6 +34,7 @@ class TransferEntropyRolling(ObservationTool):
     STUB: signals are data-quality-gated.  Returns False when funding_rate
     history is insufficient.
     """
+
     tool_id = "T2"
 
     def __init__(
@@ -50,10 +50,7 @@ class TransferEntropyRolling(ObservationTool):
         self._funding_bars_seen = 0
 
     def is_ready(self) -> bool:
-        return (
-            len(self._returns) >= MIN_BARS
-            and len(self._funding) >= MIN_BARS
-        )
+        return len(self._returns) >= MIN_BARS and len(self._funding) >= MIN_BARS
 
     def _threshold(self) -> float:
         if len(self._ste_history) < 30:

@@ -42,9 +42,7 @@ from sel_v2.offline.ict_advanced import (
 from sel_v2.offline.lens_common import bh_adjust, compute_atr, mann_whitney_one_sided
 from sel_v2.offline.lens_study import MIN_GROUP_N, _load_joined
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("ict_advanced_study")
 
 REPORT_PATH = Path(__file__).resolve().parents[2] / "analysis" / "ict_advanced_v1.md"
@@ -121,21 +119,15 @@ async def run() -> dict:
         idx = [i for i, t in enumerate(times) if lohi(t)]
         sub_times = [times[i] for i in idx]
         sub = slot_stats(sub_times, close[idx], volume[idx])
-        meds = {
-            s: float(np.median(sub[s]["absret"])) if sub[s]["n"] else -1 for s in SLOTS
-        }
+        meds = {s: float(np.median(sub[s]["absret"])) if sub[s]["n"] else -1 for s in SLOTS}
         tops.append(max(meds, key=meds.get))
     kz_robust = tops[0] == tops[1] == top_slot
     kz_verdict = "pass" if (kw_ret.pvalue < 0.10 and kz_robust) else "fail"
-    logger.info(
-        "killzones: KW p=%.2g top=%02d robust=%s", kw_ret.pvalue, top_slot, kz_robust
-    )
+    logger.info("killzones: KW p=%.2g top=%02d robust=%s", kw_ret.pvalue, top_slot, kz_robust)
 
     # ── H-ICT4 sweep ─────────────────────────────────────────────────────────
     sweeps = detect_sweeps(high, low, close)
-    sw_up = _dir_test(
-        [fwd_return(close, e.idx) for e in sweeps if e.direction == 1], baseline, "less"
-    )
+    sw_up = _dir_test([fwd_return(close, e.idx) for e in sweeps if e.direction == 1], baseline, "less")
     sw_dn = _dir_test(
         [fwd_return(close, e.idx) for e in sweeps if e.direction == -1],
         baseline,
@@ -171,20 +163,12 @@ async def run() -> dict:
     # ── H-ICT6 order block ───────────────────────────────────────────────────
     obs = detect_order_blocks(high, low, close, atr)
     ob_up = _dir_test(
-        [
-            fwd_return(close, e.revisit_idx)
-            for e in obs
-            if e.direction == 1 and e.revisit_idx
-        ],
+        [fwd_return(close, e.revisit_idx) for e in obs if e.direction == 1 and e.revisit_idx],
         baseline,
         "greater",
     )
     ob_dn = _dir_test(
-        [
-            fwd_return(close, e.revisit_idx)
-            for e in obs
-            if e.direction == -1 and e.revisit_idx
-        ],
+        [fwd_return(close, e.revisit_idx) for e in obs if e.direction == -1 and e.revisit_idx],
         baseline,
         "less",
     )
@@ -222,8 +206,10 @@ async def run() -> dict:
             liq_start = min(liq_by_ts)
             era = [i for i, t in enumerate(times) if t >= liq_start]
             sweep_idx = {e.idx for e in sweeps}
+
             def _win(i):
                 return float(np.sum(liq_series[max(0, i - 2) : i + 3]))
+
             ev = [_win(i) for i in era if i in sweep_idx]
             base = [_win(i) for i in era if i not in sweep_idx]
             if len(ev) >= MIN_GROUP_N:
@@ -255,17 +241,12 @@ async def run() -> dict:
         if "p" in d:
             family.append((tag, d["p"]))
     qs = bh_adjust([p for _t, p in family])
-    fam_q = dict(zip([t for t, _ in family], qs))
+    fam_q = dict(zip([t for t, _ in family], qs, strict=False))
 
     def _row(tag, d):
         p = d.get("p")
-        return (
-            f"| {tag} | {d['n']} | {d['mean'] * 100:+.2f}% | {d['base_mean'] * 100:+.2f}% | "
-            + (
-                f"{p:.4f} | {fam_q.get(tag, float('nan')):.4f} |"
-                if p is not None
-                else "— | — |"
-            )
+        return f"| {tag} | {d['n']} | {d['mean'] * 100:+.2f}% | {d['base_mean'] * 100:+.2f}% | " + (
+            f"{p:.4f} | {fam_q.get(tag, float('nan')):.4f} |" if p is not None else "— | — |"
         )
 
     lines = [

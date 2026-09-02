@@ -1,4 +1,5 @@
 """§26.2 Section 8: 週末口座状態."""
+
 from __future__ import annotations
 
 from typing import Any

@@ -5,6 +5,7 @@ from the collector INSERTs, so every INSERT silently failed and the v2_* raw
 tables stayed empty. This test parses both sides and fails if they drift again.
 No database is required.
 """
+
 from __future__ import annotations
 
 import re
@@ -37,9 +38,7 @@ def _parse_schema_tables(sql: str) -> dict[str, set[str]]:
                     break
             cols_src.append(ch)
         # Strip inline "-- ..." comments before tokenising columns.
-        clean = "\n".join(
-            ln.split("--", 1)[0] for ln in "".join(cols_src).splitlines()
-        )
+        clean = "\n".join(ln.split("--", 1)[0] for ln in "".join(cols_src).splitlines())
         cols = set()
         for line in clean.split(","):
             line = line.strip()
@@ -72,16 +71,16 @@ INSERTS = _parse_collector_inserts()
 
 
 def test_schema_has_v2_raw_tables():
-    for t in ("v2_ticks", "v2_lob_snapshots", "v2_derivatives_snapshots",
-              "v2_liquidations", "v2_bars_4h"):
+    for t in ("v2_ticks", "v2_lob_snapshots", "v2_derivatives_snapshots", "v2_liquidations", "v2_bars_4h"):
         assert t in SCHEMA_TABLES, f"{t} missing from schema.sql"
 
 
 def test_inserts_found():
     # We expect at least the five raw-table collectors to be parsed.
     tables = {t for _, t, _ in INSERTS}
-    assert {"v2_ticks", "v2_lob_snapshots", "v2_derivatives_snapshots",
-            "v2_liquidations", "v2_bars_4h"}.issubset(tables)
+    assert {"v2_ticks", "v2_lob_snapshots", "v2_derivatives_snapshots", "v2_liquidations", "v2_bars_4h"}.issubset(
+        tables
+    )
 
 
 @pytest.mark.parametrize("fname,table,cols", INSERTS, ids=[f"{f}:{t}" for f, t, _ in INSERTS])

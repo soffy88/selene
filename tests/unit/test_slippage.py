@@ -1,7 +1,13 @@
 """Unit tests for three-component slippage model."""
-import pytest, sys, os, math
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
+import os
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from services.execution.slippage.model import SlippageModel
+
 
 class TestSlippageModel:
     def setup_method(self):
@@ -15,12 +21,12 @@ class TestSlippageModel:
         assert r.total == pytest.approx(r.spread + r.impact + r.timing, rel=0.01)
 
     def test_limit_vs_market_spread_cost(self):
-        r_limit  = self.model.estimate(10000, 0.80, 50_000_000, 0.04, "LIMIT")
+        r_limit = self.model.estimate(10000, 0.80, 50_000_000, 0.04, "LIMIT")
         r_market = self.model.estimate(10000, 0.80, 50_000_000, 0.04, "MARKET")
-        assert r_limit.spread < r_market.spread   # limit pays half-spread
+        assert r_limit.spread < r_market.spread  # limit pays half-spread
 
     def test_large_order_higher_impact(self):
-        r_small = self.model.estimate(10_000,    0.80, 50_000_000, 0.02, "MARKET")
+        r_small = self.model.estimate(10_000, 0.80, 50_000_000, 0.02, "MARKET")
         r_large = self.model.estimate(5_000_000, 0.80, 50_000_000, 0.02, "MARKET")
         assert r_large.impact > r_small.impact
 
@@ -33,7 +39,7 @@ class TestSlippageModel:
         assert 1.5 < ratio < 2.5
 
     def test_high_vol_higher_impact(self):
-        r_low  = self.model.estimate(100_000, 0.20, 50_000_000, 0.02, "MARKET")
+        r_low = self.model.estimate(100_000, 0.20, 50_000_000, 0.02, "MARKET")
         r_high = self.model.estimate(100_000, 1.20, 50_000_000, 0.02, "MARKET")
         assert r_high.impact > r_low.impact
 
@@ -55,8 +61,8 @@ class TestSlippageModel:
 
     def test_adjust_entry_price_buy(self):
         adjusted = self.model.adjust_entry_price(100.0, "BUY", slippage_pct=0.1)
-        assert adjusted > 100.0   # buy fills higher
+        assert adjusted > 100.0  # buy fills higher
 
     def test_adjust_entry_price_sell(self):
         adjusted = self.model.adjust_entry_price(100.0, "SELL", slippage_pct=0.1)
-        assert adjusted < 100.0   # sell fills lower
+        assert adjusted < 100.0  # sell fills lower

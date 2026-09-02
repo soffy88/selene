@@ -12,6 +12,7 @@ Aggregation mirrors paper_engine._load_microstructure_series:
   taker_vol = Σ size                      (total taken volume)
   lob_imb   = mean(bid_depth − ask_depth) (order-book imbalance)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -24,8 +25,7 @@ import asyncpg
 
 from sel_v2.db.migrations import apply_schema
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("ofi_persister")
 
 DB_URL = os.environ.get("DB_URL")
@@ -63,11 +63,9 @@ def merge_ofi_rows(flow_rows, lob_rows) -> list[dict]:
     leaves the other features None (unknown), never zero-filled."""
     out: dict = {}
     for r in flow_rows:
-        out[r["b"]] = {"time": r["b"], "taker_net": _f(r["net"]),
-                       "taker_vol": _f(r["vol"]), "lob_imb": None}
+        out[r["b"]] = {"time": r["b"], "taker_net": _f(r["net"]), "taker_vol": _f(r["vol"]), "lob_imb": None}
     for r in lob_rows:
-        d = out.setdefault(r["b"], {"time": r["b"], "taker_net": None,
-                                    "taker_vol": None, "lob_imb": None})
+        d = out.setdefault(r["b"], {"time": r["b"], "taker_net": None, "taker_vol": None, "lob_imb": None})
         d["lob_imb"] = _f(r["imb"])
     return [out[k] for k in sorted(out)]
 
@@ -84,8 +82,7 @@ async def persist_ofi(pool, symbol: str = SYMBOL, since: Optional[datetime] = No
         if rows:
             await conn.executemany(
                 _UPSERT_SQL,
-                [(r["time"], symbol, r["taker_net"], r["taker_vol"], r["lob_imb"])
-                 for r in rows],
+                [(r["time"], symbol, r["taker_net"], r["taker_vol"], r["lob_imb"]) for r in rows],
             )
     logger.info("persisted %d OFI feature rows for %s since %s", len(rows), symbol, since)
     return len(rows)

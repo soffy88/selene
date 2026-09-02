@@ -36,9 +36,7 @@ from datetime import datetime, timedelta, timezone
 import asyncpg
 import requests
 
-DB_URL = os.environ.get(
-    "DB_URL", "postgresql://selene_app:sel_app_2026@platform-postgres:5432/selene"
-)
+DB_URL = os.environ.get("DB_URL", "postgresql://selene_app:sel_app_2026@platform-postgres:5432/selene")
 BINANCE_FAPI = os.environ.get("BINANCE_FAPI_BASE", "https://fapi.binance.com")
 
 # Binance interval token per stored bar size, and its width in ms (for forward paging).
@@ -53,19 +51,13 @@ _LIMIT = 1500  # Binance klines hard cap per request.
 def _proxies() -> dict:
     # Prefer BINANCE_PROXY (known-good helios-proxy); fall back to HTTPS_PROXY only if it
     # isn't the dead OKX proxy. Keeps the backfill working on a plain run without a .env edit.
-    px = (
-        os.environ.get("BINANCE_PROXY")
-        or os.environ.get("HTTPS_PROXY")
-        or os.environ.get("https_proxy")
-    )
+    px = os.environ.get("BINANCE_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
     if px and "172.23.224.1" in px:  # the dead OKX proxy from .env
         px = "http://helios-proxy:2080"
     return {"https": px, "http": px} if px else {}
 
 
-def _fetch(
-    symbol: str, interval: str, start_ms: int, end_ms: int, *, retries: int = 4
-) -> list[list]:
+def _fetch(symbol: str, interval: str, start_ms: int, end_ms: int, *, retries: int = 4) -> list[list]:
     """One page of klines [openTime, o, h, l, c, v, closeTime, ...] ascending by time.
     Retries on the flaky proxy's intermittent TLS reset/timeout before giving up."""
     url = (
@@ -86,9 +78,7 @@ def _fetch(
 
 async def backfill(stored_symbol: str, fetch_symbol: str, bar: str, years: int) -> int:
     interval, step_ms = _INTERVAL[bar]
-    start_ms = int(
-        (datetime.now(timezone.utc) - timedelta(days=365 * years)).timestamp() * 1000
-    )
+    start_ms = int((datetime.now(timezone.utc) - timedelta(days=365 * years)).timestamp() * 1000)
     end_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
 
     conn = await asyncpg.connect(DB_URL)
@@ -138,9 +128,7 @@ async def backfill(stored_symbol: str, fetch_symbol: str, bar: str, years: int) 
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(
-        description="Backfill v2_bars_4h from Binance perp klines."
-    )
+    p = argparse.ArgumentParser(description="Backfill v2_bars_4h from Binance perp klines.")
     p.add_argument("--symbol", default="BTC-USDT", help="stored base symbol")
     p.add_argument(
         "--fetch-symbol",
@@ -184,9 +172,7 @@ def main() -> None:
         f"(symbol={args.symbol}, source=binance)"
     )
     total = asyncio.run(backfill(args.symbol, fetch_symbol, args.bar, args.years))
-    print(
-        f"Done. Rows processed: {total} (existing rows kept via ON CONFLICT DO NOTHING)."
-    )
+    print(f"Done. Rows processed: {total} (existing rows kept via ON CONFLICT DO NOTHING).")
 
 
 if __name__ == "__main__":

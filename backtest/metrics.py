@@ -14,6 +14,7 @@ Addresses audit findings on backtest/engine.py:
 
 Crypto trades 24/7, so annualization uses 365 calendar days, not 252.
 """
+
 from __future__ import annotations
 
 import math
@@ -35,27 +36,48 @@ def _phi_inv(p: float) -> float:
         return -math.inf
     if p >= 1.0:
         return math.inf
-    a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
-         1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00]
-    b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
-         6.680131188771972e+01, -1.328068155288572e+01]
-    c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
-         -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00]
-    d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
-         3.754408661907416e+00]
+    a = [
+        -3.969683028665376e01,
+        2.209460984245205e02,
+        -2.759285104469687e02,
+        1.383577518672690e02,
+        -3.066479806614716e01,
+        2.506628277459239e00,
+    ]
+    b = [
+        -5.447609879822406e01,
+        1.615858368580409e02,
+        -1.556989798598866e02,
+        6.680131188771972e01,
+        -1.328068155288572e01,
+    ]
+    c = [
+        -7.784894002430293e-03,
+        -3.223964580411365e-01,
+        -2.400758277161838e00,
+        -2.549732539343734e00,
+        4.374664141464968e00,
+        2.938163982698783e00,
+    ]
+    d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e00, 3.754408661907416e00]
     plow, phigh = 0.02425, 1 - 0.02425
     if p < plow:
         q = math.sqrt(-2 * math.log(p))
-        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / \
-               ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+            (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1
+        )
     if p <= phigh:
         q = p - 0.5
         r = q * q
-        return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / \
-               (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
+        return (
+            (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5])
+            * q
+            / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
+        )
     q = math.sqrt(-2 * math.log(1 - p))
-    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / \
-            ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+        (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1
+    )
 
 
 def daily_returns_from_trades(trades, initial_capital: float) -> list[float]:
@@ -112,13 +134,14 @@ def _moments(returns):
     std = math.sqrt(var)
     if std == 0:
         return mean, 0.0, 0.0, 3.0
-    skew = (sum((r - mean) ** 3 for r in returns) / n) / std ** 3
-    kurt = (sum((r - mean) ** 4 for r in returns) / n) / std ** 4
+    skew = (sum((r - mean) ** 3 for r in returns) / n) / std**3
+    kurt = (sum((r - mean) ** 4 for r in returns) / n) / std**4
     return mean, std, skew, kurt
 
 
-def probabilistic_sharpe_ratio(returns, benchmark_sr: float = 0.0,
-                               periods_per_year: int = TRADING_DAYS_PER_YEAR) -> float:
+def probabilistic_sharpe_ratio(
+    returns, benchmark_sr: float = 0.0, periods_per_year: int = TRADING_DAYS_PER_YEAR
+) -> float:
     """P(true Sharpe > benchmark) given observed SR, skew, kurtosis and sample size.
 
     Bailey & López de Prado (2014). `benchmark_sr` is the annualized hurdle Sharpe.
@@ -133,15 +156,16 @@ def probabilistic_sharpe_ratio(returns, benchmark_sr: float = 0.0,
     # Convert annualized Sharpe to per-observation for the PSR formula.
     sr = sr_ann / math.sqrt(periods_per_year)
     sr_b = benchmark_sr / math.sqrt(periods_per_year)
-    denom = 1.0 - skew * sr + ((kurt - 1.0) / 4.0) * sr ** 2
+    denom = 1.0 - skew * sr + ((kurt - 1.0) / 4.0) * sr**2
     if denom <= 0:
         return 0.0
     z = (sr - sr_b) * math.sqrt(n - 1) / math.sqrt(denom)
     return _phi(z)
 
 
-def deflated_sharpe_ratio(returns, n_trials: int, sr_trials_std: float | None = None,
-                          periods_per_year: int = TRADING_DAYS_PER_YEAR) -> float:
+def deflated_sharpe_ratio(
+    returns, n_trials: int, sr_trials_std: float | None = None, periods_per_year: int = TRADING_DAYS_PER_YEAR
+) -> float:
     """Deflated Sharpe Ratio: PSR against the expected maximum Sharpe under `n_trials`
     independent backtest configurations. Guards against selection bias / multiple testing.
 
@@ -155,7 +179,7 @@ def deflated_sharpe_ratio(returns, n_trials: int, sr_trials_std: float | None = 
     sr = sr_ann / math.sqrt(periods_per_year)
     _, _, skew, kurt = _moments(returns)
     if sr_trials_std is None:
-        denom = 1.0 - skew * sr + ((kurt - 1.0) / 4.0) * sr ** 2
+        denom = 1.0 - skew * sr + ((kurt - 1.0) / 4.0) * sr**2
         var_sr = max(denom, 1e-12) / (n - 1)
         std_sr_ann = math.sqrt(var_sr) * math.sqrt(periods_per_year)
     else:
@@ -165,14 +189,14 @@ def deflated_sharpe_ratio(returns, n_trials: int, sr_trials_std: float | None = 
         # (Guards _phi_inv(1 - 1/1) = _phi_inv(0) = -inf, which would otherwise yield DSR=1.0.)
         return probabilistic_sharpe_ratio(returns, 0.0, periods_per_year)
     # Expected max of N standard normals (Gumbel approximation).
-    e_max = ((1 - EULER_MASCHERONI) * _phi_inv(1 - 1.0 / n_trials)
-             + EULER_MASCHERONI * _phi_inv(1 - 1.0 / (n_trials * math.e)))
+    e_max = (1 - EULER_MASCHERONI) * _phi_inv(1 - 1.0 / n_trials) + EULER_MASCHERONI * _phi_inv(
+        1 - 1.0 / (n_trials * math.e)
+    )
     sr_star_ann = std_sr_ann * e_max
     return probabilistic_sharpe_ratio(returns, sr_star_ann, periods_per_year)
 
 
-def bootstrap_sharpe_ci(returns, n_boot: int = 1000, seed: int = 42,
-                        periods_per_year: int = TRADING_DAYS_PER_YEAR):
+def bootstrap_sharpe_ci(returns, n_boot: int = 1000, seed: int = 42, periods_per_year: int = TRADING_DAYS_PER_YEAR):
     """Bootstrap CI for annualized Sharpe by resampling daily returns with replacement.
 
     Returns (p5, p50, p95). This is the legitimate edge-significance / stability test that
@@ -188,13 +212,10 @@ def bootstrap_sharpe_ci(returns, n_boot: int = 1000, seed: int = 42,
         sample = [returns[rng.randrange(n)] for _ in range(n)]
         sharpes.append(sharpe_ratio(sample, periods_per_year))
     sharpes.sort()
-    return (sharpes[int(0.05 * n_boot)],
-            sharpes[int(0.50 * n_boot)],
-            sharpes[int(0.95 * n_boot)])
+    return (sharpes[int(0.05 * n_boot)], sharpes[int(0.50 * n_boot)], sharpes[int(0.95 * n_boot)])
 
 
-def funding_cost_pct(funding_rates: dict, entry_time_ms: int, exit_time_ms: int,
-                     side: str) -> float:
+def funding_cost_pct(funding_rates: dict, entry_time_ms: int, exit_time_ms: int, side: str) -> float:
     """Signed funding cost over a holding period, as a fraction of notional.
 
     `funding_rates` maps funding_time (unix ms) -> rate. Longs pay when the rate is positive;

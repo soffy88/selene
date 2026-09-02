@@ -1,6 +1,7 @@
 """
 Shared pure quant helpers usable by any service without creating cross-service imports.
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -9,8 +10,7 @@ from typing import Optional
 FUNDING_HOURS = 8.0
 
 
-def funding_adjusted_cost(base_cost: float, funding_rate: Optional[float],
-                          hold_hours: float, side: str) -> float:
+def funding_adjusted_cost(base_cost: float, funding_rate: Optional[float], hold_hours: float, side: str) -> float:
     """Fold expected perpetual funding into a cost term (e.g. the Kelly `cost`).
 
     Longs pay funding when the rate is positive; shorts receive it. Returns base_cost plus the

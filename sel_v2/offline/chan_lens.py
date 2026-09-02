@@ -150,16 +150,8 @@ def classify_retests(
             else:
                 cls = "C"
         f_end = w_end + FWD_RETURN_BARS
-        fwd = (
-            ev.direction * float(np.log(close[f_end] / close[w_end]))
-            if f_end < n
-            else None
-        )
-        out.append(
-            RetestOutcome(
-                event=ev, retest_class=cls, retest_extreme=retest, fwd_ret_24h=fwd
-            )
-        )
+        fwd = ev.direction * float(np.log(close[f_end] / close[w_end])) if f_end < n else None
+        out.append(RetestOutcome(event=ev, retest_class=cls, retest_extreme=retest, fwd_ret_24h=fwd))
     return out
 
 
@@ -175,9 +167,7 @@ class DivergenceCandidate:
     price_exceeds: bool  # close beyond the prior leg's extreme (always True here)
 
 
-def detect_divergences(
-    legs: list[SurgingLeg], close: np.ndarray
-) -> tuple[list[DivergenceCandidate], list[int]]:
+def detect_divergences(legs: list[SurgingLeg], close: np.ndarray) -> tuple[list[DivergenceCandidate], list[int]]:
     """Per-bar divergence candidates per the pool definition: inside a Surging leg,
     price extends beyond the previous SAME-direction leg's extreme close while the
     current leg's per-bar momentum has decayed below DIVERGENCE_MOMENTUM_RATIO of
@@ -192,20 +182,13 @@ def detect_divergences(
         if prior is not None and prior.end_idx > prior.start_idx:
             testable.append(leg.leg_id)
             prior_bars = prior.end_idx - prior.start_idx
-            prior_m = (
-                abs(float(np.log(close[prior.end_idx] / close[prior.start_idx])))
-                / prior_bars
-            )
+            prior_m = abs(float(np.log(close[prior.end_idx] / close[prior.start_idx]))) / prior_bars
             prior_extreme = float(close[prior.end_idx])
             # skip the leg's entry bar: zero bars elapsed → momentum undefined
             for i in range(leg.start_idx + 1, leg.end_idx + 1):
                 bars = i - leg.start_idx
                 m = abs(float(np.log(close[i] / close[leg.start_idx]))) / bars
-                exceeds = (
-                    close[i] > prior_extreme
-                    if leg.direction == 1
-                    else close[i] < prior_extreme
-                )
+                exceeds = close[i] > prior_extreme if leg.direction == 1 else close[i] < prior_extreme
                 if exceeds and prior_m > 0 and m < DIVERGENCE_MOMENTUM_RATIO * prior_m:
                     candidates.append(
                         DivergenceCandidate(

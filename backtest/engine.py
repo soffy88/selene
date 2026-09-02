@@ -9,17 +9,15 @@ WFO Protocol:
   - Results: concatenated OOS periods = true performance curve
 """
 
-import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 from typing import Optional
 
 from backtest.costs import (
-    round_trip_cost_pct,
     capacity_capped_notional,
     cost_params_for,
+    round_trip_cost_pct,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,16 +26,12 @@ logger = logging.getLogger(__name__)
 WFO_TRAIN_DAYS = 90
 WFO_TEST_DAYS = 30
 WFO_STEP_DAYS = 30
-WFO_EMBARGO_DAYS = (
-    2  # purge gap between train end and test start (avoid label spillover)
-)
+WFO_EMBARGO_DAYS = 2  # purge gap between train end and test start (avoid label spillover)
 ATR_STOP_MULT = 2.0
 ATR_TAKE_MULT = 3.0
 MAX_HOLD_HOURS = 24
 MIN_OOS_TRADES = 100  # below this the Sharpe/DD estimates are statistically unreliable
-MIN_TRAIN_TRADES = (
-    10  # a param config needs at least this many train trades to be selectable
-)
+MIN_TRAIN_TRADES = 10  # a param config needs at least this many train trades to be selectable
 
 
 def default_param_grid() -> list[dict]:
@@ -93,9 +87,7 @@ class TradeRecord:
     exit_reason: str
     slippage_pct: float = 0.0
     fee_pct: float = 0.0004
-    funding_cost_pct: float = (
-        0.0  # signed fraction of notional; +ve = cost to the position
-    )
+    funding_cost_pct: float = 0.0  # signed fraction of notional; +ve = cost to the position
 
     @property
     def pnl_pct(self) -> float:
@@ -104,9 +96,7 @@ class TradeRecord:
             if self.side == "LONG"
             else (self.entry_price - self.exit_price) / self.entry_price
         )
-        return (
-            gross - self.slippage_pct / 100 - self.fee_pct * 2 - self.funding_cost_pct
-        )
+        return gross - self.slippage_pct / 100 - self.fee_pct * 2 - self.funding_cost_pct
 
     @property
     def pnl_usd(self) -> float:
@@ -233,9 +223,7 @@ class WFOEngine:
         # Average daily volume in USD (1h candles → ×24) for the cost/capacity model.
         import statistics
 
-        bar_notional = [
-            c.get("volume", 0.0) * c["close"] for c in candles if c.get("volume")
-        ]
+        bar_notional = [c.get("volume", 0.0) * c["close"] for c in candles if c.get("volume")]
         adv_usd = statistics.median(bar_notional) * 24 if bar_notional else 0.0
 
         train_bars = self.config.train_days * 24  # assuming 1h candles
@@ -303,9 +291,7 @@ class WFOEngine:
 
             if oos_trades:
                 all_oos_trades.extend(oos_trades)
-                pm = self._calc_period_metrics(
-                    oos_trades, times[test_start], times[test_end - 1], True
-                )
+                pm = self._calc_period_metrics(oos_trades, times[test_start], times[test_end - 1], True)
                 periods.append(pm)
 
             start += step_bars
@@ -320,18 +306,14 @@ class WFOEngine:
             # CPCV path-Sharpe distribution + PBO over the full sample (the
             # combinatorial OOS evidence a single WFO replay cannot produce).
             cpcv_params = selected_params[0] if selected_params else grid[0]
-            result.cpcv = self._maybe_run_cpcv(
-                symbol, closes, highs, lows, times, fr_map, cpcv_params, adv_usd
-            )
+            result.cpcv = self._maybe_run_cpcv(symbol, closes, highs, lows, times, fr_map, cpcv_params, adv_usd)
             if result.cpcv:
                 result.pbo = result.cpcv.get("pbo")
             self._check_pass(result)
 
         return result
 
-    def _maybe_run_cpcv(
-        self, symbol, closes, highs, lows, times, fr_map, params, adv_usd
-    ) -> Optional[dict]:
+    def _maybe_run_cpcv(self, symbol, closes, highs, lows, times, fr_map, params, adv_usd) -> Optional[dict]:
         """Run CPCV over the full sample, returning its summary or None. Never
         propagates: a missing oskill or any pipeline mismatch must not break the
         WFO result — CPCV is supplementary evidence."""
@@ -392,7 +374,6 @@ class WFOEngine:
     ) -> list[TradeRecord]:
         """Simulate trading over one window with a fixed parameter set."""
         from services.signal.regime.detector import RegimeDetector, _calc_atr
-        from shared.models.signal import Regime
 
         atr_stop = params["atr_stop"]
         atr_take = params["atr_take"]
@@ -427,15 +408,11 @@ class WFOEngine:
 
             # Check open position exits
             if open_pos:
-                trade = self._check_exit(
-                    open_pos, highs[ci], lows[ci], price, t, ci - open_pos["entry_ci"]
-                )
+                trade = self._check_exit(open_pos, highs[ci], lows[ci], price, t, ci - open_pos["entry_ci"])
                 if trade:
                     from backtest.metrics import funding_cost_pct
 
-                    trade.funding_cost_pct = funding_cost_pct(
-                        fr_map, trade.entry_time, trade.exit_time, trade.side
-                    )
+                    trade.funding_cost_pct = funding_cost_pct(fr_map, trade.entry_time, trade.exit_time, trade.side)
                     equity += trade.pnl_usd
                     trades.append(trade)
                     open_pos = None
@@ -464,12 +441,8 @@ class WFOEngine:
                     continue
 
                 side = sig["side"]
-                stop = (
-                    price - atr * atr_stop if side == "LONG" else price + atr * atr_stop
-                )
-                take = (
-                    price + atr * atr_take if side == "LONG" else price - atr * atr_take
-                )
+                stop = price - atr * atr_stop if side == "LONG" else price + atr * atr_stop
+                take = price + atr * atr_take if side == "LONG" else price - atr * atr_take
 
                 qty = (equity * self.config.risk_pct) / (atr * atr_stop)
                 # Capacity: clamp notional to a share of ADV (item #14).
@@ -478,9 +451,7 @@ class WFOEngine:
                 if capped < notional and price > 0:
                     qty = capped / price
                     notional = capped
-                cost_pct = round_trip_cost_pct(
-                    notional, adv_usd, **cost_params_for(symbol)
-                )
+                cost_pct = round_trip_cost_pct(notional, adv_usd, **cost_params_for(symbol))
                 open_pos = {
                     "symbol": symbol,
                     "type": sig["type"],
@@ -499,9 +470,7 @@ class WFOEngine:
         return trades
 
     @staticmethod
-    def default_signal_fn(
-        closes, highs, lows, price, funding_rate, regime, params
-    ) -> list[dict]:
+    def default_signal_fn(closes, highs, lows, price, funding_rate, regime, params) -> list[dict]:
         """Built-in parameterised rule set. The thresholds in ``params`` are what
         WFO optimises in-sample (see ``default_param_grid``)."""
         from shared.models.signal import Regime
@@ -530,11 +499,7 @@ class WFOEngine:
                 signals.append({"type": "SHORT_SETUP", "side": "SHORT"})
 
         # TREND_CONFIRM (only in TRENDING_UP)
-        if (
-            regime == Regime.TRENDING_UP
-            and rsi > params["rsi_trend"]
-            and abs(funding_rate) < 0.05
-        ):
+        if regime == Regime.TRENDING_UP and rsi > params["rsi_trend"] and abs(funding_rate) < 0.05:
             signals.append({"type": "TREND_CONFIRM", "side": "LONG"})
 
         return signals
@@ -571,9 +536,7 @@ class WFOEngine:
             )
             if len(trades) < MIN_TRAIN_TRADES:
                 continue
-            daily = metrics.daily_returns_from_trades(
-                trades, self.config.initial_capital
-            )
+            daily = metrics.daily_returns_from_trades(trades, self.config.initial_capital)
             sharpe = metrics.sharpe_ratio(daily)
             if sharpe > best_sharpe:
                 best_sharpe, best = sharpe, params
@@ -629,9 +592,7 @@ class WFOEngine:
             )
         return None
 
-    def _calc_period_metrics(
-        self, trades: list[TradeRecord], t_start: int, t_end: int, is_oos: bool
-    ) -> PeriodMetrics:
+    def _calc_period_metrics(self, trades: list[TradeRecord], t_start: int, t_end: int, is_oos: bool) -> PeriodMetrics:
         from backtest import metrics
 
         cap = self.config.initial_capital
@@ -678,17 +639,13 @@ class WFOEngine:
         result.oos_sharpe = metrics.sharpe_ratio(daily)
         result.oos_max_dd = metrics.max_drawdown_net(trades, cap)
         result.oos_total_return = sum(pnls) / cap
-        result.oos_calmar = (
-            result.oos_total_return / result.oos_max_dd if result.oos_max_dd > 0 else 0
-        )
+        result.oos_calmar = result.oos_total_return / result.oos_max_dd if result.oos_max_dd > 0 else 0
 
         # Significance: PSR vs 0, and DSR deflated by the number of parameter
         # configurations actually searched (result.n_trials = grid size). This is
         # the statistically correct trial count for the Deflated Sharpe Ratio.
         result.psr = metrics.probabilistic_sharpe_ratio(daily)
-        result.dsr = metrics.deflated_sharpe_ratio(
-            daily, n_trials=max(1, result.n_trials)
-        )
+        result.dsr = metrics.deflated_sharpe_ratio(daily, n_trials=max(1, result.n_trials))
 
     def _monte_carlo(self, result: WFOResult, runs: int = 1000) -> None:
         """Bootstrap CI for annualized Sharpe by resampling daily returns with replacement.
@@ -714,9 +671,7 @@ class WFOEngine:
         if result.oos_max_dd > 0.15:
             reasons.append(f"Max DD {result.oos_max_dd:.1%} > 15%")
         if result.oos_n_trades < self.config.min_oos_trades:
-            reasons.append(
-                f"Only {result.oos_n_trades} OOS trades (< {self.config.min_oos_trades})"
-            )
+            reasons.append(f"Only {result.oos_n_trades} OOS trades (< {self.config.min_oos_trades})")
         if result.mc_sharpe_p5 < 0.5:
             reasons.append(f"Bootstrap p5 Sharpe {result.mc_sharpe_p5:.2f} < 0.5")
         # PSR (vs SR=0) and DSR (deflated by the number of parameter configs searched,

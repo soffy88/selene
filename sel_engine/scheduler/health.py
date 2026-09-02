@@ -7,6 +7,7 @@ Called by Docker healthcheck:
 Returns True if the scheduler ran within the last 2 hours (healthy window is
 intentionally wider than 1H to tolerate a single missed trigger on restart).
 """
+
 import asyncio
 import datetime
 import os

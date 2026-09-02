@@ -4,8 +4,6 @@ import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 import sel_v2.tools.epoch as epoch_mod
 
 
@@ -60,9 +58,7 @@ def test_fingerprint_ignores_non_py_and_pycache(tmp_path, monkeypatch):
     fp_before = epoch_mod.compute_fingerprint()
 
     (root / "sel_v2" / "strategies" / "README.md").write_text("changed docs\n")
-    (root / "sel_v2" / "states" / "__pycache__" / "a.cpython-311.pyc").write_bytes(
-        b"\xff"
-    )
+    (root / "sel_v2" / "states" / "__pycache__" / "a.cpython-311.pyc").write_bytes(b"\xff")
     fp_after = epoch_mod.compute_fingerprint()
 
     assert fp_before == fp_after

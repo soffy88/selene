@@ -66,9 +66,7 @@ class SqliteLedger:
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
 
-    def remember_write(
-        self, request_id: str, *, status_code: int, body: Any, path: str, actor: str
-    ) -> None:
+    def remember_write(self, request_id: str, *, status_code: int, body: Any, path: str, actor: str) -> None:
         with self._lock:
             existing = self._conn.execute(
                 "SELECT request_id FROM write_idempotency WHERE request_id = ?",

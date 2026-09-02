@@ -29,9 +29,7 @@ class StructureEvent:
     kind: str  # BOS_UP / BOS_DOWN / CHOCH_UP / CHOCH_DOWN
 
 
-def structure_series(
-    close: np.ndarray, atr: np.ndarray
-) -> tuple[list[str], list[StructureEvent]]:
+def structure_series(close: np.ndarray, atr: np.ndarray) -> tuple[list[str], list[StructureEvent]]:
     """Drive a SwingStructure machine over the full series. Swings are fed in at
     their confirm_idx (BEFORE the same bar's break check — both are knowable at
     that bar's close). Returns (per-bar structure state, event list)."""
@@ -67,18 +65,12 @@ def vpin_pilot_stats(vpin_series: list[tuple], bucket_minutes: list[float]) -> d
     out: dict = {"n_buckets_total": len(vpin_series), "n_vpin_points": len(side)}
     if len(side) == 0:
         return out
-    out["distribution"] = {
-        f"p{q}": float(np.percentile(side, q)) for q in (50, 90, 95, 97)
-    }
+    out["distribution"] = {f"p{q}": float(np.percentile(side, q)) for q in (50, 90, 95, 97)}
     out["max"] = float(np.max(side))
     if len(side) > 1:
         a, b = side[:-1], side[1:]
         denom = np.std(a) * np.std(b)
-        out["lag1_autocorr"] = (
-            float(np.mean((a - a.mean()) * (b - b.mean())) / denom)
-            if denom > 0
-            else None
-        )
+        out["lag1_autocorr"] = float(np.mean((a - a.mean()) * (b - b.mean())) / denom) if denom > 0 else None
     if len(pairs) > 1:
         pv = np.array([v for v, _b in pairs])
         pb = np.array([b for _v, b in pairs])

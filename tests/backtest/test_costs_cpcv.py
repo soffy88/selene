@@ -1,13 +1,16 @@
 """Cost model + CPCV/PBO tests (optimization item #14)."""
+
 import math
 
 import pytest
 
 from backtest.costs import (
-    one_side_cost_pct, round_trip_cost_pct, capacity_capped_notional,
     DEFAULT_TAKER_FEE,
+    capacity_capped_notional,
+    one_side_cost_pct,
+    round_trip_cost_pct,
 )
-from backtest.cpcv import pbo_proxy, pbo_from_stats, run_cpcv
+from backtest.cpcv import pbo_from_stats, pbo_proxy, run_cpcv
 
 
 # ── cost model ──
@@ -70,7 +73,7 @@ def test_pbo_from_stats_normal_approx():
 
 # ── CPCV integration (oskill installed in dev/CI) ──
 def test_run_cpcv_returns_paths():
-    oskill = pytest.importorskip("oskill")
+    pytest.importorskip("oskill")
 
     def bt(train_idx, test_idx):
         # mildly profitable, with variance so Sharpe is finite

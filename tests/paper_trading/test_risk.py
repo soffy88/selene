@@ -3,20 +3,21 @@
 Each test targets a single risk rule.  All fixtures use synthetic objects so
 no database or network connection is required.
 """
+
 from __future__ import annotations
 
-import pytest
 from datetime import datetime, timedelta, timezone
 
-from decision.config import load_config, RiskConfig
-from paper_trading.risk import RiskGate, RiskCheckResult
+import pytest
+
+from decision.config import RiskConfig, load_config
+from paper_trading.risk import RiskCheckResult, RiskGate
 from paper_trading.schema import (
     AccountState,
     DecisionAction,
     Position,
     PositionSide,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -94,6 +95,7 @@ def _check(
 # Test 1: CASCADE always fires regardless of other state
 # ---------------------------------------------------------------------------
 
+
 class TestCascadeRule:
     def test_cascade_forces_close(self, risk_cfg):
         gate = _gate(risk_cfg)
@@ -118,6 +120,7 @@ class TestCascadeRule:
 # ---------------------------------------------------------------------------
 # Test 2: Signal lag
 # ---------------------------------------------------------------------------
+
 
 class TestSignalLagRule:
     def test_lag_beyond_threshold_fires(self, risk_cfg):
@@ -144,6 +147,7 @@ class TestSignalLagRule:
 # ---------------------------------------------------------------------------
 # Test 3: Single trade max loss
 # ---------------------------------------------------------------------------
+
 
 class TestSingleTradeMaxLoss:
     def test_large_loss_fires(self, risk_cfg):
@@ -175,12 +179,11 @@ class TestSingleTradeMaxLoss:
 # Test 4: Daily drawdown
 # ---------------------------------------------------------------------------
 
+
 class TestDailyDrawdownRule:
     def test_exceeded_fires_no_action(self, risk_cfg):
         gate = _gate(risk_cfg)
-        acc = _account(
-            daily_drawdown_pct=risk_cfg.max_daily_drawdown_pct + 0.01
-        )
+        acc = _account(daily_drawdown_pct=risk_cfg.max_daily_drawdown_pct + 0.01)
         result = _check(gate, account=acc)
         assert result.passed is False
         assert result.force_action == DecisionAction.NO_ACTION
@@ -196,6 +199,7 @@ class TestDailyDrawdownRule:
 # ---------------------------------------------------------------------------
 # Test 5: Consecutive loss pause (already in pause window)
 # ---------------------------------------------------------------------------
+
 
 class TestConsecutiveLossPause:
     def test_open_blocked_during_pause(self, risk_cfg):
@@ -224,6 +228,7 @@ class TestConsecutiveLossPause:
 # Test 6: Consecutive loss stop triggers new pause
 # ---------------------------------------------------------------------------
 
+
 class TestConsecutiveLossStop:
     def test_stop_sets_pause_until(self, risk_cfg):
         gate = _gate(risk_cfg)
@@ -249,6 +254,7 @@ class TestConsecutiveLossStop:
 # ---------------------------------------------------------------------------
 # Test 7: All rules pass → RiskCheckResult.passed is True
 # ---------------------------------------------------------------------------
+
 
 class TestAllRulesPass:
     def test_clean_account_passes(self, risk_cfg):
@@ -276,6 +282,7 @@ class TestAllRulesPass:
 # Test 8: CASCADE fires even during 24H pause (priority override)
 # ---------------------------------------------------------------------------
 
+
 class TestCascadeOverridesPause:
     def test_cascade_during_pause_still_closes(self, risk_cfg):
         gate = _gate(risk_cfg)
@@ -293,6 +300,7 @@ class TestCascadeOverridesPause:
 # ---------------------------------------------------------------------------
 # Test 9: to_state_dict / from_state_dict round-trip
 # ---------------------------------------------------------------------------
+
 
 class TestStatePersistence:
     def test_roundtrip_with_pause(self, risk_cfg):
@@ -327,6 +335,7 @@ class TestStatePersistence:
 # Test 10: recent_events returns correct count
 # ---------------------------------------------------------------------------
 
+
 class TestRecentEvents:
     def test_returns_at_most_n_events(self, risk_cfg):
         gate = _gate(risk_cfg)
@@ -359,6 +368,7 @@ class TestRecentEvents:
 # ---------------------------------------------------------------------------
 # Test 11: Rule 2 subtype (missing_data vs no_match)
 # ---------------------------------------------------------------------------
+
 
 class TestSignalLagRule2Subtype:
     """Rule 2 tags the correct subtype based on none_reason distribution in lag window."""
@@ -445,6 +455,7 @@ class TestSignalLagRule2Subtype:
 # ---------------------------------------------------------------------------
 # Test 12: Candidate B — full behaviour verification
 # ---------------------------------------------------------------------------
+
 
 class TestCandidateB:
     """Candidate B: missing_data → HOLD + alert; no_match → CLOSE. Rule 1 priority."""

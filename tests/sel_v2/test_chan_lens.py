@@ -72,9 +72,7 @@ def _mk_retest_case(retest_low, tail_bars=FWD_RETURN_BARS + 1):
     tail = [107.0 + i for i in range(tail_bars)]
     close = np.concatenate([close, post_close, tail])
     low = np.concatenate([low, post_low, [t - 0.5 for t in tail]])
-    high = np.concatenate(
-        [high, [c + 0.5 for c in post_close], [t + 0.5 for t in tail]]
-    )
+    high = np.concatenate([high, [c + 0.5 for c in post_close], [t + 0.5 for t in tail]])
     atr = compute_atr(high, low, close)
     # post-jump ATR inflation can legitimately re-form a wider consolidation later
     # in this synthetic; the test classifies the known first breakout only

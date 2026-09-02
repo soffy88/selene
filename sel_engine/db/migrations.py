@@ -1,4 +1,5 @@
 """Apply sel_engine DB schema migrations via asyncpg."""
+
 import logging
 import os
 from pathlib import Path
@@ -41,4 +42,5 @@ async def run_migrations() -> None:
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(run_migrations())

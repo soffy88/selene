@@ -2,15 +2,15 @@
 Tests for sel_engine Wave 1 feature computations.
 All tests use synthetic data only — no DB or Redis connections required.
 """
+
+import importlib.util
 import math
 from datetime import datetime, timezone
 
 import numpy as np
-import importlib.util
-
 import pytest
 
-from sel_engine.features.derived import compute_LV, compute_hurst_rs
+from sel_engine.features.derived import compute_hurst_rs, compute_LV
 from sel_engine.features.liquidity import (
     compute_H_change_rate_std,
     compute_H_from_samples,
@@ -21,9 +21,8 @@ from sel_engine.features.price import (
     compute_price_features,
     compute_sigma_p_d2,
 )
-from sel_engine.features.schema import FeatureAvailability, FeatureVector
+from sel_engine.features.schema import FeatureVector
 from sel_engine.validator import FeatureValidator
-
 
 # ── compute_price_features ────────────────────────────────────────────────────
 
@@ -37,6 +36,7 @@ _needs_oprim = pytest.mark.skipif(
     importlib.util.find_spec("oprim") is None,
     reason="private quant stack (oprim) not installed",
 )
+
 
 class TestComputePriceFeatures:
     def test_empty_input(self):
@@ -75,6 +75,7 @@ class TestComputePriceFeatures:
 
 # ── compute_orderbook_entropy ─────────────────────────────────────────────────
 
+
 class TestOrderbookEntropy:
     def test_empty_levels(self):
         assert compute_orderbook_entropy([]) == 0.0
@@ -105,6 +106,7 @@ class TestOrderbookEntropy:
 
 
 # ── compute_autocorr ──────────────────────────────────────────────────────────
+
 
 class TestComputeAutocorr:
     def test_insufficient_data(self):
@@ -149,6 +151,7 @@ class TestComputeAutocorr:
 
 
 # ── compute_hurst_rs ──────────────────────────────────────────────────────────
+
 
 class TestHurstRS:
     def test_insufficient_data(self):
@@ -197,6 +200,7 @@ class TestHurstRS:
 
 # ── compute_LV ───────────────────────────────────────────────────────────────
 
+
 class TestComputeLV:
     def test_none_when_depth_missing(self):
         assert compute_LV(None, 1000.0, 5.0, 3.0) is None
@@ -242,6 +246,7 @@ class TestComputeLV:
 
 
 # ── FeatureValidator ──────────────────────────────────────────────────────────
+
 
 class TestFeatureValidator:
     def _make_fv(self, close=50000.0, delta=1.0, sigma=0.01):
@@ -303,6 +308,7 @@ class TestFeatureValidator:
 
 # ── compute_H_from_samples ────────────────────────────────────────────────────
 
+
 class TestComputeHFromSamples:
     def test_empty(self):
         H, count = compute_H_from_samples([])
@@ -323,6 +329,7 @@ class TestComputeHFromSamples:
 
 # ── compute_sigma_p_d2 ────────────────────────────────────────────────────────
 
+
 class TestSigmaPD2:
     def test_insufficient_history(self):
         assert compute_sigma_p_d2([0.01, 0.02]) is None
@@ -337,6 +344,7 @@ class TestSigmaPD2:
 
 
 # ── compute_H_change_rate_std ─────────────────────────────────────────────────
+
 
 class TestHChangeRateStd:
     def test_insufficient_history(self):

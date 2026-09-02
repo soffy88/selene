@@ -18,14 +18,13 @@ Output:
     v2_state_history table (≈5096 rows)
     sel_v2/analysis/wave3_replay_report.md
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import logging
 import os
-import sys
 import time
 from datetime import datetime, timezone
 from typing import Optional
@@ -33,13 +32,13 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-# Feature precomputation
-from sel_v2.states.hawkes_critical import precompute_branching_ratios
-from sel_v2.states.tda_critical import precompute_tda_l1, compute_tda_rolling_pctile
-from sel_v2.states.schema import StateLabel
 from sel_v2.scheduler.bar_runner import BarRunner
 from sel_v2.scheduler.derivatives_loader import load_oi_funding_series
 from sel_v2.scheduler.taker_flow_loader import load_taker_flow_series
+
+# Feature precomputation
+from sel_v2.states.hawkes_critical import precompute_branching_ratios
+from sel_v2.states.tda_critical import precompute_tda_l1
 from sel_v2.strategies.db_writer import DBWriter
 from sel_v2.strategies.params_loader import load_strategy_params
 
@@ -49,16 +48,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-_DEFAULT_PARQUET = os.path.join(
-    os.path.dirname(__file__), "../../analysis/data/btc_4h.parquet"
-)
-_REPORT_PATH = os.path.join(
-    os.path.dirname(__file__), "../../sel_v2/analysis/wave3_replay_report.md"
-)
+_DEFAULT_PARQUET = os.path.join(os.path.dirname(__file__), "../../analysis/data/btc_4h.parquet")
+_REPORT_PATH = os.path.join(os.path.dirname(__file__), "../../sel_v2/analysis/wave3_replay_report.md")
 _SIGMA_WINDOW = 180
 
 
 # ── Feature precomputation ────────────────────────────────────────────────────
+
 
 def precompute_sigma_series(close: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -72,12 +68,12 @@ def precompute_sigma_series(close: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     sigma_pctile = np.full(n, np.nan)
 
     for i in range(_SIGMA_WINDOW, n):
-        seg = log_returns[i - _SIGMA_WINDOW: i]
+        seg = log_returns[i - _SIGMA_WINDOW : i]
         sigma[i] = float(np.std(seg))
 
     # Pctile: for each bar i, rank sigma[i] in sigma[i-WINDOW:i]
     for i in range(_SIGMA_WINDOW * 2, n):
-        window = sigma[i - _SIGMA_WINDOW: i]
+        window = sigma[i - _SIGMA_WINDOW : i]
         valid = window[np.isfinite(window)]
         if len(valid) > 0:
             sigma_pctile[i] = float(np.mean(valid <= sigma[i]))
@@ -97,7 +93,7 @@ def precompute_tda_pctile_series(
     n = len(tda_l1)
     pctile = np.full(n, np.nan)
     for i in range(pctile_window, n):
-        seg = tda_l1[i - pctile_window: i]
+        seg = tda_l1[i - pctile_window : i]
         valid = seg[np.isfinite(seg) & (seg > 0)]
         if len(valid) >= 10:
             pctile[i] = float(np.mean(valid <= tda_l1[i]))
@@ -105,6 +101,7 @@ def precompute_tda_pctile_series(
 
 
 # ── Main replay orchestrator ──────────────────────────────────────────────────
+
 
 async def run_replay(
     parquet_path: str,
@@ -163,8 +160,11 @@ async def run_replay(
         if len(valid_br) > 0:
             logger.info(
                 "Hawkes BR: mean=%.4f std=%.4f median=%.4f frac>%.2f=%.1f%%",
-                np.mean(valid_br), np.std(valid_br), np.median(valid_br),
-                hawkes_threshold, np.mean(valid_br > hawkes_threshold) * 100,
+                np.mean(valid_br),
+                np.std(valid_br),
+                np.median(valid_br),
+                hawkes_threshold,
+                np.mean(valid_br > hawkes_threshold) * 100,
             )
 
     # Precompute TDA L^1
@@ -180,8 +180,10 @@ async def run_replay(
         if len(valid_l1) > 0:
             logger.info(
                 "TDA L^1: mean=%.6f std=%.6f p95=%.6f threshold=%.6f",
-                np.mean(valid_l1), np.std(valid_l1),
-                float(np.quantile(valid_l1, 0.95)), tda_threshold,
+                np.mean(valid_l1),
+                np.std(valid_l1),
+                float(np.quantile(valid_l1, 0.95)),
+                tda_threshold,
             )
 
     # Load helixa OI / funding / taker-flow series
@@ -193,29 +195,29 @@ async def run_replay(
         logger.info("Loading helixa derivatives (OI + funding)...")
         try:
             bar_ts_list = list(df["time"])
-            deriv = await load_oi_funding_series(
-                bar_ts_list, symbol="BTC", db_url=helixa_db_url
-            )
+            deriv = await load_oi_funding_series(bar_ts_list, symbol="BTC", db_url=helixa_db_url)
             oi_raw = deriv["open_interest"]
             funding_raw = deriv["funding_rate"]
             oi_valid = int(np.sum(~np.isnan(oi_raw)))
             logger.info(
                 "helixa OI/funding: %d/%d bars covered (%.1f%%)",
-                oi_valid, n, oi_valid / n * 100,
+                oi_valid,
+                n,
+                oi_valid / n * 100,
             )
         except Exception as exc:
             logger.warning("helixa derivatives load failed (%s) — skipping", exc)
 
         logger.info("Loading helixa taker flow (OFI proxy)...")
         try:
-            flow = await load_taker_flow_series(
-                bar_ts_list, symbol="BTC/USDT-SWAP", db_url=helixa_db_url
-            )
+            flow = await load_taker_flow_series(bar_ts_list, symbol="BTC/USDT-SWAP", db_url=helixa_db_url)
             ofi_proxy = flow["net_taker_flow"]
             ofi_valid = int(np.sum(~np.isnan(ofi_proxy)))
             logger.info(
                 "helixa taker flow: %d/%d bars covered (%.1f%%)",
-                ofi_valid, n, ofi_valid / n * 100,
+                ofi_valid,
+                n,
+                ofi_valid / n * 100,
             )
         except Exception as exc:
             logger.warning("helixa taker_flow load failed (%s) — skipping", exc)
@@ -400,22 +402,22 @@ def _write_report(stats: dict, records, output_path: str) -> None:
         count = stats["transition_counts"].get(vocab, 0)
         lines.append(f"| {vocab} | {count} |")
     lines += [
-        f"",
+        "",
         f"**Illegal transitions**: {stats['illegal_transitions']}",
         "",
         "## 4. Critical Main Condition Statistics",
         "",
         "| Condition | Count | Bars (%) |",
         "|---|---|---|",
-        f"| A partial (σ > 90th + monotone) | {stats['critical_a_partial_count']} | {stats['critical_a_partial_count']/total*100:.1f}% |",
-        f"| A full (A_partial + entropy) | {stats['critical_a_full_count']} | {stats['critical_a_full_count']/total*100:.1f}% |",
-        f"| B (Hawkes BR > threshold) | {stats['critical_b_count']} | {stats['critical_b_count']/total*100:.1f}% |",
-        f"| C (TDA > 95th pctile + monotone) | {stats['critical_c_count']} | {stats['critical_c_count']/total*100:.1f}% |",
-        f"| A_partial + B (path 2 candidate) | {stats['critical_ab_count']} | {stats['critical_ab_count']/total*100:.1f}% |",
-        f"| A_partial + C | {stats['critical_ac_count']} | {stats['critical_ac_count']/total*100:.1f}% |",
-        f"| A_partial + B + C (path 2 fires) | {stats['critical_abc_count']} | {stats['critical_abc_count']/total*100:.1f}% |",
-        f"| Path 1 (A_full + B or C) | {stats['critical_path1_count']} | {stats['critical_path1_count']/total*100:.1f}% |",
-        f"| Path 2 (A_partial + B + C) | {stats['critical_path2_count']} | {stats['critical_path2_count']/total*100:.1f}% |",
+        f"| A partial (σ > 90th + monotone) | {stats['critical_a_partial_count']} | {stats['critical_a_partial_count'] / total * 100:.1f}% |",
+        f"| A full (A_partial + entropy) | {stats['critical_a_full_count']} | {stats['critical_a_full_count'] / total * 100:.1f}% |",
+        f"| B (Hawkes BR > threshold) | {stats['critical_b_count']} | {stats['critical_b_count'] / total * 100:.1f}% |",
+        f"| C (TDA > 95th pctile + monotone) | {stats['critical_c_count']} | {stats['critical_c_count'] / total * 100:.1f}% |",
+        f"| A_partial + B (path 2 candidate) | {stats['critical_ab_count']} | {stats['critical_ab_count'] / total * 100:.1f}% |",
+        f"| A_partial + C | {stats['critical_ac_count']} | {stats['critical_ac_count'] / total * 100:.1f}% |",
+        f"| A_partial + B + C (path 2 fires) | {stats['critical_abc_count']} | {stats['critical_abc_count'] / total * 100:.1f}% |",
+        f"| Path 1 (A_full + B or C) | {stats['critical_path1_count']} | {stats['critical_path1_count'] / total * 100:.1f}% |",
+        f"| Path 2 (A_partial + B + C) | {stats['critical_path2_count']} | {stats['critical_path2_count'] / total * 100:.1f}% |",
         "",
         "**Note**: A_full is always 0 in Wave 3 replay because A2 (LOB entropy) is STUB (None).",
         "All Critical entries via Path 2 (A_partial + B + C).",
@@ -442,16 +444,20 @@ def _write_report(stats: dict, records, output_path: str) -> None:
         "",
         "## 7. Hawkes vs Wave 1 Calibration",
         "",
-        f"| | Wave 1 full-fit η | Wave 3 rolling mean |",
+        "| | Wave 1 full-fit η | Wave 3 rolling mean |",
         "|---|---|---|",
-        f"| η = α/β | 0.5537 | {stats.get('hawkes_br_mean', 'N/A'):.4f} |" if stats.get('hawkes_br_mean') else "| η = α/β | 0.5537 | N/A (skipped) |",
+        f"| η = α/β | 0.5537 | {stats.get('hawkes_br_mean', 'N/A'):.4f} |"
+        if stats.get("hawkes_br_mean")
+        else "| η = α/β | 0.5537 | N/A (skipped) |",
         f"| Critical threshold | 0.85 | {stats.get('hawkes_threshold', 0.85):.2f} |",
         "",
         "## 8. TDA L^1 vs Wave 1 Calibration",
         "",
-        f"| | Wave 1 p95 threshold | Wave 3 rolling mean |",
+        "| | Wave 1 p95 threshold | Wave 3 rolling mean |",
         "|---|---|---|",
-        f"| L^1 norm | 0.000097 | {stats.get('tda_l1_mean', 'N/A'):.6f} |" if stats.get('tda_l1_mean') else "| L^1 norm | 0.000097 | N/A (skipped) |",
+        f"| L^1 norm | 0.000097 | {stats.get('tda_l1_mean', 'N/A'):.6f} |"
+        if stats.get("tda_l1_mean")
+        else "| L^1 norm | 0.000097 | N/A (skipped) |",
         f"| B threshold (v2_strategy_params) | {stats.get('tda_threshold', 0.000097):.6f} | — |",
         "",
         "## 9. Health Alerts (§16.2 targets)",

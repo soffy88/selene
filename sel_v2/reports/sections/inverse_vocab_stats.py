@@ -1,4 +1,5 @@
 """§26.2 Section 3: 反推詞彙出現統計."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -14,8 +15,13 @@ def build_inverse_vocab_stats(data: dict[str, Any]) -> str:
     vocab_counts: dict[str, int] = data.get("vocab_counts", {})
 
     known_vocabs = [
-        "Sweep", "Absorption", "Imprinting", "Saturation",
-        "Exhaustion", "Crowding", "Release",
+        "Sweep",
+        "Absorption",
+        "Imprinting",
+        "Saturation",
+        "Exhaustion",
+        "Crowding",
+        "Release",
     ]
 
     lines = [

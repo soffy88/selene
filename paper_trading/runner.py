@@ -1,4 +1,5 @@
 """PaperTradingRunner — full per-bar pipeline orchestrator."""
+
 from __future__ import annotations
 
 import logging
@@ -49,8 +50,8 @@ class PaperTradingRunner:
         self,
         bar_time: datetime,
         close: float,
-        pg,          # asyncpg pool (None for dry run)
-        redis,       # redis client (None for dry run)
+        pg,  # asyncpg pool (None for dry run)
+        redis,  # redis client (None for dry run)
         oi: Optional[float] = None,
     ) -> DecisionTrail:
         """Process one 1H bar end. Returns the complete decision trail."""
@@ -80,9 +81,7 @@ class PaperTradingRunner:
         # 4. Risk check — compute none_reason distribution in lag window for Rule 2 diagnostics
         none_reasons_in_lag: Optional[dict] = None
         if self._last_state_time is not None:
-            none_reasons_in_lag = self._get_none_reasons_in_window(
-                self._last_state_time, bar_time
-            )
+            none_reasons_in_lag = self._get_none_reasons_in_window(self._last_state_time, bar_time)
         risk_result = self.risk_gate.check(
             proposed_action=proposed_decision.action,
             current_state=state_out.state,
@@ -100,11 +99,7 @@ class PaperTradingRunner:
         # 5. Execute
         if final_action in (DecisionAction.OPEN_LONG, DecisionAction.OPEN_SHORT):
             if self.positions.current is None and proposed_decision.target_size_usdt:
-                side = (
-                    PositionSide.LONG
-                    if final_action == DecisionAction.OPEN_LONG
-                    else PositionSide.SHORT
-                )
+                side = PositionSide.LONG if final_action == DecisionAction.OPEN_LONG else PositionSide.SHORT
                 fill = self.fills.simulate_open(
                     bar_time,
                     self.symbol,
@@ -141,6 +136,7 @@ class PaperTradingRunner:
         # 7. Persist (skip if no DB)
         if pg is not None:
             from paper_trading.db.trail_store import TrailStore
+
             await TrailStore.insert(pg, trail)
 
         # 8. Emit Rule 2 alert if candidate B fired and redis is available
@@ -170,8 +166,7 @@ class PaperTradingRunner:
         total_none = sum(lag_reasons.values()) or 1
 
         pos_summary = (
-            f"{trail.position_side} ${trail.position_size_usdt:,.0f}"
-            f" (unrealized: ${trail.unrealized_pnl_usdt:+.0f})"
+            f"{trail.position_side} ${trail.position_size_usdt:,.0f} (unrealized: ${trail.unrealized_pnl_usdt:+.0f})"
             if trail.position_side
             else "no position"
         )

@@ -85,4 +85,5 @@ class ObservationTool(ABC):
         """True once the tool has seen enough bars for its minimum window."""
 
     def reset(self) -> None:
-        """Reset internal state (used in testing)."""
+        """Reset internal state (used in testing). Default clears nothing extra."""
+        return None

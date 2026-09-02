@@ -13,6 +13,7 @@ Pipeline per bar:
 The StateEngine is a persistent object across bars; its internal dwell/cooling
 state is lost on container restart (see EC-10 in engineering_concerns.md).
 """
+
 from __future__ import annotations
 
 import json
@@ -94,16 +95,10 @@ class BarCloseRunner:
 
         try:
             # ── Read historical context ───────────────────────────────────────
-            sigma_p_history = await read_sigma_p_history(
-                self.pool, self.symbol, bar_open_time, limit=50
-            )
-            H_history = await read_H_history(
-                self.pool, self.symbol, bar_open_time, limit=50
-            )
+            sigma_p_history = await read_sigma_p_history(self.pool, self.symbol, bar_open_time, limit=50)
+            H_history = await read_H_history(self.pool, self.symbol, bar_open_time, limit=50)
             # OI: read up to bar_close_time so the most-recent 5-min snapshot is included
-            OI_history = await read_OI_history(
-                self.pool, self.symbol, bar_close_time, limit=50
-            )
+            OI_history = await read_OI_history(self.pool, self.symbol, bar_close_time, limit=50)
             OI_current: Optional[float] = OI_history[-1] if OI_history else None
             total_depth_24h_mean, spread_bps_24h_mean = await read_depth_24h_means(
                 self.pool, self.symbol, bar_open_time
@@ -125,7 +120,7 @@ class BarCloseRunner:
                 OI_current=OI_current,
                 total_depth_24h_mean=total_depth_24h_mean,
                 spread_bps_24h_mean=spread_bps_24h_mean,
-                bids=None,   # raw L2 not available at bar close
+                bids=None,  # raw L2 not available at bar close
                 asks=None,
                 H_samples=H_samples,
                 redis=self.redis,
@@ -139,13 +134,20 @@ class BarCloseRunner:
             self._apply_depth_samples(fv, depth_samples)
 
             # Recompute LV now that depth features may have been supplemented.
-            if all(v is not None for v in (
-                fv.total_depth, total_depth_24h_mean,
-                fv.spread_bps, spread_bps_24h_mean,
-            )):
+            if all(
+                v is not None
+                for v in (
+                    fv.total_depth,
+                    total_depth_24h_mean,
+                    fv.spread_bps,
+                    spread_bps_24h_mean,
+                )
+            ):
                 fv.LV = compute_LV(
-                    fv.total_depth, total_depth_24h_mean,
-                    fv.spread_bps, spread_bps_24h_mean,
+                    fv.total_depth,
+                    total_depth_24h_mean,
+                    fv.spread_bps,
+                    spread_bps_24h_mean,
                 )
                 fv.availability.LV = fv.LV is not None
 
@@ -171,9 +173,7 @@ class BarCloseRunner:
             )
 
         except Exception as exc:
-            logger.error(
-                "bar %s processing failed: %s", bar_ts_iso, exc, exc_info=True
-            )
+            logger.error("bar %s processing failed: %s", bar_ts_iso, exc, exc_info=True)
             # Failure: do NOT write any partial row to sel_state_sequence.
             # Increment failure counter for monitoring.
             await self.redis.incr(_REDIS_KEY_FAILURES)
@@ -182,9 +182,7 @@ class BarCloseRunner:
 
     async def _already_processed(self, bar_open_time: datetime) -> bool:
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                _CHECK_PROCESSED_SQL, self.symbol, bar_open_time
-            )
+            row = await conn.fetchrow(_CHECK_PROCESSED_SQL, self.symbol, bar_open_time)
         return row is not None
 
     async def _read_tf_history(self, bar_open_time: datetime) -> Optional[list]:
